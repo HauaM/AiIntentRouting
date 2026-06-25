@@ -365,5 +365,28 @@ class IntentRoutingRepository:
     def insert_runtime_log(self, **values: Any) -> models.RuntimeLog:
         return self._add_and_flush(models.RuntimeLog(**values))
 
+    def list_runtime_logs(self, service_id: str) -> list[models.RuntimeLog]:
+        return list(
+            self.session.scalars(
+                select(models.RuntimeLog)
+                .where(models.RuntimeLog.service_id == service_id)
+                .order_by(
+                    models.RuntimeLog.created_at.desc(),
+                    models.RuntimeLog.trace_id,
+                )
+            )
+        )
+
+    def get_runtime_log(
+        self,
+        service_id: str,
+        trace_id: str,
+    ) -> models.RuntimeLog | None:
+        return self.session.scalar(
+            select(models.RuntimeLog)
+            .where(models.RuntimeLog.service_id == service_id)
+            .where(models.RuntimeLog.trace_id == trace_id)
+        )
+
     def insert_audit_log(self, **values: Any) -> models.AuditLog:
         return self._add_and_flush(models.AuditLog(**values))

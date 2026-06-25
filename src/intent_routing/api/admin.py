@@ -20,6 +20,7 @@ from intent_routing.db.models import (
     IntentExample,
     PolicyVersion,
     Release,
+    RuntimeLog,
     Service,
     TestResult,
 )
@@ -39,6 +40,12 @@ from intent_routing.domain.schemas import (
     validate_route_key,
 )
 from intent_routing.embedding.provider import get_embedding_provider
+from intent_routing.logging.audit import (
+    decrypt_runtime_raw_query,
+    raw_query_view_after_state,
+    source_ip_from_request,
+)
+from intent_routing.logging.trace import MASKED_RUNTIME_LOG_FIELDS
 from intent_routing.security.admin_auth import (
     AdminContext,
     raise_admin_forbidden,
@@ -351,6 +358,53 @@ class ReleaseResponse(BaseModel):
     rollback_target: str | None
 
 
+class RuntimeLogResponse(BaseModel):
+    trace_id: str
+    request_id: str | None
+    app_id: str | None
+    service_id: str | None
+    release_version: str | None
+    policy_version: str | None
+    intent_catalog_version: str | None
+    decision: str | None
+    intent_id: str | None
+    confidence: float | None
+    margin: float | None
+    threshold_preset: str | None
+    threshold_value: float | None
+    route_key: str | None
+    error_code: str | None
+    error_category: str | None
+    error_layer: str | None
+    http_status: int | None
+    retryable: bool | None
+    latency_ms: int
+    query_masked: str | None
+    created_at: datetime
+
+
+class RawQueryDecryptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    view_reason: str = Field(min_length=10)
+
+    @field_validator("view_reason")
+    @classmethod
+    def view_reason_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if len(stripped) < 10:
+            raise ValueError("view_reason must be at least 10 characters")
+        return stripped
+
+
+class RawQueryDecryptResponse(BaseModel):
+    trace_id: str
+    service_id: str
+    query_raw: str
+    viewed_by: str
+    viewed_at: datetime
+
+
 def get_admin_session() -> Iterator[Session]:
     session = SessionLocal()
     try:
@@ -447,6 +501,23 @@ def _require_service_catalog_access(context: AdminContext, service_id: str) -> N
     if context.has_role("service_developer") and context.can_access_service(service_id):
         return
     raise_admin_forbidden("Service catalog scope is required for this action.")
+
+
+def _require_runtime_log_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    allowed_roles = {"service_operator", "auditor"}
+    if context.roles.intersection(allowed_roles) and context.can_access_service(service_id):
+        return
+    raise_admin_forbidden("Runtime log scope is required for this action.")
+
+
+def _require_raw_query_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_role("auditor") and context.can_access_service(service_id):
+        return
+    raise_admin_forbidden("Raw query audit scope is required for this action.")
 
 
 def _service_response(service: Service) -> ServiceResponse:
@@ -600,6 +671,14 @@ def _release_response(release: Release) -> ReleaseResponse:
         released_at=release.released_at,
         rollback_target=release.rollback_target,
     )
+
+
+def _runtime_log_response(runtime_log: RuntimeLog) -> RuntimeLogResponse:
+    values = {field: getattr(runtime_log, field) for field in MASKED_RUNTIME_LOG_FIELDS}
+    for decimal_field in ("confidence", "margin", "threshold_value"):
+        value = values[decimal_field]
+        values[decimal_field] = float(value) if value is not None else None
+    return RuntimeLogResponse.model_validate(values)
 
 
 def _raw_text_encryptor() -> EnvelopeEncryptor:
@@ -895,6 +974,90 @@ def revoke_api_key(
     )
     session.commit()
     return _api_key_response(api_key)
+
+
+@router.get(
+    "/services/{service_id}/runtime-logs",
+    response_model=list[RuntimeLogResponse],
+)
+def list_runtime_logs(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> list[RuntimeLogResponse]:
+    _require_runtime_log_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    return [
+        _runtime_log_response(runtime_log)
+        for runtime_log in repository.list_runtime_logs(service_id)
+    ]
+
+
+@router.post(
+    "/services/{service_id}/runtime-logs/{trace_id}:decrypt-raw-query",
+    response_model=RawQueryDecryptResponse,
+)
+def decrypt_raw_runtime_query(
+    service_id: str,
+    trace_id: str,
+    request: RawQueryDecryptRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> RawQueryDecryptResponse:
+    _require_raw_query_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    runtime_log = repository.get_runtime_log(service_id, trace_id)
+    if runtime_log is None:
+        _raise_not_found("Runtime log does not exist.")
+
+    query_raw = decrypt_runtime_raw_query(runtime_log, _raw_text_encryptor())
+    if query_raw is None:
+        _raise_not_found("Runtime log raw query does not exist.")
+
+    repository.insert_audit_log(
+        event_type="raw_query.viewed",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=trace_id,
+        target_type="runtime_log",
+        target_id=trace_id,
+        view_reason=request.view_reason,
+        source_ip=source_ip_from_request(http_request),
+        before_state=None,
+        after_state=raw_query_view_after_state(runtime_log),
+        created_at=now,
+    )
+    session.commit()
+    return RawQueryDecryptResponse(
+        trace_id=trace_id,
+        service_id=service_id,
+        query_raw=query_raw,
+        viewed_by=context.actor_id,
+        viewed_at=now,
+    )
+
+
+@router.get(
+    "/services/{service_id}/runtime-logs/{trace_id}",
+    response_model=RuntimeLogResponse,
+)
+def get_runtime_log(
+    service_id: str,
+    trace_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> RuntimeLogResponse:
+    _require_runtime_log_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    runtime_log = repository.get_runtime_log(service_id, trace_id)
+    if runtime_log is None:
+        _raise_not_found("Runtime log does not exist.")
+    return _runtime_log_response(runtime_log)
 
 
 @router.post(

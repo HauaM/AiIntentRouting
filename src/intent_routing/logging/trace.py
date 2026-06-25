@@ -23,6 +23,30 @@ from intent_routing.security.encryption import EnvelopeEncryptor
 from intent_routing.security.pii import mask_pii
 
 RUNTIME_ERROR_LOGGED_HEADER = "X-Intent-Runtime-Logged"
+MASKED_RUNTIME_LOG_FIELDS = (
+    "trace_id",
+    "request_id",
+    "app_id",
+    "service_id",
+    "release_version",
+    "policy_version",
+    "intent_catalog_version",
+    "decision",
+    "intent_id",
+    "confidence",
+    "margin",
+    "threshold_preset",
+    "threshold_value",
+    "route_key",
+    "error_code",
+    "error_category",
+    "error_layer",
+    "http_status",
+    "retryable",
+    "latency_ms",
+    "query_masked",
+    "created_at",
+)
 RuntimeLogSessionFactory = Callable[[], AbstractContextManager[Session]]
 
 
