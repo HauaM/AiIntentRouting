@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from os import environ
 from typing import Annotated, Any, NoReturn
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -20,11 +20,13 @@ from intent_routing.db.models import (
     IntentExample,
     PolicyVersion,
     Release,
-    RuntimeLog,
     Service,
     TestResult,
 )
-from intent_routing.db.repositories import IntentRoutingRepository
+from intent_routing.db.repositories import (
+    MASKED_RUNTIME_LOG_FIELD_NAMES,
+    IntentRoutingRepository,
+)
 from intent_routing.db.session import SessionLocal
 from intent_routing.domain.enums import (
     ApiKeyStatus,
@@ -45,7 +47,6 @@ from intent_routing.logging.audit import (
     raw_query_view_after_state,
     source_ip_from_request,
 )
-from intent_routing.logging.trace import MASKED_RUNTIME_LOG_FIELDS
 from intent_routing.security.admin_auth import (
     AdminContext,
     raise_admin_forbidden,
@@ -673,8 +674,11 @@ def _release_response(release: Release) -> ReleaseResponse:
     )
 
 
-def _runtime_log_response(runtime_log: RuntimeLog) -> RuntimeLogResponse:
-    values = {field: getattr(runtime_log, field) for field in MASKED_RUNTIME_LOG_FIELDS}
+def _runtime_log_response(runtime_log: Mapping[str, Any]) -> RuntimeLogResponse:
+    values = {
+        field: runtime_log[field]
+        for field in MASKED_RUNTIME_LOG_FIELD_NAMES
+    }
     for decimal_field in ("confidence", "margin", "threshold_value"):
         value = values[decimal_field]
         values[decimal_field] = float(value) if value is not None else None
@@ -984,13 +988,14 @@ def list_runtime_logs(
     service_id: str,
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[RuntimeLogResponse]:
     _require_runtime_log_access(context, service_id)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
     return [
         _runtime_log_response(runtime_log)
-        for runtime_log in repository.list_runtime_logs(service_id)
+        for runtime_log in repository.list_masked_runtime_logs(service_id, limit=limit)
     ]
 
 
@@ -1010,7 +1015,7 @@ def decrypt_raw_runtime_query(
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
-    runtime_log = repository.get_runtime_log(service_id, trace_id)
+    runtime_log = repository.get_runtime_log_for_decrypt(service_id, trace_id)
     if runtime_log is None:
         _raise_not_found("Runtime log does not exist.")
 
@@ -1054,7 +1059,7 @@ def get_runtime_log(
     _require_runtime_log_access(context, service_id)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
-    runtime_log = repository.get_runtime_log(service_id, trace_id)
+    runtime_log = repository.get_masked_runtime_log(service_id, trace_id)
     if runtime_log is None:
         _raise_not_found("Runtime log does not exist.")
     return _runtime_log_response(runtime_log)

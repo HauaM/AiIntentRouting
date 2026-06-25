@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, or_, select, text
 from sqlalchemy.orm import Session
 
 from intent_routing.api.admin import get_admin_session
@@ -113,6 +113,91 @@ def test_masked_runtime_log_endpoints_never_return_raw_query_fields(
     assert RAW_QUERY not in serialized
     assert detail_body["trace_id"] == trace_id
     assert detail_body["query_masked"] == mask_pii(RAW_QUERY)
+
+
+def test_masked_runtime_log_repository_methods_do_not_select_raw_query_fields(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trace_id = _create_runtime_trace(db_session, monkeypatch)
+    repository = IntentRoutingRepository(db_session)
+
+    listed = repository.list_masked_runtime_logs(SERVICE_ID, limit=10)
+    detailed = repository.get_masked_runtime_log(SERVICE_ID, trace_id)
+
+    assert listed
+    assert detailed is not None
+    for row in (listed[0], detailed):
+        assert not isinstance(row, models.RuntimeLog)
+        assert "query_masked" in row
+        assert "query_raw_ciphertext" not in row
+        assert not any(key.startswith("query_raw_") for key in row)
+
+
+def test_runtime_log_list_limit_defaults_and_can_be_overridden(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trace_ids = _create_runtime_traces(db_session, monkeypatch, count=3)
+    client = _client(db_session, monkeypatch)
+
+    default_response = client.get(
+        f"/admin/v1/services/{SERVICE_ID}/runtime-logs",
+        headers=_operator_headers(SERVICE_ID),
+    )
+    limited_response = client.get(
+        f"/admin/v1/services/{SERVICE_ID}/runtime-logs",
+        headers=_operator_headers(SERVICE_ID),
+        params={"limit": 2},
+    )
+
+    assert default_response.status_code == 200
+    assert len(default_response.json()) == len(trace_ids)
+    assert limited_response.status_code == 200
+    assert len(limited_response.json()) == 2
+
+
+def test_runtime_log_list_limit_is_validated(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_runtime_state(db_session)
+    client = _client(db_session, monkeypatch)
+
+    too_small = client.get(
+        f"/admin/v1/services/{SERVICE_ID}/runtime-logs",
+        headers=_operator_headers(SERVICE_ID),
+        params={"limit": 0},
+    )
+    too_large = client.get(
+        f"/admin/v1/services/{SERVICE_ID}/runtime-logs",
+        headers=_operator_headers(SERVICE_ID),
+        params={"limit": 501},
+    )
+
+    assert too_small.status_code == 422
+    assert too_small.json()["status"] == "error"
+    assert too_large.status_code == 422
+    assert too_large.json()["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_runtime_logs_have_service_created_at_trace_index(db_session: Session) -> None:
+    index_definition = db_session.scalar(
+        text(
+            """
+            select indexdef
+            from pg_indexes
+            where schemaname = current_schema()
+              and tablename = 'runtime_logs'
+              and indexname = 'ix_runtime_logs_service_created_at_trace'
+            """
+        )
+    )
+
+    assert isinstance(index_definition, str)
+    assert "service_id" in index_definition
+    assert "created_at DESC" in index_definition
+    assert "trace_id" in index_definition
 
 
 def test_service_operator_can_query_logs_only_for_scoped_service(
@@ -227,6 +312,26 @@ def test_raw_decrypt_unauthorized_role_returns_forbidden_error_envelope(
     assert RAW_QUERY not in response.text
 
 
+def test_raw_decrypt_wrong_scope_auditor_returns_forbidden_error_envelope(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trace_id = _create_runtime_trace(db_session, monkeypatch)
+    client = _client(db_session, monkeypatch)
+
+    response = client.post(
+        f"/admin/v1/services/{SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
+        headers=_auditor_headers(OTHER_SERVICE_ID),
+        json={"view_reason": VIEW_REASON},
+    )
+
+    body = response.json()
+    assert response.status_code == 403
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "SERVICE_SCOPE_DENIED"
+    assert RAW_QUERY not in response.text
+
+
 def _client(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -280,15 +385,30 @@ def _create_runtime_trace(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> str:
+    return _create_runtime_traces(db_session, monkeypatch, count=1)[0]
+
+
+def _create_runtime_traces(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    count: int,
+) -> list[str]:
     secret = _seed_runtime_state(db_session)
     client = _client(db_session, monkeypatch)
-    response = client.post(
-        "/v1/intent-route",
-        headers=_runtime_headers(secret, request_id=f"req-trace-audit-{uuid4().hex}"),
-        json=_dify_request(query=RAW_QUERY),
-    )
-    assert response.status_code == 200
-    return cast("str", response.json()["trace_id"])
+    trace_ids: list[str] = []
+    for index in range(count):
+        response = client.post(
+            "/v1/intent-route",
+            headers=_runtime_headers(
+                secret,
+                request_id=f"req-trace-audit-{index}-{uuid4().hex}",
+            ),
+            json=_dify_request(query=RAW_QUERY),
+        )
+        assert response.status_code == 200
+        trace_ids.append(cast("str", response.json()["trace_id"]))
+    return trace_ids
 
 
 def _runtime_headers(secret: str, *, request_id: str) -> dict[str, str]:

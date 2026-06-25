@@ -1,7 +1,7 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 from uuid import UUID
 
 from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
@@ -11,6 +11,31 @@ from sqlalchemy.orm import Session
 from intent_routing.db import models
 
 ModelT = TypeVar("ModelT")
+
+MASKED_RUNTIME_LOG_FIELD_NAMES = (
+    "trace_id",
+    "request_id",
+    "app_id",
+    "service_id",
+    "release_version",
+    "policy_version",
+    "intent_catalog_version",
+    "decision",
+    "intent_id",
+    "confidence",
+    "margin",
+    "threshold_preset",
+    "threshold_value",
+    "route_key",
+    "error_code",
+    "error_category",
+    "error_layer",
+    "http_status",
+    "retryable",
+    "latency_ms",
+    "query_masked",
+    "created_at",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -365,19 +390,45 @@ class IntentRoutingRepository:
     def insert_runtime_log(self, **values: Any) -> models.RuntimeLog:
         return self._add_and_flush(models.RuntimeLog(**values))
 
-    def list_runtime_logs(self, service_id: str) -> list[models.RuntimeLog]:
-        return list(
-            self.session.scalars(
-                select(models.RuntimeLog)
+    def list_masked_runtime_logs(
+        self,
+        service_id: str,
+        *,
+        limit: int,
+    ) -> list[Mapping[str, Any]]:
+        columns = _masked_runtime_log_columns()
+        rows = (
+            self.session.execute(
+                select(*columns)
                 .where(models.RuntimeLog.service_id == service_id)
                 .order_by(
                     models.RuntimeLog.created_at.desc(),
                     models.RuntimeLog.trace_id,
                 )
+                .limit(limit)
             )
+            .mappings()
+            .all()
         )
+        return [cast("Mapping[str, Any]", row) for row in rows]
 
-    def get_runtime_log(
+    def get_masked_runtime_log(
+        self,
+        service_id: str,
+        trace_id: str,
+    ) -> Mapping[str, Any] | None:
+        row = (
+            self.session.execute(
+                select(*_masked_runtime_log_columns())
+                .where(models.RuntimeLog.service_id == service_id)
+                .where(models.RuntimeLog.trace_id == trace_id)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return cast("Mapping[str, Any] | None", row)
+
+    def get_runtime_log_for_decrypt(
         self,
         service_id: str,
         trace_id: str,
@@ -390,3 +441,10 @@ class IntentRoutingRepository:
 
     def insert_audit_log(self, **values: Any) -> models.AuditLog:
         return self._add_and_flush(models.AuditLog(**values))
+
+
+def _masked_runtime_log_columns() -> tuple[Any, ...]:
+    return tuple(
+        getattr(models.RuntimeLog, field_name).label(field_name)
+        for field_name in MASKED_RUNTIME_LOG_FIELD_NAMES
+    )
