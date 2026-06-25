@@ -424,13 +424,14 @@ def test_release_creation_succeeds_when_gate_and_versions_match(
 
     body = response.json()
     assert response.status_code == 201
-    assert body["release_version"].startswith(f"rel-{service_id}-")
+    released_day = _date_segment(body["released_at"])
+    assert body["release_version"] == f"rel-{service_id}-{released_day}-001"
     assert body["service_id"] == service_id
     assert body["environment"] == "prod"
     assert body["policy_version"] == policy_version
     assert body["intent_catalog_version"] == catalog_version
     assert body["model_version"] == "emb-fake-v1"
-    assert body["vector_index_version"].startswith(f"vec-{catalog_version}-")
+    assert body["vector_index_version"] == f"vec-{catalog_version}-emb-fake-v1-001"
     assert body["test_run_id"] == test_run_id
     assert body["pass_rate"] == pytest.approx(1.0)
     assert body["risk_pass_rate"] == pytest.approx(1.0)
@@ -449,6 +450,32 @@ def test_release_creation_succeeds_when_gate_and_versions_match(
     assert release_after_state["pass_rate"] == pytest.approx(1.0)
     assert release_after_state["risk_pass_rate"] == pytest.approx(1.0)
     assert release_after_state["rollback_target"] is None
+
+    next_test_run_id = _seed_test_run(
+        db_session,
+        service_id=service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        gate_passed=True,
+        risk_pass_rate=Decimal("1.0"),
+    )
+    next_response = _create_release_response(
+        client,
+        service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        test_run_id=next_test_run_id,
+    )
+
+    next_body = next_response.json()
+    assert next_response.status_code == 201
+    next_released_day = _date_segment(next_body["released_at"])
+    assert next_released_day == released_day
+    assert next_body["release_version"] == f"rel-{service_id}-{released_day}-002"
+    assert (
+        next_body["vector_index_version"]
+        == f"vec-{catalog_version}-emb-fake-v1-002"
+    )
 
 
 def test_release_activation_deactivates_previous_active_release(
@@ -1032,3 +1059,7 @@ def _catalog_state(db_session: Session, catalog_version: str) -> dict[str, Any]:
     catalog = db_session.get(models.IntentCatalogVersion, catalog_version)
     assert catalog is not None
     return {"snapshot": catalog.snapshot}
+
+
+def _date_segment(value: str) -> str:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).strftime("%Y%m%d")

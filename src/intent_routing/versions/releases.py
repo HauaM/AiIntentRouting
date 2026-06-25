@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from uuid import uuid4
 
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
@@ -24,16 +23,25 @@ class ReleaseDependencies:
     test_run: models.TestRun
 
 
-def release_version_id(service_id: str, now: datetime) -> str:
-    return f"rel-{service_id}-{now:%Y%m%d}-{uuid4().hex[:8]}"
+def release_version_id(
+    repository: IntentRoutingRepository,
+    *,
+    service_id: str,
+    now: datetime,
+) -> str:
+    prefix = f"rel-{service_id}-{now:%Y%m%d}-"
+    existing_versions = repository.list_release_versions_by_prefix(service_id, prefix)
+    return f"{prefix}{_next_sequence(existing_versions)}"
 
 
 def vector_index_version_id(
+    repository: IntentRoutingRepository,
+    *,
     intent_catalog_version: str,
     model_version: str,
-    now: datetime,
 ) -> str:
-    return f"vec-{intent_catalog_version}-{now:%Y%m%d}-{_stable_suffix(model_version)}"
+    prefix = f"vec-{intent_catalog_version}-{_safe_id_part(model_version)}-"
+    return f"{prefix}{_next_sequence(repository.list_vector_index_versions_by_prefix(prefix))}"
 
 
 def validate_release_inputs(
@@ -106,9 +114,9 @@ def create_release(
         rollback_target=rollback_target,
     )
     vector_index_version = vector_index_version_id(
-        intent_catalog_version,
-        model_version,
-        now,
+        repository,
+        intent_catalog_version=intent_catalog_version,
+        model_version=model_version,
     )
     repository.create_vector_index_version(
         vector_index_version=vector_index_version,
@@ -119,7 +127,11 @@ def create_release(
         created_at=now,
     )
     return repository.create_release(
-        release_version=release_version_id(service_id, now),
+        release_version=release_version_id(
+            repository,
+            service_id=service_id,
+            now=now,
+        ),
         service_id=service_id,
         environment=environment,
         policy_version=policy_version,
@@ -194,6 +206,17 @@ def release_after_state(release: models.Release) -> dict[str, object]:
     }
 
 
-def _stable_suffix(value: str) -> str:
-    normalized = "".join(character if character.isalnum() else "-" for character in value)
-    return f"{normalized[:24]}-{uuid4().hex[:8]}"
+def _next_sequence(existing_versions: list[str]) -> str:
+    max_sequence = 0
+    for version in existing_versions:
+        _, separator, suffix = version.rpartition("-")
+        if separator and suffix.isdecimal():
+            max_sequence = max(max_sequence, int(suffix))
+    return f"{max_sequence + 1:03d}"
+
+
+def _safe_id_part(value: str) -> str:
+    return "".join(
+        character if character.isalnum() or character in {"-", "_", "."} else "-"
+        for character in value
+    )

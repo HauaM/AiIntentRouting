@@ -267,6 +267,20 @@ class IntentRoutingRepository:
     def create_vector_index_version(self, **values: Any) -> models.VectorIndexVersion:
         return self._add_and_flush(models.VectorIndexVersion(**values))
 
+    def list_vector_index_versions_by_prefix(self, prefix: str) -> list[str]:
+        return list(
+            self.session.scalars(
+                select(models.VectorIndexVersion.vector_index_version)
+                .where(
+                    models.VectorIndexVersion.vector_index_version.startswith(
+                        prefix,
+                        autoescape=True,
+                    )
+                )
+                .order_by(models.VectorIndexVersion.vector_index_version)
+            )
+        )
+
     def get_release(
         self,
         service_id: str,
@@ -292,6 +306,25 @@ class IntentRoutingRepository:
                     models.Release.released_at.desc(),
                     models.Release.release_version,
                 )
+            )
+        )
+
+    def list_release_versions_by_prefix(
+        self,
+        service_id: str,
+        prefix: str,
+    ) -> list[str]:
+        return list(
+            self.session.scalars(
+                select(models.Release.release_version)
+                .where(models.Release.service_id == service_id)
+                .where(
+                    models.Release.release_version.startswith(
+                        prefix,
+                        autoescape=True,
+                    )
+                )
+                .order_by(models.Release.release_version)
             )
         )
 
