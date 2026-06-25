@@ -206,6 +206,7 @@ class IntentRoutingRepository:
         test_dataset_version = dataset_values["test_dataset_version"]
         dataset = models.TestDataset(**dataset_values)
         self.session.add(dataset)
+        self.session.flush()
         for case_values in cases:
             normalized_case_values = dict(case_values)
             case_dataset_version = normalized_case_values.setdefault(
@@ -235,6 +236,15 @@ class IntentRoutingRepository:
 
     def get_test_run(self, test_run_id: str) -> models.TestRun | None:
         return self.session.get(models.TestRun, test_run_id)
+
+    def list_test_results(self, test_run_id: str) -> list[models.TestResult]:
+        return list(
+            self.session.scalars(
+                select(models.TestResult)
+                .where(models.TestResult.test_run_id == test_run_id)
+                .order_by(models.TestResult.case_id)
+            )
+        )
 
     def create_release(self, **values: Any) -> models.Release:
         return self._add_and_flush(models.Release(**values))

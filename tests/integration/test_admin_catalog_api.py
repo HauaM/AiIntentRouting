@@ -6,6 +6,7 @@ import sys
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 from intent_routing.api.admin import get_admin_session
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
+from intent_routing.embedding.fake import FakeEmbeddingProvider
 from intent_routing.main import create_app
 from intent_routing.security.encryption import EncryptedText, EnvelopeEncryptor
 
@@ -104,6 +106,12 @@ def _policy_version_payload() -> dict[str, object]:
     }
 
 
+def _sprint0_csv_text() -> str:
+    return (
+        Path(__file__).resolve().parents[1] / "fixtures" / "sprint0_cases.csv"
+    ).read_text()
+
+
 def _developer_headers(service_id: str) -> dict[str, str]:
     return _admin_headers(
         **{
@@ -146,6 +154,96 @@ def _create_intent(
     )
     assert response.status_code == 201
     return cast("dict[str, object]", response.json())
+
+
+def _seed_csv_runner_state(
+    db_session: Session,
+    client: TestClient,
+    service_id: str,
+) -> tuple[str, str]:
+    _create_service(client, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(db_session)
+    provider = FakeEmbeddingProvider()
+    encryptor = EnvelopeEncryptor(kek_id="test-kek", kek_base64=_raw_text_kek())
+    intent_snapshot = {
+        "intent_id": "it_api_timeout",
+        "domain": "it",
+        "display_name": "API timeout incident",
+        "description": "Handle API timeout and server error issues.",
+        "route_key": "it.api_timeout.manual_lookup",
+        "include_keywords": ["api", "timeout", "500", "에러"],
+        "exclude_keywords": [],
+    }
+    repository.create_intent(
+        service_id=service_id,
+        intent_id=intent_snapshot["intent_id"],
+        domain=intent_snapshot["domain"],
+        display_name=intent_snapshot["display_name"],
+        description=intent_snapshot["description"],
+        route_key=intent_snapshot["route_key"],
+        status="active",
+        include_keywords=intent_snapshot["include_keywords"],
+        exclude_keywords=intent_snapshot["exclude_keywords"],
+        created_by="integration-test",
+        updated_by="integration-test",
+        created_at=now,
+        updated_at=now,
+    )
+    for text in ("API Timeout이 발생해요",):
+        encrypted = encryptor.encrypt_text(text)
+        repository.create_example(
+            service_id=service_id,
+            intent_id="it_api_timeout",
+            example_type="positive",
+            text_raw_ciphertext=encrypted.ciphertext,
+            text_raw_encrypted_dek=encrypted.encrypted_dek,
+            text_raw_encrypted_dek_iv=encrypted.encrypted_dek_iv,
+            text_raw_encrypted_dek_auth_tag=encrypted.encrypted_dek_auth_tag,
+            text_raw_key_id=encrypted.key_id,
+            text_raw_iv=encrypted.iv,
+            text_raw_auth_tag=encrypted.auth_tag,
+            text_raw_algorithm=encrypted.algorithm,
+            text_masked=text,
+            embedding=provider.embed_texts([text], max_tokens=256)[0],
+            source="integration-test",
+            test_case_id=None,
+            approved=True,
+            created_by="integration-test",
+            created_at=now,
+        )
+    policy_version = f"pol-{service_id}-001"
+    catalog_version = f"cat-{service_id}-001"
+    repository.create_policy_version(
+        policy_version=policy_version,
+        service_id=service_id,
+        threshold_preset="balanced",
+        threshold_value=Decimal("0.80"),
+        clarify_margin=Decimal("0.08"),
+        min_candidate_score=Decimal("0.55"),
+        fallback_score=Decimal("0.45"),
+        risk_policy={"enabled": True},
+        off_topic_policy={
+            "enabled": True,
+            "keywords": ["날씨"],
+            "message": "서비스 범위 밖 문의입니다.",
+            "fallback_policy": {
+                "type": "fixed_message",
+                "retryable": False,
+                "recommended_action": "handoff_to_default_channel",
+            },
+        },
+        created_by="integration-test",
+        created_at=now,
+    )
+    repository.create_catalog_version(
+        intent_catalog_version=catalog_version,
+        service_id=service_id,
+        snapshot={"intents": [intent_snapshot]},
+        created_by="integration-test",
+        created_at=now,
+    )
+    return policy_version, catalog_version
 
 
 def test_admin_can_create_service_and_api_key(
@@ -1180,3 +1278,194 @@ def test_create_policy_version_returns_conflict_on_id_collision(
     ).all()
     assert len(persisted_versions) == 1
     assert persisted_versions[0].policy_version == f"pol-fixed-collision-{service_id}"
+
+
+def test_post_test_run_persists_dataset_run_and_results(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    client = _client(db_session)
+    service_id = f"svc-test-run-{uuid4().hex}"
+    policy_version, catalog_version = _seed_csv_runner_state(
+        db_session,
+        client,
+        service_id,
+    )
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/test-runs",
+        headers=_admin_headers(),
+        json={
+            "policy_version": policy_version,
+            "intent_catalog_version": catalog_version,
+            "threshold_preset": "balanced",
+            "source_filename": "sprint0_cases.csv",
+            "csv_text": _sprint0_csv_text(),
+        },
+    )
+
+    body = response.json()
+    assert response.status_code == 201
+    assert body["test_run_id"].startswith("tr-")
+    assert body["test_dataset_version"].startswith("tds-")
+    assert body["threshold_preset"] == "balanced"
+    assert body["threshold_value"] == pytest.approx(0.8)
+    assert body["pass_rate"] == pytest.approx(1.0)
+    assert body["review_rate"] == pytest.approx(0.0)
+    assert body["risk_pass_rate"] == pytest.approx(1.0)
+    assert body["gate_passed"] is True
+    assert body["block_reasons"] == []
+    assert body["recommendations"] == []
+
+    persisted_dataset = db_session.get(models.TestDataset, body["test_dataset_version"])
+    persisted_run = db_session.get(models.TestRun, body["test_run_id"])
+    persisted_cases = db_session.scalars(
+        select(models.TestCase).where(
+            models.TestCase.test_dataset_version == body["test_dataset_version"]
+        )
+    ).all()
+    persisted_results = db_session.scalars(
+        select(models.TestResult).where(
+            models.TestResult.test_run_id == body["test_run_id"]
+        )
+    ).all()
+    assert persisted_dataset is not None
+    assert persisted_dataset.source_filename == "sprint0_cases.csv"
+    assert persisted_run is not None
+    assert persisted_run.threshold_value == Decimal("0.8")
+    assert len(persisted_cases) == 5
+    assert len(persisted_results) == 5
+    assert {result.result for result in persisted_results} == {"PASS"}
+
+
+def test_get_test_run_summary_and_results_returns_persisted_rows(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    client = _client(db_session)
+    service_id = f"svc-test-run-{uuid4().hex}"
+    policy_version, catalog_version = _seed_csv_runner_state(
+        db_session,
+        client,
+        service_id,
+    )
+    create_response = client.post(
+        f"/admin/v1/services/{service_id}/test-runs",
+        headers=_admin_headers(),
+        json={
+            "policy_version": policy_version,
+            "intent_catalog_version": catalog_version,
+            "threshold_preset": "balanced",
+            "source_filename": "sprint0_cases.csv",
+            "csv_text": _sprint0_csv_text(),
+        },
+    )
+    created = create_response.json()
+
+    summary_response = client.get(
+        f"/admin/v1/services/{service_id}/test-runs/{created['test_run_id']}",
+        headers=_admin_headers(),
+    )
+    results_response = client.get(
+        f"/admin/v1/services/{service_id}/test-runs/{created['test_run_id']}/results",
+        headers=_admin_headers(),
+    )
+
+    assert summary_response.status_code == 200
+    assert summary_response.json() == created
+    assert results_response.status_code == 200
+    rows = results_response.json()
+    assert len(rows) == 5
+    assert rows[0] == {
+        "case_id": "C001",
+        "query_masked": "API Timeout이 발생해요",
+        "case_type": "positive",
+        "expected_decision": "confident",
+        "expected_intent": "it_api_timeout",
+        "actual_decision": "confident",
+        "actual_intent": "it_api_timeout",
+        "actual_route_key": "it.api_timeout.manual_lookup",
+        "confidence": pytest.approx(1.0),
+        "result": "PASS",
+        "reason": "matched expected decision and intent",
+    }
+    assert [row["case_id"] for row in rows] == ["C001", "C002", "C003", "C004", "C005"]
+
+
+def test_same_csv_can_run_with_each_threshold_preset(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    client = _client(db_session)
+    service_id = f"svc-test-run-{uuid4().hex}"
+    policy_version, catalog_version = _seed_csv_runner_state(
+        db_session,
+        client,
+        service_id,
+    )
+
+    created: dict[str, dict[str, object]] = {}
+    for preset in ("strict", "balanced", "exploratory"):
+        response = client.post(
+            f"/admin/v1/services/{service_id}/test-runs",
+            headers=_admin_headers(),
+            json={
+                "policy_version": policy_version,
+                "intent_catalog_version": catalog_version,
+                "threshold_preset": preset,
+                "source_filename": "sprint0_cases.csv",
+                "csv_text": _sprint0_csv_text(),
+            },
+        )
+        assert response.status_code == 201
+        created[preset] = response.json()
+
+    assert len({body["test_run_id"] for body in created.values()}) == 3
+    assert created["strict"]["threshold_value"] == pytest.approx(1.0)
+    assert created["balanced"]["threshold_value"] == pytest.approx(0.8)
+    assert created["exploratory"]["threshold_value"] == pytest.approx(0.6)
+
+
+def test_post_test_run_invalid_csv_returns_error_envelope(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    client = _client(db_session, raise_server_exceptions=False)
+    service_id = f"svc-test-run-{uuid4().hex}"
+    policy_version, catalog_version = _seed_csv_runner_state(
+        db_session,
+        client,
+        service_id,
+    )
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/test-runs",
+        headers=_admin_headers(),
+        json={
+            "policy_version": policy_version,
+            "intent_catalog_version": catalog_version,
+            "threshold_preset": "balanced",
+            "source_filename": "bad.csv",
+            "csv_text": (
+                "case_id,query,case_type,expected_intent,memo\n"
+                "C001,hello,positive,it_api_timeout,bad"
+            ),
+        },
+    )
+
+    body = response.json()
+    assert response.status_code == 400
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "INVALID_REQUEST"
+    assert "columns" in body["error"]["message"]
+    assert "detail" not in body

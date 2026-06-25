@@ -12,7 +12,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from intent_routing.db.models import ApiKey, Intent, IntentExample, PolicyVersion, Service
+from intent_routing.db.models import (
+    ApiKey,
+    Intent,
+    IntentExample,
+    PolicyVersion,
+    Service,
+    TestResult,
+)
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.db.session import SessionLocal
 from intent_routing.domain.enums import (
@@ -41,6 +48,12 @@ from intent_routing.security.api_keys import (
 )
 from intent_routing.security.encryption import EncryptedText, EnvelopeEncryptor
 from intent_routing.security.pii import mask_pii
+from intent_routing.testing.csv_runner import (
+    CsvTestRunSummary,
+    CsvValidationError,
+    run_csv_tests,
+    summarize_test_run,
+)
 
 router = APIRouter(prefix="/admin/v1", tags=["admin"])
 
@@ -251,6 +264,43 @@ class PolicyVersionResponse(BaseModel):
     created_at: datetime
 
 
+class TestRunCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    policy_version: str = Field(min_length=1)
+    intent_catalog_version: str = Field(min_length=1)
+    threshold_preset: ThresholdPreset
+    source_filename: str = Field(min_length=1)
+    csv_text: str = Field(min_length=1)
+
+
+class TestRunSummaryResponse(BaseModel):
+    test_run_id: str
+    test_dataset_version: str
+    threshold_preset: str
+    threshold_value: float
+    pass_rate: float
+    review_rate: float
+    risk_pass_rate: float
+    gate_passed: bool
+    block_reasons: list[str]
+    recommendations: list[str]
+
+
+class TestRunResultResponse(BaseModel):
+    case_id: str
+    query_masked: str
+    case_type: str
+    expected_decision: str
+    expected_intent: str | None
+    actual_decision: str
+    actual_intent: str | None
+    actual_route_key: str | None
+    confidence: float | None
+    result: str
+    reason: str
+
+
 def get_admin_session() -> Iterator[Session]:
     session = SessionLocal()
     try:
@@ -283,6 +333,20 @@ def _raise_not_found(message: str) -> NoReturn:
 def _raise_conflict(message: str) -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
+        detail=ErrorEnvelope(
+            trace_id=_trace_id(),
+            error=ErrorInfo(
+                code=ErrorCode.INVALID_REQUEST,
+                message=message,
+                retryable=False,
+            ),
+        ).model_dump(mode="json", exclude_none=True),
+    )
+
+
+def _raise_bad_request(message: str) -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
         detail=ErrorEnvelope(
             trace_id=_trace_id(),
             error=ErrorInfo(
@@ -408,6 +472,37 @@ def _policy_version_response(policy_version: PolicyVersion) -> PolicyVersionResp
         ),
         created_by=policy_version.created_by,
         created_at=policy_version.created_at,
+    )
+
+
+def _test_run_summary_response(summary: CsvTestRunSummary) -> TestRunSummaryResponse:
+    return TestRunSummaryResponse(
+        test_run_id=summary.test_run_id,
+        test_dataset_version=summary.test_dataset_version,
+        threshold_preset=summary.threshold_preset,
+        threshold_value=summary.threshold_value,
+        pass_rate=summary.pass_rate,
+        review_rate=summary.review_rate,
+        risk_pass_rate=summary.risk_pass_rate,
+        gate_passed=summary.gate_passed,
+        block_reasons=summary.block_reasons,
+        recommendations=summary.recommendations,
+    )
+
+
+def _test_result_response(result: TestResult) -> TestRunResultResponse:
+    return TestRunResultResponse(
+        case_id=result.case_id,
+        query_masked=result.query_masked,
+        case_type=result.case_type,
+        expected_decision=result.expected_decision,
+        expected_intent=result.expected_intent,
+        actual_decision=result.actual_decision,
+        actual_intent=result.actual_intent,
+        actual_route_key=result.actual_route_key,
+        confidence=float(result.confidence) if result.confidence is not None else None,
+        result=result.result,
+        reason=result.reason,
     )
 
 
@@ -902,3 +997,93 @@ def approve_example(
     )
     session.commit()
     return _example_response(example)
+
+
+@router.post(
+    "/services/{service_id}/test-runs",
+    response_model=TestRunSummaryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_test_run(
+    service_id: str,
+    request: TestRunCreateRequest,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> TestRunSummaryResponse:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    service = repository.get_service(service_id)
+    if service is None:
+        _raise_not_found("Service does not exist.")
+    policy_version = repository.get_policy_version(service_id, request.policy_version)
+    if policy_version is None:
+        _raise_not_found("Policy version does not exist.")
+    catalog_version = repository.get_catalog_version(
+        service_id,
+        request.intent_catalog_version,
+    )
+    if catalog_version is None:
+        _raise_not_found("Catalog version does not exist.")
+
+    try:
+        summary = run_csv_tests(
+            repository,
+            service=service,
+            policy_version=policy_version,
+            catalog_version=catalog_version,
+            threshold_preset=request.threshold_preset,
+            source_filename=request.source_filename,
+            csv_text=request.csv_text,
+            created_by=context.actor_id,
+        )
+    except CsvValidationError as exc:
+        session.rollback()
+        _raise_bad_request(str(exc))
+    except IntegrityError:
+        session.rollback()
+        _raise_conflict("Test run already exists.")
+
+    session.commit()
+    return _test_run_summary_response(summary)
+
+
+@router.get(
+    "/services/{service_id}/test-runs/{test_run_id}",
+    response_model=TestRunSummaryResponse,
+)
+def get_test_run_summary(
+    service_id: str,
+    test_run_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> TestRunSummaryResponse:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    test_run = repository.get_test_run(test_run_id)
+    if test_run is None or test_run.service_id != service_id:
+        _raise_not_found("Test run does not exist.")
+    results = repository.list_test_results(test_run_id)
+    return _test_run_summary_response(summarize_test_run(test_run, results))
+
+
+@router.get(
+    "/services/{service_id}/test-runs/{test_run_id}/results",
+    response_model=list[TestRunResultResponse],
+)
+def get_test_run_results(
+    service_id: str,
+    test_run_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> list[TestRunResultResponse]:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    test_run = repository.get_test_run(test_run_id)
+    if test_run is None or test_run.service_id != service_id:
+        _raise_not_found("Test run does not exist.")
+    return [
+        _test_result_response(result)
+        for result in repository.list_test_results(test_run_id)
+    ]

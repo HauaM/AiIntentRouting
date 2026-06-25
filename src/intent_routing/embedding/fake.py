@@ -19,7 +19,12 @@ class FakeEmbeddingProvider:
 def _normalized_vector(text: str) -> list[float]:
     vector = [0.0] * EMBEDDING_DIMENSION
     lower_text = text.casefold()
-    if "timeout" in lower_text or "타임아웃" in lower_text:
+    if (
+        "timeout" in lower_text
+        or "타임아웃" in lower_text
+        or "500" in lower_text
+        or "에러" in lower_text
+    ):
         vector[0] = 1.0
         vector[1] = 0.2
         vector[2] = 0.02
