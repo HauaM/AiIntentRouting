@@ -1,14 +1,24 @@
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, TypeVar
 from uuid import UUID
 
-from sqlalchemy import select, update
+from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
+from sqlalchemy import bindparam, select, text, update
 from sqlalchemy.orm import Session
 
 from intent_routing.db import models
 
 ModelT = TypeVar("ModelT")
+
+
+@dataclass(frozen=True, slots=True)
+class ExampleSearchResult:
+    example_id: UUID
+    intent_id: str
+    example_type: str
+    similarity: float
 
 
 class IntentRoutingRepository:
@@ -102,10 +112,60 @@ class IntentRoutingRepository:
             )
         )
 
-    def approve_example(self, example: models.IntentExample) -> models.IntentExample:
+    def approve_example(
+        self,
+        example: models.IntentExample,
+        *,
+        embedding: list[float] | None = None,
+    ) -> models.IntentExample:
         example.approved = True
+        if embedding is not None:
+            example.embedding = embedding
         self.session.flush()
         return example
+
+    def search_approved_examples_by_embedding(
+        self,
+        service_id: str,
+        query_embedding: list[float],
+        *,
+        limit: int,
+    ) -> list[ExampleSearchResult]:
+        if len(query_embedding) != 1024:
+            raise ValueError("query_embedding must have 1024 dimensions")
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        statement = text(
+            """
+            SELECT example_id,
+                   intent_id,
+                   example_type,
+                   1 - (embedding <=> :query_embedding) AS similarity
+            FROM intent_examples
+            WHERE service_id = :service_id
+              AND approved = true
+              AND embedding IS NOT NULL
+            ORDER BY embedding <=> :query_embedding
+            LIMIT :limit
+            """
+        ).bindparams(bindparam("query_embedding", type_=Vector(1024)))
+        rows = self.session.execute(
+            statement,
+            {
+                "service_id": service_id,
+                "query_embedding": query_embedding,
+                "limit": limit,
+            },
+        ).mappings()
+        return [
+            ExampleSearchResult(
+                example_id=row["example_id"],
+                intent_id=row["intent_id"],
+                example_type=row["example_type"],
+                similarity=float(row["similarity"]),
+            )
+            for row in rows
+        ]
 
     def create_policy_version(self, **values: Any) -> models.PolicyVersion:
         return self._add_and_flush(models.PolicyVersion(**values))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import sys
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import cast
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from intent_routing.api.admin import get_admin_session
 from intent_routing.db import models
+from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.main import create_app
 from intent_routing.security.encryption import EncryptedText, EnvelopeEncryptor
 
@@ -569,6 +571,7 @@ def test_list_examples_and_approve_example(
 ) -> None:
     monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
     monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
     client = _client(db_session)
     service_id = f"svc-catalog-{uuid4().hex}"
     _create_service(client, service_id)
@@ -596,6 +599,310 @@ def test_list_examples_and_approve_example(
     persisted = db_session.get(models.IntentExample, example_id)
     assert persisted is not None
     assert persisted.approved is True
+
+
+def test_approve_positive_example_generates_fake_embedding_without_bge_import(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    sys.modules.pop("FlagEmbedding", None)
+    client = _client(db_session)
+    service_id = f"svc-catalog-{uuid4().hex}"
+    _create_service(client, service_id)
+    intent = _create_intent(client, service_id)
+    create_response = client.post(
+        f"/admin/v1/services/{service_id}/intents/{intent['intent_id']}/examples",
+        headers=_admin_headers(),
+        json=_example_payload("api timeout 문의"),
+    )
+    example_id = create_response.json()["example_id"]
+
+    approve_response = client.patch(
+        f"/admin/v1/services/{service_id}/examples/{example_id}:approve",
+        headers=_admin_headers(),
+    )
+
+    from intent_routing.embedding.provider import get_embedding_provider
+
+    provider = get_embedding_provider()
+    body = approve_response.json()
+    persisted = db_session.get(models.IntentExample, example_id)
+    assert approve_response.status_code == 200
+    assert provider.model_version == "emb-fake-v1"
+    assert provider.dimension == 1024
+    assert "FlagEmbedding" not in sys.modules
+    assert body["approved"] is True
+    assert body["embedding"] is not None
+    assert len(body["embedding"]) == 1024
+    assert persisted is not None
+    assert persisted.embedding is not None
+    assert len(persisted.embedding) == 1024
+    audit_log = db_session.scalar(
+        select(models.AuditLog).where(
+            models.AuditLog.event_type == "example.approved",
+            models.AuditLog.target_id == example_id,
+        )
+    )
+    assert audit_log is not None
+    assert audit_log.after_state is not None
+    assert audit_log.after_state["embedding"] == {
+        "dimension": 1024,
+        "stored": True,
+    }
+
+
+def test_approve_negative_example_generates_1024_dimension_embedding(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    client = _client(db_session)
+    service_id = f"svc-catalog-{uuid4().hex}"
+    _create_service(client, service_id)
+    intent = _create_intent(client, service_id)
+    negative_payload = _example_payload("비밀번호 재설정")
+    negative_payload["example_type"] = "negative"
+    create_response = client.post(
+        f"/admin/v1/services/{service_id}/intents/{intent['intent_id']}/examples",
+        headers=_admin_headers(),
+        json=negative_payload,
+    )
+    example_id = create_response.json()["example_id"]
+
+    approve_response = client.patch(
+        f"/admin/v1/services/{service_id}/examples/{example_id}:approve",
+        headers=_admin_headers(),
+    )
+
+    body = approve_response.json()
+    persisted = db_session.get(models.IntentExample, example_id)
+    assert approve_response.status_code == 200
+    assert body["example_type"] == "negative"
+    assert body["approved"] is True
+    assert body["embedding"] is not None
+    assert len(body["embedding"]) == 1024
+    assert persisted is not None
+    assert persisted.embedding is not None
+    assert len(persisted.embedding) == 1024
+
+
+def test_exact_search_returns_top_examples_ordered_by_cosine_similarity(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    client = _client(db_session)
+    service_id = f"svc-catalog-{uuid4().hex}"
+    _create_service(client, service_id)
+    api_intent = _create_intent(client, service_id)
+    password_intent = _create_intent(
+        client,
+        service_id,
+        route_key="it.password_reset.manual_lookup",
+    )
+    examples: list[str] = []
+    for intent, text in (
+        (api_intent, "api timeout 문의"),
+        (password_intent, "비밀번호 재설정"),
+        (api_intent, "오늘 날씨 어때"),
+    ):
+        create_response = client.post(
+            f"/admin/v1/services/{service_id}/intents/{intent['intent_id']}/examples",
+            headers=_admin_headers(),
+            json=_example_payload(text),
+        )
+        example_id = create_response.json()["example_id"]
+        examples.append(example_id)
+        approve_response = client.patch(
+            f"/admin/v1/services/{service_id}/examples/{example_id}:approve",
+            headers=_admin_headers(),
+        )
+        assert approve_response.status_code == 200
+    unapproved_response = client.post(
+        f"/admin/v1/services/{service_id}/intents/{api_intent['intent_id']}/examples",
+        headers=_admin_headers(),
+        json=_example_payload("api timeout 문의"),
+    )
+    assert unapproved_response.status_code == 201
+
+    from intent_routing.embedding.provider import get_embedding_provider
+
+    provider = get_embedding_provider()
+    query_embedding = provider.embed_texts(
+        ["API Timeout이 발생해요"],
+        max_tokens=256,
+    )[0]
+    results = IntentRoutingRepository(db_session).search_approved_examples_by_embedding(
+        service_id,
+        query_embedding,
+        limit=3,
+    )
+
+    assert [str(result.example_id) for result in results] == examples
+    assert [result.intent_id for result in results] == [
+        api_intent["intent_id"],
+        password_intent["intent_id"],
+        api_intent["intent_id"],
+    ]
+    assert results[0].similarity > results[1].similarity > results[2].similarity
+
+
+def test_exact_search_rejects_invalid_query_inputs(db_session: Session) -> None:
+    repository = IntentRoutingRepository(db_session)
+
+    with pytest.raises(ValueError, match="1024"):
+        repository.search_approved_examples_by_embedding(
+            "svc-catalog",
+            [1.0, 0.0],
+            limit=1,
+        )
+    with pytest.raises(ValueError, match="limit"):
+        repository.search_approved_examples_by_embedding(
+            "svc-catalog",
+            [0.0] * 1024,
+            limit=0,
+        )
+
+
+def test_approve_example_embeds_masked_text_by_default_without_decrypting_raw(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_texts: list[str] = []
+
+    class CapturingProvider:
+        model_version = "emb-test-capture"
+        dimension = 1024
+
+        def embed_texts(self, texts: list[str], *, max_tokens: int) -> list[list[float]]:
+            del max_tokens
+            captured_texts.extend(texts)
+            return [[1.0] + [0.0] * 1023 for _ in texts]
+
+    def fail_decrypt(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("default masked embedding must not decrypt raw text")
+
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.delenv("EMBED_EXAMPLES_FROM", raising=False)
+    monkeypatch.setattr(
+        "intent_routing.api.admin.get_embedding_provider",
+        lambda: CapturingProvider(),
+    )
+    monkeypatch.setattr(EnvelopeEncryptor, "decrypt_text", fail_decrypt)
+    client = _client(db_session)
+    service_id = f"svc-catalog-{uuid4().hex}"
+    _create_service(client, service_id)
+    intent = _create_intent(client, service_id)
+    raw_text = "전화 010-1234-5678 확인"
+    create_response = client.post(
+        f"/admin/v1/services/{service_id}/intents/{intent['intent_id']}/examples",
+        headers=_admin_headers(),
+        json=_example_payload(raw_text),
+    )
+    example_id = create_response.json()["example_id"]
+
+    approve_response = client.patch(
+        f"/admin/v1/services/{service_id}/examples/{example_id}:approve",
+        headers=_admin_headers(),
+    )
+
+    assert approve_response.status_code == 200
+    assert captured_texts == ["전화 010-****-5678 확인"]
+
+
+def test_approve_example_embeds_raw_text_only_when_explicitly_configured(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_texts: list[str] = []
+
+    class CapturingProvider:
+        model_version = "emb-test-capture"
+        dimension = 1024
+
+        def embed_texts(self, texts: list[str], *, max_tokens: int) -> list[list[float]]:
+            del max_tokens
+            captured_texts.extend(texts)
+            return [[1.0] + [0.0] * 1023 for _ in texts]
+
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBED_EXAMPLES_FROM", "raw")
+    monkeypatch.setattr(
+        "intent_routing.api.admin.get_embedding_provider",
+        lambda: CapturingProvider(),
+    )
+    client = _client(db_session)
+    service_id = f"svc-catalog-{uuid4().hex}"
+    _create_service(client, service_id)
+    intent = _create_intent(client, service_id)
+    raw_text = "전화 010-1234-5678 확인"
+    create_response = client.post(
+        f"/admin/v1/services/{service_id}/intents/{intent['intent_id']}/examples",
+        headers=_admin_headers(),
+        json=_example_payload(raw_text),
+    )
+    example_id = create_response.json()["example_id"]
+
+    approve_response = client.patch(
+        f"/admin/v1/services/{service_id}/examples/{example_id}:approve",
+        headers=_admin_headers(),
+    )
+
+    assert approve_response.status_code == 200
+    assert captured_texts == [raw_text]
+
+
+def test_approve_example_returns_sanitized_error_when_provider_fails(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingProvider:
+        model_version = "emb-test-failing"
+        dimension = 1024
+
+        def embed_texts(self, texts: list[str], *, max_tokens: int) -> list[list[float]]:
+            del texts, max_tokens
+            raise RuntimeError("model exploded at /secret/model/path")
+
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setattr(
+        "intent_routing.api.admin.get_embedding_provider",
+        lambda: FailingProvider(),
+    )
+    client = _client(db_session, raise_server_exceptions=False)
+    service_id = f"svc-catalog-{uuid4().hex}"
+    _create_service(client, service_id)
+    intent = _create_intent(client, service_id)
+    raw_text = "전화 010-1234-5678 확인"
+    create_response = client.post(
+        f"/admin/v1/services/{service_id}/intents/{intent['intent_id']}/examples",
+        headers=_admin_headers(),
+        json=_example_payload(raw_text),
+    )
+    example_id = create_response.json()["example_id"]
+
+    approve_response = client.patch(
+        f"/admin/v1/services/{service_id}/examples/{example_id}:approve",
+        headers=_admin_headers(),
+    )
+
+    body = approve_response.json()
+    assert approve_response.status_code == 500
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "INTERNAL_ERROR"
+    assert body["error"]["message"] == "Embedding generation failed."
+    assert raw_text not in approve_response.text
+    assert "/secret/model/path" not in approve_response.text
 
 
 def test_only_matching_service_developer_can_modify_service_catalog(

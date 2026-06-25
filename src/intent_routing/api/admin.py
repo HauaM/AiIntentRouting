@@ -22,6 +22,7 @@ from intent_routing.domain.enums import (
     ThresholdPreset,
 )
 from intent_routing.domain.schemas import ErrorEnvelope, ErrorInfo, validate_route_key
+from intent_routing.embedding.provider import get_embedding_provider
 from intent_routing.security.admin_auth import (
     AdminContext,
     raise_admin_forbidden,
@@ -32,7 +33,7 @@ from intent_routing.security.api_keys import (
     generate_api_key_secret,
     hash_secret,
 )
-from intent_routing.security.encryption import EnvelopeEncryptor
+from intent_routing.security.encryption import EncryptedText, EnvelopeEncryptor
 from intent_routing.security.pii import mask_pii
 
 router = APIRouter(prefix="/admin/v1", tags=["admin"])
@@ -359,6 +360,28 @@ def _raw_text_encryptor() -> EnvelopeEncryptor:
         ) from exc
 
 
+def _encrypted_raw_text(example: IntentExample) -> EncryptedText:
+    return EncryptedText(
+        ciphertext=example.text_raw_ciphertext,
+        encrypted_dek=example.text_raw_encrypted_dek,
+        key_id=example.text_raw_key_id,
+        iv=example.text_raw_iv,
+        auth_tag=example.text_raw_auth_tag,
+        algorithm=example.text_raw_algorithm,
+        encrypted_dek_iv=example.text_raw_encrypted_dek_iv,
+        encrypted_dek_auth_tag=example.text_raw_encrypted_dek_auth_tag,
+    )
+
+
+def _example_text_for_embedding(example: IntentExample) -> str:
+    embed_from = environ.get("EMBED_EXAMPLES_FROM", "masked").strip().lower()
+    if embed_from == "masked":
+        return example.text_masked
+    if embed_from == "raw":
+        return _raw_text_encryptor().decrypt_text(_encrypted_raw_text(example))
+    raise ValueError("EMBED_EXAMPLES_FROM must be one of: masked, raw.")
+
+
 def _ensure_service_exists(
     repository: IntentRoutingRepository,
     service_id: str,
@@ -368,7 +391,13 @@ def _ensure_service_exists(
 
 
 def _example_after_state(example: IntentExample) -> dict[str, object]:
-    return _example_response(example).model_dump(mode="json", exclude_none=True)
+    state = _example_response(example).model_dump(mode="json", exclude_none=True)
+    if example.embedding is not None:
+        state["embedding"] = {
+            "dimension": len(example.embedding),
+            "stored": True,
+        }
+    return state
 
 
 @router.post(
@@ -677,6 +706,47 @@ def approve_example(
     example = repository.get_example(service_id, example_id)
     if example is None:
         _raise_not_found("Example does not exist.")
-    example = repository.approve_example(example)
+    service = repository.get_service(service_id)
+    if service is None:
+        _raise_not_found("Service does not exist.")
+    before_state = _example_after_state(example)
+    try:
+        provider = get_embedding_provider()
+        embedding_text = _example_text_for_embedding(example)
+        embeddings = provider.embed_texts(
+            [embedding_text],
+            max_tokens=service.max_input_tokens,
+        )
+        if len(embeddings) != 1:
+            raise ValueError("embedding provider returned the wrong result count")
+        embedding = embeddings[0]
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorEnvelope(
+                trace_id=_trace_id(),
+                error=ErrorInfo(
+                    code=ErrorCode.INTERNAL_ERROR,
+                    message="Embedding generation failed.",
+                    retryable=False,
+                ),
+            ).model_dump(mode="json", exclude_none=True),
+        ) from exc
+    if len(embedding) != 1024:
+        _raise_internal_error("Embedding generation failed.")
+    example = repository.approve_example(example, embedding=embedding)
+    repository.insert_audit_log(
+        event_type="example.approved",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="intent_example",
+        target_id=str(example.example_id),
+        view_reason=None,
+        source_ip=None,
+        before_state=before_state,
+        after_state=_example_after_state(example),
+        created_at=datetime.now(UTC),
+    )
     session.commit()
     return _example_response(example)
