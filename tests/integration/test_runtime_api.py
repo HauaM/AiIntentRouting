@@ -53,33 +53,6 @@ def test_openapi_documents_validation_errors_as_error_envelope() -> None:
     assert "ValidationError" not in schema["components"]["schemas"]
 
 
-def test_openapi_intent_patch_request_does_not_document_explicit_nulls() -> None:
-    schema = create_app().openapi()
-    patch_schema = schema["components"]["schemas"]["IntentPatchRequest"]
-
-    for field_name in (
-        "domain",
-        "display_name",
-        "description",
-        "route_key",
-        "status",
-        "include_keywords",
-        "exclude_keywords",
-    ):
-        field_schema = patch_schema["properties"][field_name]
-        assert not _contains_null_schema(field_schema), field_name
-
-
-def _contains_null_schema(schema: object) -> bool:
-    if isinstance(schema, dict):
-        if schema.get("type") == "null":
-            return True
-        return any(_contains_null_schema(value) for value in schema.values())
-    if isinstance(schema, list):
-        return any(_contains_null_schema(item) for item in schema)
-    return False
-
-
 def _record_for(
     secret: str,
     *,
@@ -491,6 +464,7 @@ def test_intent_route_confident_query_returns_intent_release_and_runtime_log(
     assert persisted.intent_catalog_version == "cat-it-helpdesk-20260625-001"
     assert persisted.model_version == "emb-fake-v1"
     assert persisted.vector_index_version == "vec-it-helpdesk-20260625-001"
+    assert getattr(persisted, "test_run_id", None) == "tr-it-helpdesk-20260625-001"
     assert persisted.decision == "confident"
     assert persisted.intent_id == "intent-api-timeout"
     assert persisted.route_key == "it.helpdesk.api_timeout"
@@ -498,6 +472,14 @@ def test_intent_route_confident_query_returns_intent_release_and_runtime_log(
     assert persisted.query_masked == "api timeout gateway incident latency"
     assert persisted.query_raw_ciphertext is not None
     assert persisted.query_raw_encrypted_dek is not None
+    decision_state = getattr(persisted, "decision_state", None)
+    assert isinstance(decision_state, dict)
+    assert decision_state["decision_reason"] == "threshold_met"
+    assert decision_state["selected_intent_id"] == "intent-api-timeout"
+    assert decision_state["ranking"][0]["intent_id"] == "intent-api-timeout"
+    assert decision_state["ranking"][0]["score_breakdown"]["positive_max"] >= 0.99
+    assert decision_state["ranking"][0]["score_breakdown"]["include_keyword_match_count"] >= 4
+    assert "query_embedding" not in decision_state
     assert persisted.latency_ms >= 0
 
 

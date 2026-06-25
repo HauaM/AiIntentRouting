@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from typing import Any
 
 from intent_routing.domain.enums import Decision, ThresholdPreset
 from intent_routing.domain.schemas import (
@@ -43,6 +44,32 @@ class CandidateScore:
     domain: str
     route_key: str
     confidence: float
+    positive_score: float = 0.0
+    negative_score: float = 0.0
+    include_keyword_match_count: int = 0
+    exclude_keyword_match_count: int = 0
+    keyword_boost: float = 0.0
+    keyword_penalty: float = 0.0
+    negative_penalty: float = 0.0
+
+    def decision_state(self, rank: int) -> dict[str, object]:
+        return {
+            "rank": rank,
+            "intent_id": self.intent_id,
+            "display_name": self.display_name,
+            "domain": self.domain,
+            "route_key": self.route_key,
+            "confidence": self.confidence,
+            "score_breakdown": {
+                "positive_max": self.positive_score,
+                "negative_max": self.negative_score,
+                "include_keyword_match_count": self.include_keyword_match_count,
+                "exclude_keyword_match_count": self.exclude_keyword_match_count,
+                "keyword_boost": self.keyword_boost,
+                "keyword_penalty": self.keyword_penalty,
+                "negative_penalty": self.negative_penalty,
+            },
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +84,7 @@ class RoutingDecisionResult:
     clarify_question: str | None = None
     clarify: ClarifyPayload | None = None
     risk: RiskPayload | None = None
+    decision_state: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +161,10 @@ class DecisionComposer:
     ) -> RoutingDecisionResult:
         ranked = sorted(candidates, key=lambda candidate: candidate.confidence, reverse=True)
         if not ranked:
-            return self._fallback()
+            return self._fallback(
+                ranked=[],
+                reason="no_candidates",
+            )
 
         top_candidate = ranked[0]
         margin = (
@@ -142,7 +173,12 @@ class DecisionComposer:
             else top_candidate.confidence - ranked[1].confidence
         )
         if top_candidate.confidence < self.threshold_config.fallback_score:
-            return self._fallback(top_candidate=top_candidate, margin=margin)
+            return self._fallback(
+                top_candidate=top_candidate,
+                margin=margin,
+                ranked=ranked,
+                reason="below_fallback_floor",
+            )
 
         if not self._is_authorized(
             top_candidate,
@@ -159,13 +195,25 @@ class DecisionComposer:
                     retryable=False,
                     recommended_action="deny_route",
                 ),
+                decision_state=self._decision_state(
+                    ranked=ranked,
+                    top_candidate=top_candidate,
+                    margin=margin,
+                    reason="outside_scope",
+                ),
             )
 
         if (
             top_candidate.confidence >= self.threshold_config.resolved_threshold
             and margin >= self.threshold_config.clarify_margin
         ):
-            return self._decision(Decision.confident, top_candidate, margin)
+            return self._decision(
+                Decision.confident,
+                top_candidate,
+                margin,
+                ranked=ranked,
+                reason="threshold_met",
+            )
 
         viable_candidates = [
             candidate
@@ -178,6 +226,7 @@ class DecisionComposer:
                 top_candidate=top_candidate,
                 margin=margin,
                 candidates=viable_candidates,
+                ranked=ranked,
             )
 
         if (
@@ -189,15 +238,24 @@ class DecisionComposer:
                 top_candidate=top_candidate,
                 margin=margin,
                 candidates=viable_candidates or [top_candidate],
+                ranked=ranked,
             )
 
-        return self._fallback(top_candidate=top_candidate, margin=margin)
+        return self._fallback(
+            top_candidate=top_candidate,
+            margin=margin,
+            ranked=ranked,
+            reason="no_viable_candidates",
+        )
 
     def _decision(
         self,
         decision: Decision,
         top_candidate: CandidateScore,
         margin: float,
+        *,
+        ranked: list[CandidateScore],
+        reason: str,
     ) -> RoutingDecisionResult:
         return RoutingDecisionResult(
             decision=decision,
@@ -206,6 +264,12 @@ class DecisionComposer:
             confidence=top_candidate.confidence,
             margin=margin,
             route_key=top_candidate.route_key,
+            decision_state=self._decision_state(
+                ranked=ranked,
+                top_candidate=top_candidate,
+                margin=margin,
+                reason=reason,
+            ),
         )
 
     def _clarify(
@@ -215,6 +279,7 @@ class DecisionComposer:
         top_candidate: CandidateScore,
         margin: float,
         candidates: list[CandidateScore],
+        ranked: list[CandidateScore],
     ) -> RoutingDecisionResult:
         clarify_candidates = [
             ClarifyCandidate(
@@ -241,6 +306,12 @@ class DecisionComposer:
                 retryable=True,
                 recommended_action="ask_clarifying_question",
             ),
+            decision_state=self._decision_state(
+                ranked=ranked,
+                top_candidate=top_candidate,
+                margin=margin,
+                reason=reason,
+            ),
         )
 
     def _fallback(
@@ -248,6 +319,8 @@ class DecisionComposer:
         *,
         top_candidate: CandidateScore | None = None,
         margin: float | None = None,
+        ranked: list[CandidateScore],
+        reason: str,
     ) -> RoutingDecisionResult:
         return RoutingDecisionResult(
             decision=Decision.fallback,
@@ -260,7 +333,40 @@ class DecisionComposer:
                 recommended_action="ask_for_rephrase",
                 message="No confident intent match found.",
             ),
+            decision_state=self._decision_state(
+                ranked=ranked,
+                top_candidate=top_candidate,
+                margin=margin,
+                reason=reason,
+            ),
         )
+
+    def _decision_state(
+        self,
+        *,
+        ranked: list[CandidateScore],
+        top_candidate: CandidateScore | None,
+        margin: float | None,
+        reason: str,
+    ) -> dict[str, object]:
+        preset = self.threshold_config.preset
+        return {
+            "decision_reason": reason,
+            "selected_intent_id": top_candidate.intent_id if top_candidate is not None else None,
+            "selected_route_key": top_candidate.route_key if top_candidate is not None else None,
+            "margin": margin,
+            "thresholds": {
+                "preset": preset.value if isinstance(preset, ThresholdPreset) else preset,
+                "threshold": self.threshold_config.resolved_threshold,
+                "clarify_margin": self.threshold_config.clarify_margin,
+                "min_candidate_score": self.threshold_config.min_candidate_score,
+                "fallback_score": self.threshold_config.fallback_score,
+            },
+            "ranking": [
+                candidate.decision_state(rank=index + 1)
+                for index, candidate in enumerate(ranked)
+            ],
+        }
 
     def _is_authorized(
         self,

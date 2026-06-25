@@ -119,7 +119,6 @@ def create_app() -> FastAPI:
             routes=app.routes,
         )
         _document_validation_errors_as_error_envelope(openapi_schema)
-        _document_intent_patch_request_without_explicit_nulls(openapi_schema)
         app.openapi_schema = openapi_schema
         return app.openapi_schema
 
@@ -158,45 +157,6 @@ def _document_validation_errors_as_error_envelope(
                     }
                 },
             }
-
-
-def _document_intent_patch_request_without_explicit_nulls(
-    openapi_schema: dict[str, Any],
-) -> None:
-    schemas = openapi_schema.get("components", {}).get("schemas", {})
-    intent_patch_schema = schemas.get("IntentPatchRequest")
-    if not isinstance(intent_patch_schema, dict):
-        return
-    properties = intent_patch_schema.get("properties", {})
-    if not isinstance(properties, dict):
-        return
-
-    for field_schema in properties.values():
-        if isinstance(field_schema, dict):
-            _remove_null_schema(field_schema)
-
-
-def _remove_null_schema(schema: dict[str, Any]) -> None:
-    any_of = schema.get("anyOf")
-    if isinstance(any_of, list):
-        non_null_options = [
-            option
-            for option in any_of
-            if not (isinstance(option, dict) and option.get("type") == "null")
-        ]
-        if len(non_null_options) == 1 and isinstance(non_null_options[0], dict):
-            schema.pop("anyOf")
-            schema.update(non_null_options[0])
-        else:
-            schema["anyOf"] = non_null_options
-
-    for value in schema.values():
-        if isinstance(value, dict):
-            _remove_null_schema(value)
-        elif isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict):
-                    _remove_null_schema(item)
 
 
 def _error_code_from_payload(payload: object) -> ErrorCode | None:

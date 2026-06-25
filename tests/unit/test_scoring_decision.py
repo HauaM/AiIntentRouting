@@ -237,6 +237,37 @@ def test_compose_sorts_unsorted_candidates_by_confidence() -> None:
     assert result.margin == pytest.approx(0.13)
 
 
+def test_confident_decision_exposes_compact_decision_state() -> None:
+    result = DecisionComposer(
+        ThresholdConfig(preset="balanced", threshold=0.8, clarify_margin=0.08)
+    ).compose(
+        [
+            CandidateScore(
+                "intent-top",
+                "Top",
+                "IT",
+                "it.intent_top.lookup",
+                0.86,
+            ),
+            CandidateScore(
+                "intent-mid",
+                "Mid",
+                "IT",
+                "it.intent_mid.lookup",
+                0.73,
+            ),
+        ]
+    )
+
+    decision_state = getattr(result, "decision_state", None)
+
+    assert isinstance(decision_state, dict)
+    assert decision_state["decision_reason"] == "threshold_met"
+    assert decision_state["selected_intent_id"] == "intent-top"
+    assert decision_state["ranking"][0]["intent_id"] == "intent-top"
+    assert decision_state["thresholds"]["threshold"] == pytest.approx(0.8)
+
+
 def test_routing_engine_short_circuits_risk() -> None:
     candidate_loader_called = False
 

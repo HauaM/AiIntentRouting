@@ -271,6 +271,7 @@ def _load_active_release(
         intent_catalog_version=catalog_version.intent_catalog_version,
         model_version=release.model_version,
         vector_index_version=release.vector_index_version,
+        test_run_id=release.test_run_id,
         threshold_preset=policy_version.threshold_preset,
         threshold=float(policy_version.threshold_value),
         threshold_value=float(policy_version.threshold_value),

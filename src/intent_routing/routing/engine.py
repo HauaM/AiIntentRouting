@@ -25,6 +25,7 @@ class ActiveReleaseContext:
     intent_catalog_version: str | None = None
     model_version: str | None = None
     vector_index_version: str | None = None
+    test_run_id: str | None = None
     threshold_preset: str = "balanced"
     threshold: float | None = None
     threshold_value: float | None = None
@@ -107,6 +108,11 @@ class RoutingEngine:
                     action=risk_evaluation.action or "block",
                     message=risk_evaluation.message or "Blocked by risk policy.",
                 ),
+                decision_state={
+                    "decision_reason": "risk_policy_match",
+                    "risk_type": risk_type.value,
+                    "action": risk_evaluation.action or "block",
+                },
             )
 
         off_topic_policy = route_input.release.off_topic_policy
@@ -122,6 +128,14 @@ class RoutingEngine:
                 return RoutingDecisionResult(
                     decision=Decision.off_topic,
                     fallback_policy=fallback_policy,
+                    decision_state={
+                        "decision_reason": "off_topic_policy_match",
+                        "matched_keywords": [
+                            keyword
+                            for keyword in off_topic_policy.keywords
+                            if keyword.casefold() in route_input.query.casefold()
+                        ],
+                    },
                 )
 
         candidates = list(self.candidate_loader(route_input.service_id, route_input.release))
@@ -174,6 +188,13 @@ class RoutingEngine:
             domain=candidate.domain,
             route_key=candidate.route_key,
             confidence=breakdown.confidence,
+            positive_score=breakdown.positive_score,
+            negative_score=breakdown.negative_score,
+            include_keyword_match_count=include_count,
+            exclude_keyword_match_count=exclude_count,
+            keyword_boost=breakdown.keyword_boost,
+            keyword_penalty=breakdown.keyword_penalty,
+            negative_penalty=breakdown.negative_penalty,
         )
 
     def _keyword_match_count(self, normalized_query: str, keywords: tuple[str, ...]) -> int:
