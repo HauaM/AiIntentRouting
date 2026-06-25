@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from datetime import datetime
 from typing import Any, TypeVar
 
 from sqlalchemy import select, update
@@ -29,6 +30,17 @@ class IntentRoutingRepository:
 
     def get_api_key_by_id(self, key_id: str) -> models.ApiKey | None:
         return self.session.get(models.ApiKey, key_id)
+
+    def revoke_api_key(
+        self,
+        api_key: models.ApiKey,
+        *,
+        revoked_at: datetime,
+    ) -> models.ApiKey:
+        api_key.status = "revoked"
+        api_key.revoked_at = revoked_at
+        self.session.flush()
+        return api_key
 
     def create_intent(self, **values: Any) -> models.Intent:
         return self._add_and_flush(models.Intent(**values))

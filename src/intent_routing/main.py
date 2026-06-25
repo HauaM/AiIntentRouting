@@ -5,6 +5,7 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from intent_routing.api.admin import router as admin_router
 from intent_routing.api.dependencies import AuthContext, require_api_key
 from intent_routing.domain.enums import Decision
 from intent_routing.domain.schemas import FallbackPolicy, RuntimeRequest, RuntimeResponse
@@ -13,6 +14,7 @@ from intent_routing.security.api_keys import ApiKeyRecord, check_scope
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Intent Routing Service")
+    app.include_router(admin_router)
 
     @app.exception_handler(HTTPException)
     def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
