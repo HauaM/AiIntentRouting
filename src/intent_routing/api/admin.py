@@ -7,10 +7,11 @@ from os import environ
 from typing import Annotated, Any, NoReturn
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.datastructures import UploadFile
 
 from intent_routing.db.models import (
     ApiKey,
@@ -358,6 +359,20 @@ def _raise_bad_request(message: str) -> NoReturn:
     )
 
 
+def _raise_validation_failed() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=ErrorEnvelope(
+            trace_id=_trace_id(),
+            error=ErrorInfo(
+                code=ErrorCode.INVALID_REQUEST,
+                message="Request validation failed.",
+                retryable=False,
+            ),
+        ).model_dump(mode="json", exclude_none=True),
+    )
+
+
 def _raise_internal_error(message: str) -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -557,6 +572,65 @@ def _ensure_service_exists(
 ) -> None:
     if repository.get_service(service_id) is None:
         _raise_not_found("Service does not exist.")
+
+
+async def _test_run_create_request_from_http(
+    http_request: Request,
+) -> TestRunCreateRequest:
+    content_type = http_request.headers.get("content-type", "").split(";")[0].lower()
+    if content_type == "multipart/form-data":
+        return await _test_run_create_request_from_multipart(http_request)
+    if content_type in {"", "application/json"} or content_type.endswith("+json"):
+        try:
+            payload = await http_request.json()
+            return TestRunCreateRequest.model_validate(payload)
+        except ValidationError:
+            _raise_validation_failed()
+        except Exception:
+            _raise_bad_request("Request body must be valid JSON.")
+    _raise_bad_request("Unsupported content type.")
+
+
+async def _test_run_create_request_from_multipart(
+    http_request: Request,
+) -> TestRunCreateRequest:
+    try:
+        form = await http_request.form()
+    except Exception:
+        _raise_bad_request("Multipart form data is invalid.")
+
+    upload = form.get("file")
+    if not isinstance(upload, UploadFile):
+        _raise_validation_failed()
+
+    try:
+        csv_text = (await upload.read()).decode("utf-8")
+    except UnicodeDecodeError:
+        _raise_bad_request("Uploaded CSV must be UTF-8 text.")
+
+    source_filename = _form_string(form.get("source_filename"))
+    if source_filename is None:
+        source_filename = upload.filename or "uploaded.csv"
+
+    try:
+        return TestRunCreateRequest.model_validate(
+            {
+                "policy_version": form.get("policy_version"),
+                "intent_catalog_version": form.get("intent_catalog_version"),
+                "threshold_preset": form.get("threshold_preset"),
+                "source_filename": source_filename,
+                "csv_text": csv_text,
+            }
+        )
+    except ValidationError:
+        _raise_validation_failed()
+
+
+def _form_string(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 def _example_after_state(example: IntentExample) -> dict[str, object]:
@@ -1004,13 +1078,14 @@ def approve_example(
     response_model=TestRunSummaryResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_test_run(
+async def create_test_run(
     service_id: str,
-    request: TestRunCreateRequest,
+    http_request: Request,
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> TestRunSummaryResponse:
     _require_service_catalog_access(context, service_id)
+    request = await _test_run_create_request_from_http(http_request)
     repository = IntentRoutingRepository(session)
     service = repository.get_service(service_id)
     if service is None:

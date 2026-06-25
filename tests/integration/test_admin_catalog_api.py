@@ -1341,6 +1341,56 @@ def test_post_test_run_persists_dataset_run_and_results(
     assert {result.result for result in persisted_results} == {"PASS"}
 
 
+def test_post_test_run_accepts_multipart_csv_upload(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    client = _client(db_session)
+    service_id = f"svc-test-run-{uuid4().hex}"
+    policy_version, catalog_version = _seed_csv_runner_state(
+        db_session,
+        client,
+        service_id,
+    )
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/test-runs",
+        headers=_admin_headers(),
+        data={
+            "policy_version": policy_version,
+            "intent_catalog_version": catalog_version,
+            "threshold_preset": "balanced",
+        },
+        files={
+            "file": (
+                "sprint0_cases.csv",
+                _sprint0_csv_text().encode("utf-8"),
+                "text/csv",
+            )
+        },
+    )
+
+    body = response.json()
+    assert response.status_code == 201
+    assert body["test_run_id"].startswith("tr-")
+    assert body["test_dataset_version"].startswith("tds-")
+    assert body["threshold_preset"] == "balanced"
+    assert body["threshold_value"] == pytest.approx(0.8)
+    assert body["pass_rate"] == pytest.approx(1.0)
+    persisted_dataset = db_session.get(models.TestDataset, body["test_dataset_version"])
+    assert persisted_dataset is not None
+    assert persisted_dataset.source_filename == "sprint0_cases.csv"
+    persisted_results = db_session.scalars(
+        select(models.TestResult).where(
+            models.TestResult.test_run_id == body["test_run_id"]
+        )
+    ).all()
+    assert len(persisted_results) == 5
+
+
 def test_get_test_run_summary_and_results_returns_persisted_rows(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
