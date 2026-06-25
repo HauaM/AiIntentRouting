@@ -40,8 +40,9 @@ def vector_index_version_id(
     intent_catalog_version: str,
     model_version: str,
 ) -> str:
-    prefix = f"vec-{intent_catalog_version}-{_safe_id_part(model_version)}-"
-    return f"{prefix}{_next_sequence(repository.list_vector_index_versions_by_prefix(prefix))}"
+    prefix = f"vec-{intent_catalog_version}-{model_version}-"
+    existing_versions = repository.list_vector_index_versions_by_prefix(prefix)
+    return f"{prefix}{_next_sequence(existing_versions)}"
 
 
 def validate_release_inputs(
@@ -213,10 +214,3 @@ def _next_sequence(existing_versions: list[str]) -> str:
         if separator and suffix.isdecimal():
             max_sequence = max(max_sequence, int(suffix))
     return f"{max_sequence + 1:03d}"
-
-
-def _safe_id_part(value: str) -> str:
-    return "".join(
-        character if character.isalnum() or character in {"-", "_", "."} else "-"
-        for character in value
-    )

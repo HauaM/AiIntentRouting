@@ -405,6 +405,10 @@ def test_release_creation_succeeds_when_gate_and_versions_match(
         db_session,
         monkeypatch,
     )
+    monkeypatch.setattr(
+        "intent_routing.api.admin.get_embedding_provider",
+        lambda: _ReleaseEmbeddingProvider("emb-fake/v1"),
+    )
     test_run_id = _seed_test_run(
         db_session,
         service_id=service_id,
@@ -430,8 +434,8 @@ def test_release_creation_succeeds_when_gate_and_versions_match(
     assert body["environment"] == "prod"
     assert body["policy_version"] == policy_version
     assert body["intent_catalog_version"] == catalog_version
-    assert body["model_version"] == "emb-fake-v1"
-    assert body["vector_index_version"] == f"vec-{catalog_version}-emb-fake-v1-001"
+    assert body["model_version"] == "emb-fake/v1"
+    assert body["vector_index_version"] == f"vec-{catalog_version}-emb-fake/v1-001"
     assert body["test_run_id"] == test_run_id
     assert body["pass_rate"] == pytest.approx(1.0)
     assert body["risk_pass_rate"] == pytest.approx(1.0)
@@ -474,7 +478,7 @@ def test_release_creation_succeeds_when_gate_and_versions_match(
     assert next_body["release_version"] == f"rel-{service_id}-{released_day}-002"
     assert (
         next_body["vector_index_version"]
-        == f"vec-{catalog_version}-emb-fake-v1-002"
+        == f"vec-{catalog_version}-emb-fake/v1-002"
     )
 
 
@@ -1063,3 +1067,14 @@ def _catalog_state(db_session: Session, catalog_version: str) -> dict[str, Any]:
 
 def _date_segment(value: str) -> str:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).strftime("%Y%m%d")
+
+
+class _ReleaseEmbeddingProvider:
+    dimension = 1024
+
+    def __init__(self, model_version: str) -> None:
+        self.model_version = model_version
+
+    def embed_texts(self, texts: list[str], *, max_tokens: int) -> list[list[float]]:
+        del texts, max_tokens
+        return [[1.0] + [0.0] * 1023]
