@@ -26,6 +26,7 @@ from intent_routing.domain.schemas import (
 )
 from intent_routing.embedding.provider import EmbeddingProvider, get_embedding_provider
 from intent_routing.logging.trace import (
+    RUNTIME_ERROR_LOGGED_HEADER,
     RuntimeErrorLog,
     RuntimeTraceConfigurationError,
     RuntimeTraceLogger,
@@ -541,6 +542,7 @@ def _log_and_raise(
     raise HTTPException(
         status_code=http_status,
         detail=envelope.model_dump(mode="json", exclude_none=True),
+        headers={RUNTIME_ERROR_LOGGED_HEADER: "1"},
     )
 
 

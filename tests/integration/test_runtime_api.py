@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from importlib import import_module
@@ -363,6 +364,100 @@ def test_intent_route_revoked_key_returns_authentication_failed() -> None:
     assert response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
 
 
+def test_intent_route_authentication_failure_persists_runtime_log(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch)
+    headers = _runtime_headers("unused-secret", request_id="req-runtime-401-log-1")
+    headers.pop("Authorization")
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=headers,
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+
+    body = response.json()
+    assert response.status_code == 401
+    assert body["error"]["code"] == "AUTHENTICATION_FAILED"
+
+    persisted = _runtime_log(db_session, body["trace_id"])
+    assert persisted is not None
+    assert persisted.request_id == "req-runtime-401-log-1"
+    assert persisted.app_id == APP_ID
+    assert persisted.service_id == SERVICE_ID
+    assert persisted.decision == "error"
+    assert persisted.error_code == "AUTHENTICATION_FAILED"
+    assert persisted.http_status == 401
+    assert persisted.retryable is False
+    assert persisted.query_masked == "api timeout gateway incident latency"
+
+
+def test_intent_route_scope_failure_persists_runtime_log(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch)
+    headers = _runtime_headers(secret, request_id="req-runtime-403-log-1")
+    headers["X-Service-Id"] = "svc-b"
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=headers,
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+
+    body = response.json()
+    assert response.status_code == 403
+    assert body["error"]["code"] == "SERVICE_SCOPE_DENIED"
+
+    persisted = _runtime_log(db_session, body["trace_id"])
+    assert persisted is not None
+    assert persisted.request_id == "req-runtime-403-log-1"
+    assert persisted.app_id == APP_ID
+    assert persisted.service_id == "svc-b"
+    assert persisted.decision == "error"
+    assert persisted.error_code == "SERVICE_SCOPE_DENIED"
+    assert persisted.http_status == 403
+    assert persisted.retryable is False
+    assert persisted.query_masked == "api timeout gateway incident latency"
+
+
+def test_intent_route_validation_failure_persists_runtime_log(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch)
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(secret, request_id="req-runtime-422-log-1"),
+        json={
+            "query": "전화 010-1234-5678 확인",
+            "user_context": "invalid-context",
+        },
+    )
+
+    body = response.json()
+    assert response.status_code == 422
+    assert body["error"]["code"] == "INVALID_REQUEST"
+
+    persisted = _runtime_log(db_session, body["trace_id"])
+    assert persisted is not None
+    assert persisted.request_id == "req-runtime-422-log-1"
+    assert persisted.app_id == APP_ID
+    assert persisted.service_id == SERVICE_ID
+    assert persisted.decision == "error"
+    assert persisted.error_code == "INVALID_REQUEST"
+    assert persisted.http_status == 422
+    assert persisted.retryable is False
+    assert persisted.query_masked == "전화 010-****-5678 확인"
+
+
 def test_intent_route_confident_query_returns_intent_release_and_runtime_log(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -634,9 +729,14 @@ def _runtime_client(
     def override_runtime_session() -> Any:
         yield db_session
 
+    @contextmanager
+    def override_runtime_log_session() -> Any:
+        yield db_session
+
     app.dependency_overrides[get_api_key_lookup] = lambda: runtime_lookup
     app.dependency_overrides[get_runtime_environment] = lambda: "prod"
     app.dependency_overrides[runtime_module.get_runtime_session] = override_runtime_session
+    app.state.runtime_log_session_factory = override_runtime_log_session
     return TestClient(app, raise_server_exceptions=raise_server_exceptions)
 
 

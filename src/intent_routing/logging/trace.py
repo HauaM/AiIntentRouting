@@ -1,17 +1,29 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from os import environ
+from time import perf_counter
+from typing import cast
 from uuid import uuid4
 
+from fastapi import Request
+from sqlalchemy.orm import Session
+
 from intent_routing.db.repositories import IntentRoutingRepository
+from intent_routing.db.session import session_scope
 from intent_routing.domain.enums import ErrorCode
 from intent_routing.routing.engine import ActiveReleaseContext
 from intent_routing.routing.scoring import RoutingDecisionResult
 from intent_routing.security.encryption import EnvelopeEncryptor
 from intent_routing.security.pii import mask_pii
+
+RUNTIME_ERROR_LOGGED_HEADER = "X-Intent-Runtime-Logged"
+RuntimeLogSessionFactory = Callable[[], AbstractContextManager[Session]]
 
 
 class RuntimeTraceConfigurationError(RuntimeError):
@@ -29,6 +41,84 @@ class RuntimeErrorLog:
 
 def build_trace_id() -> str:
     return f"irt-{uuid4().hex}"
+
+
+def configure_runtime_log_session_factory(request: Request) -> RuntimeLogSessionFactory:
+    factory = getattr(request.app.state, "runtime_log_session_factory", None)
+    if callable(factory):
+        return cast("RuntimeLogSessionFactory", factory)
+    return session_scope
+
+
+def begin_request_timer(request: Request) -> None:
+    request.state.runtime_started_at = perf_counter()
+
+
+def runtime_latency_ms(request: Request) -> int:
+    started_at = getattr(request.state, "runtime_started_at", None)
+    if not isinstance(started_at, float):
+        return 0
+    return max(0, int((perf_counter() - started_at) * 1000))
+
+
+def should_log_runtime_error(
+    request: Request,
+    *,
+    already_logged: bool,
+    detail: object,
+) -> bool:
+    if request.url.path != "/v1/intent-route":
+        return False
+    if already_logged:
+        return False
+    return isinstance(detail, dict) and detail.get("status") == "error"
+
+
+async def extract_runtime_query(request: Request) -> str | None:
+    try:
+        body = await request.body()
+    except Exception:
+        return None
+    if not body:
+        return None
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    query = payload.get("query")
+    return query if isinstance(query, str) else None
+
+
+def log_runtime_preflight_error(
+    request: Request,
+    *,
+    trace_id: str,
+    request_id: str | None,
+    error: RuntimeErrorLog,
+    http_status: int,
+    query_raw: str | None,
+) -> None:
+    session_factory = configure_runtime_log_session_factory(request)
+    try:
+        with session_factory() as session:
+            repository = IntentRoutingRepository(session)
+            RuntimeTraceLogger(repository).log_error(
+                trace_id=trace_id,
+                request_id=request_id,
+                app_id=request.headers.get("X-App-Id"),
+                service_id=request.headers.get("X-Service-Id"),
+                release=None,
+                error=error,
+                http_status=http_status,
+                latency_ms=runtime_latency_ms(request),
+                query_raw=query_raw,
+                decision="error",
+            )
+            session.commit()
+    except Exception:
+        return
 
 
 class RuntimeTraceLogger:
@@ -95,6 +185,7 @@ class RuntimeTraceLogger:
         http_status: int,
         latency_ms: int,
         query_raw: str | None,
+        decision: str | None = None,
     ) -> None:
         self._repository.insert_runtime_log(
             trace_id=trace_id,
@@ -108,7 +199,7 @@ class RuntimeTraceLogger:
             ),
             model_version=release.model_version if release is not None else None,
             vector_index_version=release.vector_index_version if release is not None else None,
-            decision=None,
+            decision=decision,
             intent_id=None,
             confidence=None,
             margin=None,
