@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Annotated, Any, NoReturn, Protocol, cast
+from typing import Annotated, Any, NoReturn, Protocol
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -20,7 +20,6 @@ from intent_routing.domain.enums import Decision, ErrorCode
 from intent_routing.domain.schemas import (
     ErrorEnvelope,
     ErrorInfo,
-    FallbackPolicy,
     RuntimeRequest,
     RuntimeResponse,
 )
@@ -33,7 +32,6 @@ from intent_routing.logging.trace import (
     build_trace_id,
 )
 from intent_routing.policy.risk import RiskPolicy
-from intent_routing.policy.service_policy import ServiceOffTopicPolicy
 from intent_routing.routing.engine import (
     ActiveReleaseContext,
     IntentCandidate,
@@ -41,6 +39,10 @@ from intent_routing.routing.engine import (
     RouteScope,
     RoutingEngine,
     SemanticMatch,
+)
+from intent_routing.routing.release_context import (
+    candidates_from_snapshot,
+    off_topic_policy_from_config,
 )
 from intent_routing.routing.scoring import RoutingDecisionResult
 
@@ -274,7 +276,7 @@ def _load_active_release(
             release=partial_release,
         )
 
-    off_topic_policy = _off_topic_policy(policy_version.off_topic_policy)
+    off_topic_policy = off_topic_policy_from_config(policy_version.off_topic_policy)
     return ActiveReleaseContext(
         release_version=release.release_version,
         service_id=service_id,
@@ -299,25 +301,6 @@ def _load_active_release(
     )
 
 
-def _off_topic_policy(config: Mapping[str, Any]) -> ServiceOffTopicPolicy | None:
-    enabled = bool(config.get("enabled"))
-    keywords = [
-        value
-        for value in config.get("keywords", [])
-        if isinstance(value, str)
-    ]
-    fallback_payload = config.get("fallback_policy")
-    fallback_policy = None
-    if isinstance(fallback_payload, Mapping):
-        fallback_policy = FallbackPolicy.model_validate(dict(fallback_payload))
-    return ServiceOffTopicPolicy(
-        enabled=enabled,
-        keywords=keywords,
-        message=str(config.get("message", "Request is outside the service policy.")),
-        fallback_policy=fallback_policy,
-    )
-
-
 def _load_candidates(
     repository: IntentRoutingRepository,
     *,
@@ -328,46 +311,7 @@ def _load_candidates(
     if not isinstance(release.catalog_snapshot, Mapping):
         return []
     snapshot = release.catalog_snapshot.get("intents")
-    return _candidates_from_snapshot(snapshot)
-
-
-def _candidates_from_snapshot(snapshot: object) -> list[IntentCandidate]:
-    if not isinstance(snapshot, Iterable) or isinstance(snapshot, (str, bytes, bytearray)):
-        return []
-    candidates: list[IntentCandidate] = []
-    for item in snapshot:
-        if not isinstance(item, Mapping):
-            continue
-        intent_id = item.get("intent_id")
-        display_name = item.get("display_name")
-        domain = item.get("domain")
-        route_key = item.get("route_key")
-        if not all(
-            isinstance(value, str)
-            for value in (intent_id, display_name, domain, route_key)
-        ):
-            continue
-        resolved_intent_id = cast("str", intent_id)
-        resolved_display_name = cast("str", display_name)
-        resolved_domain = cast("str", domain)
-        resolved_route_key = cast("str", route_key)
-        candidates.append(
-            IntentCandidate(
-                intent_id=resolved_intent_id,
-                display_name=resolved_display_name,
-                domain=resolved_domain,
-                route_key=resolved_route_key,
-                include_keywords=tuple(_string_list(item.get("include_keywords"))),
-                exclude_keywords=tuple(_string_list(item.get("exclude_keywords"))),
-            )
-        )
-    return candidates
-
-
-def _string_list(raw_values: object) -> list[str]:
-    if not isinstance(raw_values, Iterable) or isinstance(raw_values, (str, bytes, bytearray)):
-        return []
-    return [value for value in raw_values if isinstance(value, str)]
+    return candidates_from_snapshot(snapshot)
 
 
 def _semantic_matches(

@@ -23,6 +23,7 @@ def _normalized_vector(text: str) -> list[float]:
         "timeout" in lower_text
         or "타임아웃" in lower_text
         or "500" in lower_text
+        # Test-only Korean server-error bucket for Sprint 0 confusing cases.
         or "에러" in lower_text
     ):
         vector[0] = 1.0

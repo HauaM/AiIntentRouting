@@ -1367,6 +1367,15 @@ def test_get_test_run_summary_and_results_returns_persisted_rows(
         },
     )
     created = create_response.json()
+    result_to_mutate = db_session.scalar(
+        select(models.TestResult)
+        .where(models.TestResult.test_run_id == created["test_run_id"])
+        .where(models.TestResult.case_id == "C001")
+    )
+    assert result_to_mutate is not None
+    result_to_mutate.result = "FAIL"
+    result_to_mutate.reason = "mutated after run to prove summary source of truth"
+    db_session.commit()
 
     summary_response = client.get(
         f"/admin/v1/services/{service_id}/test-runs/{created['test_run_id']}",
@@ -1378,7 +1387,13 @@ def test_get_test_run_summary_and_results_returns_persisted_rows(
     )
 
     assert summary_response.status_code == 200
-    assert summary_response.json() == created
+    summary_body = summary_response.json()
+    assert summary_body["pass_rate"] == created["pass_rate"]
+    assert summary_body["review_rate"] == created["review_rate"]
+    assert summary_body["risk_pass_rate"] == created["risk_pass_rate"]
+    assert summary_body["gate_passed"] == created["gate_passed"]
+    assert summary_body["threshold_preset"] == created["threshold_preset"]
+    assert summary_body["threshold_value"] == created["threshold_value"]
     assert results_response.status_code == 200
     rows = results_response.json()
     assert len(rows) == 5
@@ -1392,8 +1407,8 @@ def test_get_test_run_summary_and_results_returns_persisted_rows(
         "actual_intent": "it_api_timeout",
         "actual_route_key": "it.api_timeout.manual_lookup",
         "confidence": pytest.approx(1.0),
-        "result": "PASS",
-        "reason": "matched expected decision and intent",
+        "result": "FAIL",
+        "reason": "mutated after run to prove summary source of truth",
     }
     assert [row["case_id"] for row in rows] == ["C001", "C002", "C003", "C004", "C005"]
 

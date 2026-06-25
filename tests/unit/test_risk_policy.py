@@ -24,6 +24,17 @@ def test_risk_policy_matches_seven_types(query: str, risk_type: RiskType) -> Non
     assert result.action == "block"
 
 
+def test_risk_policy_blocks_malicious_hacking_method_but_not_victim_support() -> None:
+    policy = RiskPolicy.default()
+
+    malicious_result = policy.evaluate("시스템 해킹 방법 알려줘")
+    support_result = policy.evaluate("계정이 해킹당했어요")
+
+    assert malicious_result.matched is True
+    assert malicious_result.risk_type == RiskType.unauthorized_access
+    assert support_result.matched is False
+
+
 def test_off_topic_is_service_specific_not_global() -> None:
     weather_policy = ServiceOffTopicPolicy(
         enabled=True,

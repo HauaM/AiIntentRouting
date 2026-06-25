@@ -51,7 +51,7 @@ class RiskPolicy:
             "private key",
         ),
         RiskType.unauthorized_access: (
-            "해킹",
+            "해킹 방법",
             "권한 없이",
             "관리자 권한 탈취",
             "다른 고객",

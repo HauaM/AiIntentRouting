@@ -82,6 +82,13 @@ def test_csv_rejects_blank_memo() -> None:
         parse_test_cases_csv(csv_text)
 
 
+def test_csv_rejects_header_only_file() -> None:
+    csv_text = "case_id,query,expected_intent,case_type,memo\n"
+
+    with pytest.raises(CsvValidationError, match="at least one"):
+        parse_test_cases_csv(csv_text)
+
+
 def test_csv_case_type_mapping_and_expected_intent_validation() -> None:
     cases = parse_test_cases_csv(VALID_CSV)
 

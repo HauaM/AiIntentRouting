@@ -11,7 +11,6 @@ from io import StringIO
 from typing import Any
 from uuid import uuid4
 
-from intent_routing.api.runtime import _candidates_from_snapshot, _off_topic_policy
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.domain.enums import Decision, ThresholdPreset
@@ -24,6 +23,10 @@ from intent_routing.routing.engine import (
     RouteScope,
     RoutingEngine,
     SemanticMatch,
+)
+from intent_routing.routing.release_context import (
+    candidates_from_snapshot,
+    off_topic_policy_from_config,
 )
 from intent_routing.routing.scoring import RoutingDecisionResult
 from intent_routing.security.pii import mask_pii
@@ -111,6 +114,8 @@ def parse_test_cases_csv(csv_text: str) -> list[ParsedTestCase]:
             )
         )
 
+    if not cases:
+        raise CsvValidationError("CSV must include at least one test case")
     return cases
 
 
@@ -192,7 +197,12 @@ def run_csv_tests(
         test_dataset_version=dataset_version,
         threshold_preset=threshold_preset.value,
         threshold_value=threshold_value,
-        gate=gate,
+        pass_rate=gate.pass_rate,
+        review_rate=gate.review_rate,
+        risk_pass_rate=gate.risk_pass_rate,
+        gate_passed=gate.gate_passed,
+        block_reasons=gate.block_reasons,
+        recommendations=gate.recommendations,
     )
 
 
@@ -207,13 +217,18 @@ def summarize_test_run(
         }
         for result in results
     ]
-    gate = _gate_from_results(result_values)
+    recommendation_gate = _gate_from_results(result_values)
     return _summary(
         test_run_id=test_run.test_run_id,
         test_dataset_version=test_run.test_dataset_version,
         threshold_preset=test_run.threshold_preset,
         threshold_value=float(test_run.threshold_value),
-        gate=gate,
+        pass_rate=float(test_run.pass_rate),
+        review_rate=float(test_run.review_rate),
+        risk_pass_rate=float(test_run.risk_pass_rate),
+        gate_passed=test_run.gate_passed,
+        block_reasons=recommendation_gate.block_reasons,
+        recommendations=recommendation_gate.recommendations,
     )
 
 
@@ -253,7 +268,7 @@ def _release_context(
         },
         catalog_snapshot=catalog_version.snapshot,
         max_input_tokens=service.max_input_tokens,
-        off_topic_policy=_off_topic_policy(policy_version.off_topic_policy),
+        off_topic_policy=off_topic_policy_from_config(policy_version.off_topic_policy),
     )
 
 
@@ -283,7 +298,7 @@ def _risk_enabled(config: Mapping[str, object]) -> bool:
 def _load_candidates(release: ActiveReleaseContext) -> list[IntentCandidate]:
     if not isinstance(release.catalog_snapshot, Mapping):
         return []
-    return _candidates_from_snapshot(release.catalog_snapshot.get("intents"))
+    return candidates_from_snapshot(release.catalog_snapshot.get("intents"))
 
 
 def _semantic_matches(
@@ -404,17 +419,22 @@ def _summary(
     test_dataset_version: str,
     threshold_preset: str,
     threshold_value: float,
-    gate: GateResult,
+    pass_rate: float,
+    review_rate: float,
+    risk_pass_rate: float,
+    gate_passed: bool,
+    block_reasons: list[str],
+    recommendations: list[str],
 ) -> CsvTestRunSummary:
     return CsvTestRunSummary(
         test_run_id=test_run_id,
         test_dataset_version=test_dataset_version,
         threshold_preset=threshold_preset,
         threshold_value=threshold_value,
-        pass_rate=gate.pass_rate,
-        review_rate=gate.review_rate,
-        risk_pass_rate=gate.risk_pass_rate,
-        gate_passed=gate.gate_passed,
-        block_reasons=gate.block_reasons,
-        recommendations=gate.recommendations,
+        pass_rate=pass_rate,
+        review_rate=review_rate,
+        risk_pass_rate=risk_pass_rate,
+        gate_passed=gate_passed,
+        block_reasons=block_reasons,
+        recommendations=recommendations,
     )
