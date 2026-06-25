@@ -325,6 +325,8 @@ def _load_candidates(
     release: ActiveReleaseContext,
 ) -> list[IntentCandidate]:
     del repository, service_id
+    if not isinstance(release.catalog_snapshot, Mapping):
+        return []
     snapshot = release.catalog_snapshot.get("intents")
     return _candidates_from_snapshot(snapshot)
 

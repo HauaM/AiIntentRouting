@@ -69,6 +69,7 @@ def create_app() -> FastAPI:
                         if isinstance(detail.get("release_version"), str)
                         else None
                     ),
+                    encrypt_raw_query=_should_encrypt_runtime_fallback(detail, layer),
                 )
         if isinstance(exc.detail, dict) and exc.detail.get("status") == "error":
             return JSONResponse(status_code=exc.status_code, content=exc.detail)
@@ -193,3 +194,9 @@ def _runtime_error_metadata(payload: object, code: ErrorCode) -> tuple[str, str]
         if isinstance(category, str) and isinstance(layer, str):
             return (category, layer)
     return _preflight_error_metadata(code)
+
+
+def _should_encrypt_runtime_fallback(detail: dict[str, Any], layer: str) -> bool:
+    if layer == "runtime_logging":
+        return False
+    return isinstance(detail.get("release_version"), str)

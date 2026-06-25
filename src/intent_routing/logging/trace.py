@@ -100,6 +100,7 @@ def log_runtime_preflight_error(
     http_status: int,
     query_raw: str | None,
     release_version: str | None = None,
+    encrypt_raw_query: bool = False,
 ) -> None:
     session_factory = configure_runtime_log_session_factory(request)
     try:
@@ -121,6 +122,7 @@ def log_runtime_preflight_error(
                 latency_ms=runtime_latency_ms(request),
                 query_raw=query_raw,
                 decision="error",
+                encrypt_raw_query=encrypt_raw_query,
             )
             session.commit()
     except Exception:

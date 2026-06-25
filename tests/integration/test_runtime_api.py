@@ -935,6 +935,8 @@ def test_intent_route_error_logging_retries_in_global_handler_when_first_log_wri
     assert persisted.error_layer == "embedding_layer"
     assert persisted.http_status == 503
     assert persisted.query_masked == "api timeout gateway incident latency"
+    assert persisted.query_raw_ciphertext is not None
+    assert persisted.query_raw_encrypted_dek is not None
 
 
 def test_intent_route_uses_only_release_snapshot_candidates(
@@ -955,6 +957,41 @@ def test_intent_route_uses_only_release_snapshot_candidates(
     response = client.post(
         "/v1/intent-route",
         headers=_runtime_headers(secret, request_id="req-runtime-snapshot-only-1"),
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["decision"] == "fallback"
+    assert "intent_id" not in body
+    assert "route_key" not in body
+
+    persisted = _runtime_log(db_session, body["trace_id"])
+    assert persisted is not None
+    assert persisted.decision == "fallback"
+    decision_state = getattr(persisted, "decision_state", None)
+    assert isinstance(decision_state, dict)
+    assert decision_state["decision_reason"] == "no_candidates"
+
+
+def test_intent_route_non_mapping_snapshot_root_falls_back_cleanly(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch, raise_server_exceptions=False)
+
+    catalog = db_session.get(
+        models.IntentCatalogVersion,
+        "cat-it-helpdesk-20260625-001",
+    )
+    assert catalog is not None
+    catalog.snapshot = cast("Any", ["broken-root"])
+    db_session.commit()
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(secret, request_id="req-runtime-snapshot-root-1"),
         json=_dify_request(query="api timeout gateway incident latency"),
     )
 
