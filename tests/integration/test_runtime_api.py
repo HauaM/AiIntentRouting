@@ -631,6 +631,44 @@ def test_intent_route_without_active_release_returns_not_found_error_envelope(
     assert persisted.query_masked == "api timeout gateway incident latency"
 
 
+def test_intent_route_policy_load_failure_returns_service_unavailable_and_runtime_log(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch, raise_server_exceptions=False)
+
+    test_run = db_session.get(models.TestRun, "tr-it-helpdesk-20260625-001")
+    assert test_run is not None
+    test_run.gate_passed = False
+    db_session.commit()
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(secret, request_id="req-runtime-policy-load-1"),
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+
+    body = response.json()
+    assert response.status_code == 503
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "POLICY_LOAD_FAILED"
+    assert body["error"]["layer"] == "policy_layer"
+    assert body["release_version"] == RELEASE_VERSION
+    assert "decision" not in body
+
+    persisted = _runtime_log(db_session, body["trace_id"])
+    assert persisted is not None
+    assert persisted.request_id == "req-runtime-policy-load-1"
+    assert persisted.release_version == RELEASE_VERSION
+    assert persisted.error_code == "POLICY_LOAD_FAILED"
+    assert persisted.error_category == "dependency_failure"
+    assert persisted.error_layer == "policy_layer"
+    assert persisted.http_status == 503
+    assert persisted.retryable is True
+    assert persisted.query_masked == "api timeout gateway incident latency"
+
+
 def test_intent_route_vector_repository_exception_returns_service_unavailable_error_envelope(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -674,6 +712,172 @@ def test_intent_route_vector_repository_exception_returns_service_unavailable_er
     assert persisted.error_code == "VECTOR_STORE_UNAVAILABLE"
     assert persisted.http_status == 503
     assert persisted.decision is None
+
+
+def test_intent_route_embedding_unavailable_returns_service_unavailable_and_runtime_log(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch, raise_server_exceptions=False)
+    runtime_module = import_module("intent_routing.api.runtime")
+
+    def broken_provider() -> object:
+        raise RuntimeError("embedding provider unavailable")
+
+    monkeypatch.setattr(runtime_module, "get_embedding_provider", broken_provider)
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(secret, request_id="req-runtime-embedding-1"),
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+
+    body = response.json()
+    assert response.status_code == 503
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "EMBEDDING_MODEL_UNAVAILABLE"
+    assert body["error"]["layer"] == "embedding_layer"
+    assert body["release_version"] == RELEASE_VERSION
+    assert "decision" not in body
+
+    persisted = _runtime_log(db_session, body["trace_id"])
+    assert persisted is not None
+    assert persisted.request_id == "req-runtime-embedding-1"
+    assert persisted.release_version == RELEASE_VERSION
+    assert persisted.error_code == "EMBEDDING_MODEL_UNAVAILABLE"
+    assert persisted.error_category == "dependency_failure"
+    assert persisted.error_layer == "embedding_layer"
+    assert persisted.http_status == 503
+    assert persisted.retryable is True
+    assert persisted.query_masked == "api timeout gateway incident latency"
+
+
+def test_intent_route_logging_configuration_failure_returns_internal_error_and_runtime_log(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch, raise_server_exceptions=False)
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", "not-base64")
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(secret, request_id="req-runtime-logging-1"),
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+
+    body = response.json()
+    assert response.status_code == 500
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "INTERNAL_ERROR"
+    assert body["error"]["layer"] == "runtime_logging"
+    assert body["release_version"] == RELEASE_VERSION
+    assert "decision" not in body
+
+    persisted = _runtime_log(db_session, body["trace_id"])
+    assert persisted is not None
+    assert persisted.request_id == "req-runtime-logging-1"
+    assert persisted.release_version == RELEASE_VERSION
+    assert persisted.error_code == "INTERNAL_ERROR"
+    assert persisted.error_category == "internal_error"
+    assert persisted.error_layer == "runtime_logging"
+    assert persisted.http_status == 500
+    assert persisted.retryable is False
+    assert persisted.query_masked == "api timeout gateway incident latency"
+
+
+def test_intent_route_unexpected_internal_error_returns_internal_error_and_runtime_log(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch, raise_server_exceptions=False)
+    runtime_module = import_module("intent_routing.api.runtime")
+
+    def broken_load_candidates(*args: object, **kwargs: object) -> list[object]:
+        del args, kwargs
+        raise RuntimeError("unexpected routing failure")
+
+    monkeypatch.setattr(runtime_module, "_load_candidates", broken_load_candidates)
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(secret, request_id="req-runtime-internal-1"),
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+
+    body = response.json()
+    assert response.status_code == 500
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "INTERNAL_ERROR"
+    assert body["error"]["layer"] == "runtime_api"
+    assert body["release_version"] == RELEASE_VERSION
+    assert "decision" not in body
+
+    persisted = _runtime_log(db_session, body["trace_id"])
+    assert persisted is not None
+    assert persisted.request_id == "req-runtime-internal-1"
+    assert persisted.release_version == RELEASE_VERSION
+    assert persisted.error_code == "INTERNAL_ERROR"
+    assert persisted.error_category == "internal_error"
+    assert persisted.error_layer == "runtime_api"
+    assert persisted.http_status == 500
+    assert persisted.retryable is False
+    assert persisted.query_masked == "api timeout gateway incident latency"
+
+
+def test_intent_route_error_logging_retries_in_global_handler_when_first_log_write_fails(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch, raise_server_exceptions=False)
+    runtime_module = import_module("intent_routing.api.runtime")
+    original_insert_runtime_log = IntentRoutingRepository.insert_runtime_log
+    attempts = {"count": 0}
+
+    def broken_provider() -> object:
+        raise RuntimeError("embedding provider unavailable")
+
+    def flaky_insert_runtime_log(
+        self: IntentRoutingRepository,
+        **values: Any,
+    ) -> models.RuntimeLog:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("transient runtime log insert failure")
+        return original_insert_runtime_log(self, **values)
+
+    monkeypatch.setattr(runtime_module, "get_embedding_provider", broken_provider)
+    monkeypatch.setattr(
+        IntentRoutingRepository,
+        "insert_runtime_log",
+        flaky_insert_runtime_log,
+    )
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(secret, request_id="req-runtime-log-retry-1"),
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+
+    body = response.json()
+    assert response.status_code == 503
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "EMBEDDING_MODEL_UNAVAILABLE"
+    assert body["error"]["layer"] == "embedding_layer"
+    assert body["release_version"] == RELEASE_VERSION
+    assert attempts["count"] >= 2
+
+    persisted = _runtime_log(db_session, body["trace_id"])
+    assert persisted is not None
+    assert persisted.request_id == "req-runtime-log-retry-1"
+    assert persisted.release_version == RELEASE_VERSION
+    assert persisted.error_code == "EMBEDDING_MODEL_UNAVAILABLE"
+    assert persisted.error_layer == "embedding_layer"
+    assert persisted.http_status == 503
+    assert persisted.query_masked == "api timeout gateway incident latency"
 
 
 def _runtime_client(

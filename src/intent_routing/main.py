@@ -50,7 +50,7 @@ def create_app() -> FastAPI:
             error_code = _error_code_from_payload(error_payload)
             if isinstance(trace_id, str) and error_code is not None:
                 query_raw = await extract_runtime_query(request)
-                category, layer = _preflight_error_metadata(error_code)
+                category, layer = _runtime_error_metadata(error_payload, error_code)
                 log_runtime_preflight_error(
                     request,
                     trace_id=trace_id,
@@ -64,6 +64,11 @@ def create_app() -> FastAPI:
                     ),
                     http_status=exc.status_code,
                     query_raw=query_raw,
+                    release_version=(
+                        detail.get("release_version")
+                        if isinstance(detail.get("release_version"), str)
+                        else None
+                    ),
                 )
         if isinstance(exc.detail, dict) and exc.detail.get("status") == "error":
             return JSONResponse(status_code=exc.status_code, content=exc.detail)
@@ -179,3 +184,12 @@ def _preflight_error_metadata(code: ErrorCode) -> tuple[str, str]:
     if code == ErrorCode.INVALID_REQUEST:
         return ("validation_error", "request_layer")
     return ("request_error", "request_layer")
+
+
+def _runtime_error_metadata(payload: object, code: ErrorCode) -> tuple[str, str]:
+    if isinstance(payload, dict):
+        category = payload.get("category")
+        layer = payload.get("layer")
+        if isinstance(category, str) and isinstance(layer, str):
+            return (category, layer)
+    return _preflight_error_metadata(code)

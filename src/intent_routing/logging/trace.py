@@ -99,17 +99,23 @@ def log_runtime_preflight_error(
     error: RuntimeErrorLog,
     http_status: int,
     query_raw: str | None,
+    release_version: str | None = None,
 ) -> None:
     session_factory = configure_runtime_log_session_factory(request)
     try:
         with session_factory() as session:
             repository = IntentRoutingRepository(session)
+            release = (
+                ActiveReleaseContext(release_version=release_version)
+                if release_version is not None
+                else None
+            )
             RuntimeTraceLogger(repository).log_error(
                 trace_id=trace_id,
                 request_id=request_id,
                 app_id=request.headers.get("X-App-Id"),
                 service_id=request.headers.get("X-Service-Id"),
-                release=None,
+                release=release,
                 error=error,
                 http_status=http_status,
                 latency_ms=runtime_latency_ms(request),

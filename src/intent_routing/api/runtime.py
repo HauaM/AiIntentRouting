@@ -66,6 +66,7 @@ class RuntimeApiError(Exception):
     retryable: bool
     category: str
     layer: str
+    release: ActiveReleaseContext | None = None
 
 
 def get_runtime_session() -> Iterator[Session]:
@@ -146,7 +147,7 @@ def intent_route(
             request_id=auth.request_id,
             app_id=auth.app_id,
             service_id=auth.service_id,
-            release=release,
+            release=exc.release if exc.release is not None else release,
             query=runtime_request.query,
             error=RuntimeErrorLog(
                 code=exc.code,
@@ -246,6 +247,15 @@ def _load_active_release(
             category="configuration_error",
             layer="release_layer",
         )
+    partial_release = ActiveReleaseContext(
+        release_version=release.release_version,
+        service_id=service_id,
+        policy_version=release.policy_version,
+        intent_catalog_version=release.intent_catalog_version,
+        model_version=release.model_version,
+        vector_index_version=release.vector_index_version,
+        test_run_id=release.test_run_id,
+    )
 
     policy_version = repository.get_policy_version(service_id, release.policy_version)
     catalog_version = repository.get_catalog_version(service_id, release.intent_catalog_version)
@@ -265,6 +275,7 @@ def _load_active_release(
             retryable=True,
             category="dependency_failure",
             layer="policy_layer",
+            release=partial_release,
         )
 
     off_topic_policy = _off_topic_policy(policy_version.off_topic_policy)
@@ -529,6 +540,7 @@ def _log_and_raise(
             layer=error.layer,
         ),
     )
+    logged = False
     try:
         logger.log_error(
             trace_id=trace_id,
@@ -542,12 +554,14 @@ def _log_and_raise(
             query_raw=query,
         )
         session.commit()
+        logged = True
     except Exception:
         session.rollback()
+    headers = {RUNTIME_ERROR_LOGGED_HEADER: "1"} if logged else None
     raise HTTPException(
         status_code=http_status,
         detail=envelope.model_dump(mode="json", exclude_none=True),
-        headers={RUNTIME_ERROR_LOGGED_HEADER: "1"},
+        headers=headers,
     )
 
 
