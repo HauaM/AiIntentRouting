@@ -170,6 +170,17 @@ class IntentRoutingRepository:
     def create_policy_version(self, **values: Any) -> models.PolicyVersion:
         return self._add_and_flush(models.PolicyVersion(**values))
 
+    def get_policy_version(
+        self,
+        service_id: str,
+        policy_version: str,
+    ) -> models.PolicyVersion | None:
+        return self.session.scalar(
+            select(models.PolicyVersion)
+            .where(models.PolicyVersion.service_id == service_id)
+            .where(models.PolicyVersion.policy_version == policy_version)
+        )
+
     def create_catalog_version(self, **values: Any) -> models.IntentCatalogVersion:
         return self._add_and_flush(models.IntentCatalogVersion(**values))
 

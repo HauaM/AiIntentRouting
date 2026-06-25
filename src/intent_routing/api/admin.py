@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from os import environ
 from typing import Annotated, Any, NoReturn
 from uuid import UUID, uuid4
@@ -11,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from intent_routing.db.models import ApiKey, Intent, IntentExample, Service
+from intent_routing.db.models import ApiKey, Intent, IntentExample, PolicyVersion, Service
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.db.session import SessionLocal
 from intent_routing.domain.enums import (
@@ -21,7 +22,12 @@ from intent_routing.domain.enums import (
     IntentStatus,
     ThresholdPreset,
 )
-from intent_routing.domain.schemas import ErrorEnvelope, ErrorInfo, validate_route_key
+from intent_routing.domain.schemas import (
+    ErrorEnvelope,
+    ErrorInfo,
+    FallbackPolicy,
+    validate_route_key,
+)
 from intent_routing.embedding.provider import get_embedding_provider
 from intent_routing.security.admin_auth import (
     AdminContext,
@@ -195,6 +201,56 @@ class ExampleResponse(BaseModel):
     created_at: datetime
 
 
+class PolicyToggle(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+
+
+class OffTopicPolicySettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    keywords: list[str] = Field(default_factory=list)
+    message: str = ""
+    fallback_policy: FallbackPolicy | None = None
+
+    @field_validator("keywords")
+    @classmethod
+    def keywords_must_not_be_blank(cls, value: list[str]) -> list[str]:
+        for keyword in value:
+            if not keyword.strip():
+                raise ValueError("off-topic keywords must not be blank")
+        return value
+
+
+class PolicyVersionCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    threshold_preset: ThresholdPreset
+    clarify_margin: float = Field(ge=0.0, le=1.0)
+    min_candidate_score: float = Field(ge=0.0, le=1.0)
+    fallback_score: float = Field(ge=0.0, le=1.0)
+    risk_policy: PolicyToggle = Field(default_factory=PolicyToggle)
+    off_topic_policy: OffTopicPolicySettings = Field(
+        default_factory=OffTopicPolicySettings
+    )
+
+
+class PolicyVersionResponse(BaseModel):
+    policy_version: str
+    service_id: str
+    threshold_preset: str
+    threshold_value: float
+    clarify_margin: float
+    min_candidate_score: float
+    fallback_score: float
+    risk_policy: PolicyToggle
+    off_topic_policy: OffTopicPolicySettings
+    created_by: str
+    created_at: datetime
+
+
 def get_admin_session() -> Iterator[Session]:
     session = SessionLocal()
     try:
@@ -337,6 +393,24 @@ def _example_response(example: IntentExample) -> ExampleResponse:
     )
 
 
+def _policy_version_response(policy_version: PolicyVersion) -> PolicyVersionResponse:
+    return PolicyVersionResponse(
+        policy_version=policy_version.policy_version,
+        service_id=policy_version.service_id,
+        threshold_preset=policy_version.threshold_preset,
+        threshold_value=float(policy_version.threshold_value),
+        clarify_margin=float(policy_version.clarify_margin),
+        min_candidate_score=float(policy_version.min_candidate_score),
+        fallback_score=float(policy_version.fallback_score),
+        risk_policy=PolicyToggle.model_validate(policy_version.risk_policy),
+        off_topic_policy=OffTopicPolicySettings.model_validate(
+            policy_version.off_topic_policy
+        ),
+        created_by=policy_version.created_by,
+        created_at=policy_version.created_at,
+    )
+
+
 def _raw_text_encryptor() -> EnvelopeEncryptor:
     kek_base64 = environ.get("RAW_TEXT_KEK_BASE64")
     if kek_base64 is None or not kek_base64.strip():
@@ -398,6 +472,10 @@ def _example_after_state(example: IntentExample) -> dict[str, object]:
             "stored": True,
         }
     return state
+
+
+def _policy_version_id(service_id: str, now: datetime) -> str:
+    return f"pol-{service_id}-{now:%Y%m%d}-{uuid4().hex[:8]}"
 
 
 @router.post(
@@ -669,6 +747,80 @@ def create_example(
     )
     session.commit()
     return _example_response(example)
+
+
+@router.post(
+    "/services/{service_id}/policy-versions",
+    response_model=PolicyVersionResponse,
+    response_model_exclude_none=True,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_policy_version(
+    service_id: str,
+    request: PolicyVersionCreateRequest,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> PolicyVersionResponse:
+    _require_service_catalog_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+
+    try:
+        policy_version = repository.create_policy_version(
+            policy_version=_policy_version_id(service_id, now),
+            service_id=service_id,
+            threshold_preset=request.threshold_preset.value,
+            threshold_value=Decimal(str(request.threshold_preset.threshold)),
+            clarify_margin=Decimal(str(request.clarify_margin)),
+            min_candidate_score=Decimal(str(request.min_candidate_score)),
+            fallback_score=Decimal(str(request.fallback_score)),
+            risk_policy=request.risk_policy.model_dump(mode="json", exclude_none=True),
+            off_topic_policy=request.off_topic_policy.model_dump(
+                mode="json",
+                exclude_none=True,
+            ),
+            created_by=context.actor_id,
+            created_at=now,
+        )
+    except IntegrityError:
+        session.rollback()
+        _raise_conflict("Policy version already exists.")
+    repository.insert_audit_log(
+        event_type="policy_version.created",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="policy_version",
+        target_id=policy_version.policy_version,
+        view_reason=None,
+        source_ip=None,
+        before_state=None,
+        after_state=_policy_version_response(policy_version).model_dump(mode="json"),
+        created_at=now,
+    )
+    session.commit()
+    return _policy_version_response(policy_version)
+
+
+@router.get(
+    "/services/{service_id}/policy-versions/{policy_version}",
+    response_model=PolicyVersionResponse,
+    response_model_exclude_none=True,
+)
+def get_policy_version(
+    service_id: str,
+    policy_version: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> PolicyVersionResponse:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    persisted_policy_version = repository.get_policy_version(service_id, policy_version)
+    if persisted_policy_version is None:
+        _raise_not_found("Policy version does not exist.")
+    return _policy_version_response(persisted_policy_version)
 
 
 @router.get(

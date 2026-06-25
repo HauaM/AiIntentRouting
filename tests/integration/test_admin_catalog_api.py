@@ -5,6 +5,7 @@ import json
 import sys
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import cast
 from uuid import uuid4
 
@@ -84,6 +85,22 @@ def _example_payload(text: str = "전화 010-1234-5678 확인") -> dict[str, obj
         "text_raw": text,
         "source": "admin-test",
         "test_case_id": None,
+    }
+
+
+def _policy_version_payload() -> dict[str, object]:
+    return {
+        "threshold_preset": "balanced",
+        "clarify_margin": 0.08,
+        "min_candidate_score": 0.55,
+        "fallback_score": 0.45,
+        "risk_policy": {"enabled": True},
+        "off_topic_policy": {
+            "enabled": True,
+            "keywords": ["날씨", "점심"],
+            "message": "서비스 범위 밖 문의입니다.",
+            "fallback_policy": {"type": "fixed_message", "retryable": False},
+        },
     }
 
 
@@ -931,3 +948,235 @@ def test_only_matching_service_developer_can_modify_service_catalog(
     assert denied_response.status_code == 403
     assert denied_response.json()["status"] == "error"
     assert denied_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+
+
+def test_create_and_get_policy_version_persists_thresholds_and_off_topic_policy(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    client = _client(db_session)
+    service_id = f"svc-policy-{uuid4().hex}"
+    _create_service(client, service_id)
+
+    create_response = client.post(
+        f"/admin/v1/services/{service_id}/policy-versions",
+        headers=_admin_headers(),
+        json=_policy_version_payload(),
+    )
+
+    create_body = create_response.json()
+    assert create_response.status_code == 201
+    assert create_body["service_id"] == service_id
+    assert create_body["threshold_preset"] == "balanced"
+    assert create_body["threshold_value"] == pytest.approx(0.8)
+    assert create_body["off_topic_policy"] == _policy_version_payload()["off_topic_policy"]
+    policy_version = create_body["policy_version"]
+
+    persisted = db_session.get(models.PolicyVersion, policy_version)
+    assert persisted is not None
+    assert persisted.threshold_value == Decimal("0.8")
+    assert persisted.clarify_margin == Decimal("0.08")
+    assert persisted.min_candidate_score == Decimal("0.55")
+    assert persisted.fallback_score == Decimal("0.45")
+    assert persisted.off_topic_policy == _policy_version_payload()["off_topic_policy"]
+
+    get_response = client.get(
+        f"/admin/v1/services/{service_id}/policy-versions/{policy_version}",
+        headers=_admin_headers(),
+    )
+
+    get_body = get_response.json()
+    assert get_response.status_code == 200
+    assert get_body == create_body
+    audit_log = db_session.scalar(
+        select(models.AuditLog).where(
+            models.AuditLog.event_type == "policy_version.created",
+            models.AuditLog.target_id == policy_version,
+        )
+    )
+    assert audit_log is not None
+    assert audit_log.service_id == service_id
+    assert audit_log.target_type == "policy_version"
+
+
+def test_service_developer_can_manage_only_scoped_policy_versions(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    client = _client(db_session)
+    service_id = f"svc-policy-{uuid4().hex}"
+    other_service_id = f"svc-policy-{uuid4().hex}"
+    _create_service(client, service_id)
+    _create_service(client, other_service_id)
+
+    allowed_response = client.post(
+        f"/admin/v1/services/{service_id}/policy-versions",
+        headers=_developer_headers(service_id),
+        json=_policy_version_payload(),
+    )
+    denied_response = client.post(
+        f"/admin/v1/services/{other_service_id}/policy-versions",
+        headers=_developer_headers(service_id),
+        json=_policy_version_payload(),
+    )
+
+    assert allowed_response.status_code == 201
+    assert denied_response.status_code == 403
+    assert denied_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+
+
+def test_policy_version_endpoints_return_not_found_for_missing_service_or_version(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    client = _client(db_session)
+    service_id = f"svc-policy-{uuid4().hex}"
+    _create_service(client, service_id)
+
+    missing_service_response = client.post(
+        f"/admin/v1/services/missing-{uuid4().hex}/policy-versions",
+        headers=_admin_headers(),
+        json=_policy_version_payload(),
+    )
+    missing_version_response = client.get(
+        f"/admin/v1/services/{service_id}/policy-versions/missing-version",
+        headers=_admin_headers(),
+    )
+
+    assert missing_service_response.status_code == 404
+    assert missing_service_response.json()["error"]["code"] == "INVALID_REQUEST"
+    assert missing_version_response.status_code == 404
+    assert missing_version_response.json()["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_create_policy_version_rejects_blank_off_topic_keywords(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    client = _client(db_session)
+    service_id = f"svc-policy-{uuid4().hex}"
+    _create_service(client, service_id)
+    payload = _policy_version_payload()
+    payload["off_topic_policy"] = {
+        **cast(dict[str, object], payload["off_topic_policy"]),
+        "keywords": ["날씨", "   "],
+    }
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/policy-versions",
+        headers=_admin_headers(),
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["status"] == "error"
+    assert response.json()["error"]["code"] == "INVALID_REQUEST"
+    assert db_session.scalar(
+        select(models.PolicyVersion).where(models.PolicyVersion.service_id == service_id)
+    ) is None
+    assert db_session.scalar(
+        select(models.AuditLog).where(
+            models.AuditLog.event_type == "policy_version.created",
+            models.AuditLog.service_id == service_id,
+        )
+    ) is None
+
+
+def test_create_policy_version_rejects_extra_policy_keys_without_persisting(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    client = _client(db_session)
+    service_id = f"svc-policy-{uuid4().hex}"
+    _create_service(client, service_id)
+
+    risk_payload = _policy_version_payload()
+    risk_payload["risk_policy"] = {"enabled": True, "mode": "loose"}
+    risk_response = client.post(
+        f"/admin/v1/services/{service_id}/policy-versions",
+        headers=_admin_headers(),
+        json=risk_payload,
+    )
+
+    assert risk_response.status_code == 422
+    assert risk_response.json()["status"] == "error"
+    assert risk_response.json()["error"]["code"] == "INVALID_REQUEST"
+    assert "detail" not in risk_response.json()
+    assert db_session.scalar(
+        select(models.PolicyVersion).where(models.PolicyVersion.service_id == service_id)
+    ) is None
+    assert db_session.scalar(
+        select(models.AuditLog).where(
+            models.AuditLog.event_type == "policy_version.created",
+            models.AuditLog.service_id == service_id,
+        )
+    ) is None
+
+    fallback_payload = _policy_version_payload()
+    fallback_off_topic = cast(dict[str, object], fallback_payload["off_topic_policy"])
+    fallback_payload["off_topic_policy"] = {
+        **fallback_off_topic,
+        "fallback_policy": {
+            **cast(dict[str, object], fallback_off_topic["fallback_policy"]),
+            "extra": "nope",
+        },
+    }
+    fallback_response = client.post(
+        f"/admin/v1/services/{service_id}/policy-versions",
+        headers=_admin_headers(),
+        json=fallback_payload,
+    )
+
+    assert fallback_response.status_code == 422
+    assert fallback_response.json()["status"] == "error"
+    assert fallback_response.json()["error"]["code"] == "INVALID_REQUEST"
+    assert "detail" not in fallback_response.json()
+    assert db_session.scalar(
+        select(models.PolicyVersion).where(models.PolicyVersion.service_id == service_id)
+    ) is None
+    assert db_session.scalar(
+        select(models.AuditLog).where(
+            models.AuditLog.event_type == "policy_version.created",
+            models.AuditLog.service_id == service_id,
+        )
+    ) is None
+
+
+def test_create_policy_version_returns_conflict_on_id_collision(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setattr(
+        "intent_routing.api.admin._policy_version_id",
+        lambda service_id, _now: f"pol-fixed-collision-{service_id}",
+    )
+    client = _client(db_session, raise_server_exceptions=False)
+    service_id = f"svc-policy-{uuid4().hex}"
+    _create_service(client, service_id)
+
+    first_response = client.post(
+        f"/admin/v1/services/{service_id}/policy-versions",
+        headers=_admin_headers(),
+        json=_policy_version_payload(),
+    )
+    second_response = client.post(
+        f"/admin/v1/services/{service_id}/policy-versions",
+        headers=_admin_headers(),
+        json=_policy_version_payload(),
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 409
+    assert second_response.json()["status"] == "error"
+    assert second_response.json()["error"]["code"] == "INVALID_REQUEST"
+    persisted_versions = db_session.scalars(
+        select(models.PolicyVersion).where(models.PolicyVersion.service_id == service_id)
+    ).all()
+    assert len(persisted_versions) == 1
+    assert persisted_versions[0].policy_version == f"pol-fixed-collision-{service_id}"
