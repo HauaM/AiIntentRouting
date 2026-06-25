@@ -77,7 +77,11 @@ def get_example_search() -> ExampleSearch:
     return _search_examples
 
 
-@router.post("/v1/intent-route", response_model=RuntimeResponse)
+@router.post(
+    "/v1/intent-route",
+    response_model=RuntimeResponse,
+    response_model_exclude_none=True,
+)
 def intent_route(
     runtime_request: RuntimeRequest,
     auth: Annotated[AuthContext, Depends(require_api_key)],

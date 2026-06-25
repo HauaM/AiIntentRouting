@@ -502,8 +502,8 @@ def test_intent_route_clarify_query_returns_question_and_up_to_three_candidates(
     assert body["clarify_question"]
     assert len(body["clarify"]["candidates"]) <= 3
     assert len(body["clarify"]["candidates"]) == 2
-    assert body.get("intent_id") is None
-    assert body.get("route_key") is None
+    assert "intent_id" not in body
+    assert "route_key" not in body
 
 
 def test_intent_route_risk_query_returns_risk_payload(
@@ -523,8 +523,8 @@ def test_intent_route_risk_query_returns_risk_payload(
     assert response.status_code == 200
     assert body["decision"] == "risk"
     assert body["risk"]["risk_type"] == "credential_secret"
-    assert body.get("intent_id") is None
-    assert body.get("route_key") is None
+    assert "intent_id" not in body
+    assert "route_key" not in body
 
 
 def test_intent_route_off_topic_query_returns_off_topic_only_when_service_policy_matches(
@@ -542,8 +542,8 @@ def test_intent_route_off_topic_query_returns_off_topic_only_when_service_policy
 
     assert matched.status_code == 200
     assert matched.json()["decision"] == "off_topic"
-    assert matched.json().get("intent_id") is None
-    assert matched.json().get("route_key") is None
+    assert "intent_id" not in matched.json()
+    assert "route_key" not in matched.json()
 
     secret = _seed_runtime_state(db_session, off_topic_enabled=False)
     client = _runtime_client(db_session, monkeypatch)
@@ -574,8 +574,8 @@ def test_intent_route_fallback_query_returns_fallback(
     body = response.json()
     assert response.status_code == 200
     assert body["decision"] == "fallback"
-    assert body.get("intent_id") is None
-    assert body.get("route_key") is None
+    assert "intent_id" not in body
+    assert "route_key" not in body
 
 
 def test_intent_route_forbidden_candidate_route_returns_unauthorized_decision(
@@ -598,8 +598,8 @@ def test_intent_route_forbidden_candidate_route_returns_unauthorized_decision(
     assert response.status_code == 200
     assert body["decision"] == "unauthorized"
     assert body["request_id"] == "req-runtime-unauthorized-1"
-    assert body.get("intent_id") is None
-    assert body.get("route_key") is None
+    assert "intent_id" not in body
+    assert "route_key" not in body
 
 
 def test_intent_route_without_active_release_returns_not_found_error_envelope(
