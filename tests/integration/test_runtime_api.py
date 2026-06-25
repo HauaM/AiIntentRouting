@@ -373,6 +373,8 @@ def test_intent_route_forbidden_candidate_route_returns_unauthorized_decision() 
     assert response.status_code == 200
     assert body["decision"] == "unauthorized"
     assert body["request_id"] == "req-1"
+    assert body["intent_id"] is None
+    assert body["route_key"] is None
 
 
 def test_intent_route_forbidden_candidate_intent_returns_unauthorized_decision() -> None:
@@ -402,4 +404,5 @@ def test_intent_route_forbidden_candidate_intent_returns_unauthorized_decision()
     body = response.json()
     assert response.status_code == 200
     assert body["decision"] == "unauthorized"
-    assert body["intent_id"] == "forbidden-intent"
+    assert body["intent_id"] is None
+    assert body["route_key"] is None

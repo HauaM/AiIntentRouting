@@ -74,8 +74,6 @@ def create_app() -> FastAPI:
                     trace_id=trace_id,
                     request_id=auth.request_id,
                     decision=Decision.unauthorized,
-                    intent_id=candidate_intent_id,
-                    route_key=candidate_route_key,
                     fallback_policy=FallbackPolicy(
                         type="client_fallback",
                         retryable=False,
