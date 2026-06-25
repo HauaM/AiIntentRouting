@@ -769,6 +769,53 @@ def test_intent_route_vector_repository_exception_returns_service_unavailable_er
     assert persisted.query_raw_encrypted_dek is not None
 
 
+def test_intent_route_vector_repository_error_with_invalid_kek_persists_masked_fallback_log(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch, raise_server_exceptions=False)
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", "not-base64")
+
+    def broken_search(
+        self: IntentRoutingRepository,
+        service_id: str,
+        query_embedding: list[float],
+        *,
+        limit: int,
+    ) -> list[object]:
+        del self, service_id, query_embedding, limit
+        raise RuntimeError("vector search unavailable")
+
+    monkeypatch.setattr(
+        IntentRoutingRepository,
+        "search_approved_examples_by_embedding",
+        broken_search,
+    )
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(secret, request_id="req-runtime-503-kek-1"),
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+
+    body = response.json()
+    assert response.status_code == 503
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "VECTOR_STORE_UNAVAILABLE"
+    assert body["release_version"] == RELEASE_VERSION
+
+    persisted = _runtime_log(db_session, body["trace_id"])
+    assert persisted is not None
+    assert persisted.request_id == "req-runtime-503-kek-1"
+    assert persisted.release_version == RELEASE_VERSION
+    assert persisted.error_code == "VECTOR_STORE_UNAVAILABLE"
+    assert persisted.http_status == 503
+    assert persisted.query_masked == "api timeout gateway incident latency"
+    assert persisted.query_raw_ciphertext is None
+    assert persisted.query_raw_encrypted_dek is None
+
+
 def test_intent_route_embedding_unavailable_returns_service_unavailable_and_runtime_log(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,

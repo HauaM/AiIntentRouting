@@ -106,25 +106,43 @@ def log_runtime_preflight_error(
     try:
         with session_factory() as session:
             repository = IntentRoutingRepository(session)
+            logger = RuntimeTraceLogger(repository)
             release = (
                 ActiveReleaseContext(release_version=release_version)
                 if release_version is not None
                 else None
             )
-            RuntimeTraceLogger(repository).log_error(
-                trace_id=trace_id,
-                request_id=request_id,
-                app_id=request.headers.get("X-App-Id"),
-                service_id=request.headers.get("X-Service-Id"),
-                release=release,
-                error=error,
-                http_status=http_status,
-                latency_ms=runtime_latency_ms(request),
-                query_raw=query_raw,
-                decision="error",
-                encrypt_raw_query=encrypt_raw_query,
-            )
-            session.commit()
+            try:
+                logger.log_error(
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    app_id=request.headers.get("X-App-Id"),
+                    service_id=request.headers.get("X-Service-Id"),
+                    release=release,
+                    error=error,
+                    http_status=http_status,
+                    latency_ms=runtime_latency_ms(request),
+                    query_raw=query_raw,
+                    decision="error",
+                    encrypt_raw_query=encrypt_raw_query,
+                )
+                session.commit()
+            except RuntimeTraceConfigurationError:
+                session.rollback()
+                logger.log_error(
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    app_id=request.headers.get("X-App-Id"),
+                    service_id=request.headers.get("X-Service-Id"),
+                    release=release,
+                    error=error,
+                    http_status=http_status,
+                    latency_ms=runtime_latency_ms(request),
+                    query_raw=query_raw,
+                    decision="error",
+                    encrypt_raw_query=False,
+                )
+                session.commit()
     except Exception:
         return
 
