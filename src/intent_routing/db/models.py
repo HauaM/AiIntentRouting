@@ -93,6 +93,8 @@ class IntentExample(Base):
     example_type: Mapped[str] = mapped_column(Text)
     text_raw_ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
     text_raw_encrypted_dek: Mapped[bytes] = mapped_column(LargeBinary)
+    text_raw_encrypted_dek_iv: Mapped[bytes] = mapped_column(LargeBinary)
+    text_raw_encrypted_dek_auth_tag: Mapped[bytes] = mapped_column(LargeBinary)
     text_raw_key_id: Mapped[str] = mapped_column(Text)
     text_raw_iv: Mapped[bytes] = mapped_column(LargeBinary)
     text_raw_auth_tag: Mapped[bytes] = mapped_column(LargeBinary)
@@ -274,6 +276,8 @@ class RuntimeLog(Base):
     latency_ms: Mapped[int]
     query_raw_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
     query_raw_encrypted_dek: Mapped[bytes | None] = mapped_column(LargeBinary)
+    query_raw_encrypted_dek_iv: Mapped[bytes | None] = mapped_column(LargeBinary)
+    query_raw_encrypted_dek_auth_tag: Mapped[bytes | None] = mapped_column(LargeBinary)
     query_raw_key_id: Mapped[str | None] = mapped_column(Text)
     query_raw_iv: Mapped[bytes | None] = mapped_column(LargeBinary)
     query_raw_auth_tag: Mapped[bytes | None] = mapped_column(LargeBinary)

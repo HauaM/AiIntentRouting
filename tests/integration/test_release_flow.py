@@ -85,6 +85,56 @@ def test_representative_column_defaults_and_nullability(db_session: Session) -> 
     assert columns[("runtime_logs", "latency_ms")]["nullable"] == "NO"
 
 
+def test_raw_text_envelope_metadata_columns_exist(db_session: Session) -> None:
+    columns = {
+        (row.table_name, row.column_name): row.data_type
+        for row in db_session.execute(
+            text(
+                "select table_name, column_name, data_type "
+                "from information_schema.columns "
+                "where table_schema = 'public' "
+                "and (table_name, column_name) in ("
+                "('intent_examples', 'text_raw_ciphertext'), "
+                "('intent_examples', 'text_raw_encrypted_dek'), "
+                "('intent_examples', 'text_raw_encrypted_dek_iv'), "
+                "('intent_examples', 'text_raw_encrypted_dek_auth_tag'), "
+                "('intent_examples', 'text_raw_key_id'), "
+                "('intent_examples', 'text_raw_iv'), "
+                "('intent_examples', 'text_raw_auth_tag'), "
+                "('intent_examples', 'text_raw_algorithm'), "
+                "('runtime_logs', 'query_raw_ciphertext'), "
+                "('runtime_logs', 'query_raw_encrypted_dek'), "
+                "('runtime_logs', 'query_raw_encrypted_dek_iv'), "
+                "('runtime_logs', 'query_raw_encrypted_dek_auth_tag'), "
+                "('runtime_logs', 'query_raw_key_id'), "
+                "('runtime_logs', 'query_raw_iv'), "
+                "('runtime_logs', 'query_raw_auth_tag'), "
+                "('runtime_logs', 'query_raw_algorithm')"
+                ")"
+            )
+        )
+    }
+
+    assert columns == {
+        ("intent_examples", "text_raw_ciphertext"): "bytea",
+        ("intent_examples", "text_raw_encrypted_dek"): "bytea",
+        ("intent_examples", "text_raw_encrypted_dek_iv"): "bytea",
+        ("intent_examples", "text_raw_encrypted_dek_auth_tag"): "bytea",
+        ("intent_examples", "text_raw_key_id"): "text",
+        ("intent_examples", "text_raw_iv"): "bytea",
+        ("intent_examples", "text_raw_auth_tag"): "bytea",
+        ("intent_examples", "text_raw_algorithm"): "text",
+        ("runtime_logs", "query_raw_ciphertext"): "bytea",
+        ("runtime_logs", "query_raw_encrypted_dek"): "bytea",
+        ("runtime_logs", "query_raw_encrypted_dek_iv"): "bytea",
+        ("runtime_logs", "query_raw_encrypted_dek_auth_tag"): "bytea",
+        ("runtime_logs", "query_raw_key_id"): "text",
+        ("runtime_logs", "query_raw_iv"): "bytea",
+        ("runtime_logs", "query_raw_auth_tag"): "bytea",
+        ("runtime_logs", "query_raw_algorithm"): "text",
+    }
+
+
 def test_representative_foreign_key_and_vector_type_exist(db_session: Session) -> None:
     api_key_fk_exists = db_session.execute(
         text(
