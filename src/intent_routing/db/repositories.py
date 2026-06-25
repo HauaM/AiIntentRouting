@@ -112,6 +112,21 @@ class IntentRoutingRepository:
             )
         )
 
+    def list_approved_examples(
+        self,
+        service_id: str,
+        intent_id: str,
+    ) -> list[models.IntentExample]:
+        return list(
+            self.session.scalars(
+                select(models.IntentExample)
+                .where(models.IntentExample.service_id == service_id)
+                .where(models.IntentExample.intent_id == intent_id)
+                .where(models.IntentExample.approved.is_(True))
+                .order_by(models.IntentExample.created_at, models.IntentExample.example_id)
+            )
+        )
+
     def approve_example(
         self,
         example: models.IntentExample,
@@ -248,6 +263,37 @@ class IntentRoutingRepository:
 
     def create_release(self, **values: Any) -> models.Release:
         return self._add_and_flush(models.Release(**values))
+
+    def create_vector_index_version(self, **values: Any) -> models.VectorIndexVersion:
+        return self._add_and_flush(models.VectorIndexVersion(**values))
+
+    def get_release(
+        self,
+        service_id: str,
+        release_version: str,
+    ) -> models.Release | None:
+        return self.session.scalar(
+            select(models.Release)
+            .where(models.Release.service_id == service_id)
+            .where(models.Release.release_version == release_version)
+        )
+
+    def list_releases(
+        self,
+        service_id: str,
+        environment: str | None = None,
+    ) -> list[models.Release]:
+        statement = select(models.Release).where(models.Release.service_id == service_id)
+        if environment is not None:
+            statement = statement.where(models.Release.environment == environment)
+        return list(
+            self.session.scalars(
+                statement.order_by(
+                    models.Release.released_at.desc(),
+                    models.Release.release_version,
+                )
+            )
+        )
 
     def get_active_release(self, service_id: str, environment: str) -> models.Release | None:
         return self.session.scalar(

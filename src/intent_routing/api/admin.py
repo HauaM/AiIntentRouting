@@ -16,8 +16,10 @@ from starlette.datastructures import UploadFile
 from intent_routing.db.models import (
     ApiKey,
     Intent,
+    IntentCatalogVersion,
     IntentExample,
     PolicyVersion,
+    Release,
     Service,
     TestResult,
 )
@@ -55,6 +57,7 @@ from intent_routing.testing.csv_runner import (
     run_csv_tests,
     summarize_test_run,
 )
+from intent_routing.versions import releases as release_service
 
 router = APIRouter(prefix="/admin/v1", tags=["admin"])
 
@@ -265,6 +268,14 @@ class PolicyVersionResponse(BaseModel):
     created_at: datetime
 
 
+class CatalogVersionResponse(BaseModel):
+    intent_catalog_version: str
+    service_id: str
+    snapshot: dict[str, Any]
+    created_by: str
+    created_at: datetime
+
+
 class TestRunCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -300,6 +311,34 @@ class TestRunResultResponse(BaseModel):
     confidence: float | None
     result: str
     reason: str
+
+
+class ReleaseCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    environment: str = Field(min_length=1)
+    policy_version: str = Field(min_length=1)
+    intent_catalog_version: str = Field(min_length=1)
+    test_run_id: str = Field(min_length=1)
+    rollback_target: str | None = None
+
+
+class ReleaseResponse(BaseModel):
+    release_version: str
+    service_id: str
+    environment: str
+    policy_version: str
+    intent_catalog_version: str
+    model_version: str
+    vector_index_version: str
+    test_dataset_version: str
+    test_run_id: str
+    pass_rate: float
+    risk_pass_rate: float
+    active: bool
+    released_by: str
+    released_at: datetime
+    rollback_target: str | None
 
 
 def get_admin_session() -> Iterator[Session]:
@@ -490,6 +529,18 @@ def _policy_version_response(policy_version: PolicyVersion) -> PolicyVersionResp
     )
 
 
+def _catalog_version_response(
+    catalog_version: IntentCatalogVersion,
+) -> CatalogVersionResponse:
+    return CatalogVersionResponse(
+        intent_catalog_version=catalog_version.intent_catalog_version,
+        service_id=catalog_version.service_id,
+        snapshot=catalog_version.snapshot,
+        created_by=catalog_version.created_by,
+        created_at=catalog_version.created_at,
+    )
+
+
 def _test_run_summary_response(summary: CsvTestRunSummary) -> TestRunSummaryResponse:
     return TestRunSummaryResponse(
         test_run_id=summary.test_run_id,
@@ -518,6 +569,26 @@ def _test_result_response(result: TestResult) -> TestRunResultResponse:
         confidence=float(result.confidence) if result.confidence is not None else None,
         result=result.result,
         reason=result.reason,
+    )
+
+
+def _release_response(release: Release) -> ReleaseResponse:
+    return ReleaseResponse(
+        release_version=release.release_version,
+        service_id=release.service_id,
+        environment=release.environment,
+        policy_version=release.policy_version,
+        intent_catalog_version=release.intent_catalog_version,
+        model_version=release.model_version,
+        vector_index_version=release.vector_index_version,
+        test_dataset_version=release.test_dataset_version,
+        test_run_id=release.test_run_id,
+        pass_rate=float(release.pass_rate),
+        risk_pass_rate=float(release.risk_pass_rate),
+        active=release.active,
+        released_by=release.released_by,
+        released_at=release.released_at,
+        rollback_target=release.rollback_target,
     )
 
 
@@ -645,6 +716,44 @@ def _example_after_state(example: IntentExample) -> dict[str, object]:
 
 def _policy_version_id(service_id: str, now: datetime) -> str:
     return f"pol-{service_id}-{now:%Y%m%d}-{uuid4().hex[:8]}"
+
+
+def _catalog_version_id(service_id: str, now: datetime) -> str:
+    return f"cat-{service_id}-{now:%Y%m%d}-{uuid4().hex[:8]}"
+
+
+def _catalog_snapshot(
+    repository: IntentRoutingRepository,
+    service_id: str,
+) -> dict[str, Any]:
+    intents: list[dict[str, object]] = []
+    for intent in repository.list_active_intents(service_id):
+        examples = [
+            {
+                "example_id": str(example.example_id),
+                "example_type": example.example_type,
+                "text_masked": example.text_masked,
+                "approved": example.approved,
+            }
+            for example in repository.list_approved_examples(
+                service_id,
+                intent.intent_id,
+            )
+        ]
+        intents.append(
+            {
+                "intent_id": intent.intent_id,
+                "domain": intent.domain,
+                "display_name": intent.display_name,
+                "description": intent.description,
+                "route_key": intent.route_key,
+                "status": intent.status,
+                "include_keywords": list(intent.include_keywords or []),
+                "exclude_keywords": list(intent.exclude_keywords or []),
+                "examples": examples,
+            }
+        )
+    return {"service_id": service_id, "intents": intents}
 
 
 @router.post(
@@ -992,6 +1101,50 @@ def get_policy_version(
     return _policy_version_response(persisted_policy_version)
 
 
+@router.post(
+    "/services/{service_id}/catalog-versions",
+    response_model=CatalogVersionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_catalog_version(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> CatalogVersionResponse:
+    _require_service_catalog_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    try:
+        catalog_version = repository.create_catalog_version(
+            intent_catalog_version=_catalog_version_id(service_id, now),
+            service_id=service_id,
+            snapshot=_catalog_snapshot(repository, service_id),
+            created_by=context.actor_id,
+            created_at=now,
+        )
+    except IntegrityError:
+        session.rollback()
+        _raise_conflict("Catalog version already exists.")
+
+    response = _catalog_version_response(catalog_version)
+    repository.insert_audit_log(
+        event_type="catalog_version.created",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="intent_catalog_version",
+        target_id=catalog_version.intent_catalog_version,
+        view_reason=None,
+        source_ip=None,
+        before_state=None,
+        after_state=response.model_dump(mode="json"),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
 @router.get(
     "/services/{service_id}/intents/{intent_id}/examples",
     response_model=list[ExampleResponse],
@@ -1162,3 +1315,195 @@ def get_test_run_results(
         _test_result_response(result)
         for result in repository.list_test_results(test_run_id)
     ]
+
+
+@router.post(
+    "/services/{service_id}/releases",
+    response_model=ReleaseResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_release(
+    service_id: str,
+    request: ReleaseCreateRequest,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ReleaseResponse:
+    _require_system_admin(context)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    try:
+        model_version = get_embedding_provider().model_version
+        release = release_service.create_release(
+            repository,
+            service_id=service_id,
+            environment=request.environment,
+            policy_version=request.policy_version,
+            intent_catalog_version=request.intent_catalog_version,
+            model_version=model_version,
+            test_run_id=request.test_run_id,
+            rollback_target=request.rollback_target,
+            released_by=context.actor_id,
+            now=now,
+        )
+    except release_service.ReleaseDependencyNotFoundError as exc:
+        session.rollback()
+        _raise_not_found(str(exc))
+    except release_service.ReleaseValidationError as exc:
+        session.rollback()
+        _raise_bad_request(str(exc))
+    except IntegrityError:
+        session.rollback()
+        _raise_conflict("Release version already exists.")
+    except Exception as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorEnvelope(
+                trace_id=_trace_id(),
+                error=ErrorInfo(
+                    code=ErrorCode.INTERNAL_ERROR,
+                    message="Release creation failed.",
+                    retryable=False,
+                ),
+            ).model_dump(mode="json", exclude_none=True),
+        ) from exc
+
+    repository.insert_audit_log(
+        event_type="release.created",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="release",
+        target_id=release.release_version,
+        view_reason=None,
+        source_ip=None,
+        before_state=None,
+        after_state=release_service.release_after_state(release),
+        created_at=now,
+    )
+    session.commit()
+    return _release_response(release)
+
+
+@router.get(
+    "/services/{service_id}/releases",
+    response_model=list[ReleaseResponse],
+)
+def list_releases(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    environment: str | None = None,
+) -> list[ReleaseResponse]:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    return [
+        _release_response(release)
+        for release in repository.list_releases(service_id, environment)
+    ]
+
+
+@router.get(
+    "/services/{service_id}/releases/active",
+    response_model=ReleaseResponse,
+)
+def get_active_release(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    environment: str = "prod",
+) -> ReleaseResponse:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    release = repository.get_active_release(service_id, environment)
+    if release is None:
+        _raise_not_found("Active release does not exist.")
+    return _release_response(release)
+
+
+@router.post(
+    "/services/{service_id}/releases/{release_version}:activate",
+    response_model=ReleaseResponse,
+)
+def activate_release(
+    service_id: str,
+    release_version: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ReleaseResponse:
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    try:
+        before_state, release = release_service.activate_release(
+            repository,
+            service_id=service_id,
+            release_version=release_version,
+        )
+    except release_service.ReleaseDependencyNotFoundError as exc:
+        session.rollback()
+        _raise_not_found(str(exc))
+
+    repository.insert_audit_log(
+        event_type="release.activated",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="release",
+        target_id=release.release_version,
+        view_reason=None,
+        source_ip=None,
+        before_state=before_state,
+        after_state=release_service.release_after_state(release),
+        created_at=datetime.now(UTC),
+    )
+    session.commit()
+    return _release_response(release)
+
+
+@router.post(
+    "/services/{service_id}/releases/{release_version}:rollback",
+    response_model=ReleaseResponse,
+)
+def rollback_release(
+    service_id: str,
+    release_version: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ReleaseResponse:
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    try:
+        release, before_state, rollback_target = release_service.rollback_release(
+            repository,
+            service_id=service_id,
+            release_version=release_version,
+        )
+    except release_service.ReleaseDependencyNotFoundError as exc:
+        session.rollback()
+        _raise_not_found(str(exc))
+    except release_service.ReleaseValidationError as exc:
+        session.rollback()
+        _raise_bad_request(str(exc))
+
+    after_state = release_service.release_after_state(rollback_target)
+    after_state["rollback_from"] = release.release_version
+    repository.insert_audit_log(
+        event_type="release.rollback",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="release",
+        target_id=release.release_version,
+        view_reason=None,
+        source_ip=None,
+        before_state=before_state,
+        after_state=after_state,
+        created_at=datetime.now(UTC),
+    )
+    session.commit()
+    return _release_response(rollback_target)
