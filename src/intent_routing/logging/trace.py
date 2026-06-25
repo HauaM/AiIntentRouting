@@ -194,7 +194,11 @@ class RuntimeTraceLogger:
         latency_ms: int,
         query_raw: str | None,
         decision: str | None = None,
+        encrypt_raw_query: bool = False,
     ) -> None:
+        encrypted_query = None
+        if encrypt_raw_query and query_raw is not None:
+            encrypted_query = _raw_text_encryptor().encrypt_text(query_raw)
         self._repository.insert_runtime_log(
             trace_id=trace_id,
             request_id=request_id,
@@ -224,14 +228,28 @@ class RuntimeTraceLogger:
             http_status=http_status,
             retryable=error.retryable,
             latency_ms=latency_ms,
-            query_raw_ciphertext=None,
-            query_raw_encrypted_dek=None,
-            query_raw_encrypted_dek_iv=None,
-            query_raw_encrypted_dek_auth_tag=None,
-            query_raw_key_id=None,
-            query_raw_iv=None,
-            query_raw_auth_tag=None,
-            query_raw_algorithm=None,
+            query_raw_ciphertext=(
+                encrypted_query.ciphertext if encrypted_query is not None else None
+            ),
+            query_raw_encrypted_dek=(
+                encrypted_query.encrypted_dek if encrypted_query is not None else None
+            ),
+            query_raw_encrypted_dek_iv=(
+                encrypted_query.encrypted_dek_iv if encrypted_query is not None else None
+            ),
+            query_raw_encrypted_dek_auth_tag=(
+                encrypted_query.encrypted_dek_auth_tag
+                if encrypted_query is not None
+                else None
+            ),
+            query_raw_key_id=(encrypted_query.key_id if encrypted_query is not None else None),
+            query_raw_iv=(encrypted_query.iv if encrypted_query is not None else None),
+            query_raw_auth_tag=(
+                encrypted_query.auth_tag if encrypted_query is not None else None
+            ),
+            query_raw_algorithm=(
+                encrypted_query.algorithm if encrypted_query is not None else None
+            ),
             query_masked=mask_pii(query_raw) if query_raw is not None else None,
             created_at=datetime.now(UTC),
         )

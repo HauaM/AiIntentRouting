@@ -106,11 +106,9 @@ def intent_route(
             allowed_intents=auth.allowed_intents,
             allowed_route_keys=auth.allowed_route_keys,
         )
-        embedding_provider = _resolve_embedding_provider()
         engine = _routing_engine(
             repository=repository,
             release=release,
-            embedding_provider=embedding_provider,
             example_search=example_search,
         )
         decision = engine.route(
@@ -205,7 +203,6 @@ def _routing_engine(
     *,
     repository: IntentRoutingRepository,
     release: ActiveReleaseContext,
-    embedding_provider: EmbeddingProvider,
     example_search: ExampleSearch,
 ) -> RoutingEngine:
     risk_policy_config = release.policy.get("risk_policy")
@@ -221,7 +218,6 @@ def _routing_engine(
         ),
         semantic_search=lambda query, candidates, release: _semantic_matches(
             repository,
-            embedding_provider=embedding_provider,
             example_search=example_search,
             service_id=release.service_id or "",
             query=query,
@@ -328,21 +324,9 @@ def _load_candidates(
     service_id: str,
     release: ActiveReleaseContext,
 ) -> list[IntentCandidate]:
+    del repository, service_id
     snapshot = release.catalog_snapshot.get("intents")
-    candidates = _candidates_from_snapshot(snapshot)
-    if candidates:
-        return candidates
-    return [
-        IntentCandidate(
-            intent_id=intent.intent_id,
-            display_name=intent.display_name,
-            domain=intent.domain,
-            route_key=intent.route_key,
-            include_keywords=tuple(intent.include_keywords or []),
-            exclude_keywords=tuple(intent.exclude_keywords or []),
-        )
-        for intent in repository.list_active_intents(service_id)
-    ]
+    return _candidates_from_snapshot(snapshot)
 
 
 def _candidates_from_snapshot(snapshot: object) -> list[IntentCandidate]:
@@ -387,7 +371,6 @@ def _string_list(raw_values: object) -> list[str]:
 def _semantic_matches(
     repository: IntentRoutingRepository,
     *,
-    embedding_provider: EmbeddingProvider,
     example_search: ExampleSearch,
     service_id: str,
     query: str,
@@ -396,6 +379,7 @@ def _semantic_matches(
 ) -> Mapping[str, SemanticMatch]:
     if not candidates:
         return {}
+    embedding_provider = _resolve_embedding_provider()
 
     try:
         embeddings = embedding_provider.embed_texts(
@@ -552,6 +536,7 @@ def _log_and_raise(
             http_status=http_status,
             latency_ms=latency_ms,
             query_raw=query,
+            encrypt_raw_query=error.layer != "runtime_logging",
         )
         session.commit()
         logged = True
