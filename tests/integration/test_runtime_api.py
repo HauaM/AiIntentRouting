@@ -483,6 +483,41 @@ def test_intent_route_confident_query_returns_intent_release_and_runtime_log(
     assert persisted.latency_ms >= 0
 
 
+def test_dify_fixture_contract(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch)
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(secret, request_id="dify-workflow-run-001"),
+        json=_dify_request(),
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["trace_id"]
+    assert body["decision"] in {
+        "confident",
+        "clarify",
+        "fallback",
+        "off_topic",
+        "risk",
+        "unauthorized",
+    }
+    assert isinstance(body["confidence"], float)
+    assert body["release_version"] == RELEASE_VERSION
+
+    if body["decision"] == "confident":
+        assert body["intent_id"]
+        assert body["route_key"]
+    elif body["decision"] == "clarify":
+        assert body["clarify_question"]
+        assert body["clarify"]["candidates"]
+
+
 def test_intent_route_clarify_query_returns_question_and_up_to_three_candidates(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -1116,11 +1151,12 @@ def _runtime_headers(secret: str, *, request_id: str | None = None) -> dict[str,
 
 def _dify_request(
     *,
-    query: str,
+    query: str | None = None,
     user_context: dict[str, Any] | None = None,
 ) -> dict[str, object]:
     payload = cast("dict[str, object]", json.loads(QUERY_FIXTURE.read_text()))
-    payload["query"] = query
+    if query is not None:
+        payload["query"] = query
     if user_context is not None:
         payload["user_context"] = user_context
     return payload

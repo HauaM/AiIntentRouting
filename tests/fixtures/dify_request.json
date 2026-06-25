@@ -3,6 +3,7 @@
   "channel": "chat",
   "user_context": {
     "conversation_id": "dify-conversation-001",
-    "end_user_id": "dify-user-001"
+    "end_user_id": "dify-user-001",
+    "workflow_run_id": "dify-workflow-run-001"
   }
 }
