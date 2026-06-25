@@ -17,6 +17,46 @@ def test_healthz_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_openapi_documents_validation_errors_as_error_envelope() -> None:
+    schema = create_app().openapi()
+
+    validation_response = schema["paths"]["/v1/intent-route"]["post"]["responses"]["422"]
+    validation_schema = validation_response["content"]["application/json"]["schema"]
+
+    assert validation_schema == {"$ref": "#/components/schemas/ErrorEnvelope"}
+    assert "ErrorEnvelope" in schema["components"]["schemas"]
+    assert "ErrorInfo" in schema["components"]["schemas"]
+    assert "HTTPValidationError" not in schema["components"]["schemas"]
+    assert "ValidationError" not in schema["components"]["schemas"]
+
+
+def test_openapi_intent_patch_request_does_not_document_explicit_nulls() -> None:
+    schema = create_app().openapi()
+    patch_schema = schema["components"]["schemas"]["IntentPatchRequest"]
+
+    for field_name in (
+        "domain",
+        "display_name",
+        "description",
+        "route_key",
+        "status",
+        "include_keywords",
+        "exclude_keywords",
+    ):
+        field_schema = patch_schema["properties"][field_name]
+        assert not _contains_null_schema(field_schema), field_name
+
+
+def _contains_null_schema(schema: object) -> bool:
+    if isinstance(schema, dict):
+        if schema.get("type") == "null":
+            return True
+        return any(_contains_null_schema(value) for value in schema.values())
+    if isinstance(schema, list):
+        return any(_contains_null_schema(item) for item in schema)
+    return False
+
+
 def _record_for(
     secret: str,
     *,
@@ -220,6 +260,30 @@ def test_intent_route_malformed_stored_hash_returns_error_envelope() -> None:
     assert body["status"] == "error"
     assert body["error"]["code"] == "AUTHENTICATION_FAILED"
     assert "detail" not in body
+
+
+def test_intent_route_invalid_body_returns_sanitized_error_envelope_with_request_id() -> None:
+    secret = "valid-runtime-secret"
+    client = _client_with_key_lookup(lambda _key_id: _record_for(secret))
+    raw_text = "전화 010-1234-5678 확인"
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_headers(secret, **{"X-Request-Id": "req-validation-1"}),
+        json={
+            "query": {"raw": raw_text},
+            "user_context": {},
+        },
+    )
+
+    body = response.json()
+    assert response.status_code == 422
+    assert body["status"] == "error"
+    assert body["request_id"] == "req-validation-1"
+    assert body["error"]["code"] == "INVALID_REQUEST"
+    assert "detail" not in body
+    assert "010-1234-5678" not in response.text
+    assert raw_text not in response.text
 
 
 def test_intent_route_valid_key_invalid_service_returns_scope_denied() -> None:

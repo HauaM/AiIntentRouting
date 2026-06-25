@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from datetime import datetime
 from typing import Any, TypeVar
+from uuid import UUID
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -45,6 +46,22 @@ class IntentRoutingRepository:
     def create_intent(self, **values: Any) -> models.Intent:
         return self._add_and_flush(models.Intent(**values))
 
+    def get_intent(self, service_id: str, intent_id: str) -> models.Intent | None:
+        return self.session.scalar(
+            select(models.Intent)
+            .where(models.Intent.service_id == service_id)
+            .where(models.Intent.intent_id == intent_id)
+        )
+
+    def list_intents(self, service_id: str) -> list[models.Intent]:
+        return list(
+            self.session.scalars(
+                select(models.Intent)
+                .where(models.Intent.service_id == service_id)
+                .order_by(models.Intent.intent_id)
+            )
+        )
+
     def list_active_intents(self, service_id: str) -> list[models.Intent]:
         return list(
             self.session.scalars(
@@ -55,8 +72,40 @@ class IntentRoutingRepository:
             )
         )
 
+    def update_intent(self, intent: models.Intent, **values: Any) -> models.Intent:
+        for key, value in values.items():
+            setattr(intent, key, value)
+        self.session.flush()
+        return intent
+
     def create_example(self, **values: Any) -> models.IntentExample:
         return self._add_and_flush(models.IntentExample(**values))
+
+    def get_example(
+        self,
+        service_id: str,
+        example_id: UUID,
+    ) -> models.IntentExample | None:
+        return self.session.scalar(
+            select(models.IntentExample)
+            .where(models.IntentExample.service_id == service_id)
+            .where(models.IntentExample.example_id == example_id)
+        )
+
+    def list_examples(self, service_id: str, intent_id: str) -> list[models.IntentExample]:
+        return list(
+            self.session.scalars(
+                select(models.IntentExample)
+                .where(models.IntentExample.service_id == service_id)
+                .where(models.IntentExample.intent_id == intent_id)
+                .order_by(models.IntentExample.created_at, models.IntentExample.example_id)
+            )
+        )
+
+    def approve_example(self, example: models.IntentExample) -> models.IntentExample:
+        example.approved = True
+        self.session.flush()
+        return example
 
     def create_policy_version(self, **values: Any) -> models.PolicyVersion:
         return self._add_and_flush(models.PolicyVersion(**values))

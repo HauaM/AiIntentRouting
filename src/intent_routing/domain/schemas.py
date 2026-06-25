@@ -1,8 +1,20 @@
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from intent_routing.domain.enums import Decision, ErrorCode, RiskType
+
+ROUTE_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){2,3}$")
+ENVIRONMENT_ROUTE_KEY_SEGMENTS = frozenset({"dev", "staging", "prod", "production"})
+
+
+def validate_route_key(route_key: str) -> str:
+    if ROUTE_KEY_PATTERN.fullmatch(route_key) is None:
+        raise ValueError("route_key must contain 3 or 4 lowercase dot-separated segments")
+    if ENVIRONMENT_ROUTE_KEY_SEGMENTS.intersection(route_key.split(".")):
+        raise ValueError("route_key must not contain environment names as segments")
+    return route_key
 
 
 class RuntimeRequest(BaseModel):
