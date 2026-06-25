@@ -75,11 +75,13 @@ def parse_test_cases_csv(csv_text: str) -> list[ParsedTestCase]:
     cases: list[ParsedTestCase] = []
     seen_case_ids: set[str] = set()
     for row_number, row in enumerate(reader, start=2):
+        if None in row or set(row) != set(CSV_COLUMNS):
+            raise CsvValidationError(f"row {row_number}: CSV columns must match header")
         case_id = _required(row.get("case_id"), row_number, "case_id")
         query = _required(row.get("query"), row_number, "query")
         raw_expected_intent = (row.get("expected_intent") or "").strip()
         case_type = (row.get("case_type") or "").strip()
-        memo = row.get("memo") or ""
+        memo = _required(row.get("memo"), row_number, "memo")
 
         if case_id in seen_case_ids:
             raise CsvValidationError(f"row {row_number}: duplicate case_id {case_id}")

@@ -58,6 +58,30 @@ def test_csv_columns_must_match_contract_exactly() -> None:
         parse_test_cases_csv(csv_text)
 
 
+def test_csv_rejects_rows_with_extra_fields() -> None:
+    csv_text = "\n".join(
+        [
+            "case_id,query,expected_intent,case_type,memo",
+            "C001,hello,it_api_timeout,positive,memo,EXTRA",
+        ]
+    )
+
+    with pytest.raises(CsvValidationError, match="columns"):
+        parse_test_cases_csv(csv_text)
+
+
+def test_csv_rejects_blank_memo() -> None:
+    csv_text = "\n".join(
+        [
+            "case_id,query,expected_intent,case_type,memo",
+            "C001,hello,it_api_timeout,positive,   ",
+        ]
+    )
+
+    with pytest.raises(CsvValidationError, match="memo"):
+        parse_test_cases_csv(csv_text)
+
+
 def test_csv_case_type_mapping_and_expected_intent_validation() -> None:
     cases = parse_test_cases_csv(VALID_CSV)
 
