@@ -20,7 +20,7 @@ def validate_route_key(route_key: str) -> str:
 class RuntimeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    query: str
+    query: str = Field(min_length=1, max_length=4096)
     channel: str | None = None
     user_context: dict[str, Any] = Field(default_factory=dict)
 

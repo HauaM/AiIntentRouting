@@ -1,0 +1,8 @@
+{
+  "query": "api timeout gateway incident latency",
+  "channel": "chat",
+  "user_context": {
+    "conversation_id": "dify-conversation-001",
+    "end_user_id": "dify-user-001"
+  }
+}

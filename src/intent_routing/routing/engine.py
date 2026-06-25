@@ -20,10 +20,25 @@ from intent_routing.routing.scoring import (
 @dataclass(frozen=True, slots=True)
 class ActiveReleaseContext:
     release_version: str
+    service_id: str | None = None
+    policy_version: str | None = None
+    intent_catalog_version: str | None = None
+    model_version: str | None = None
+    vector_index_version: str | None = None
     threshold_preset: str = "balanced"
     threshold: float | None = None
+    threshold_value: float | None = None
     clarify_margin: float = 0.08
+    min_candidate_score: float = 0.55
+    fallback_score: float = 0.45
+    policy: Mapping[str, object] = field(default_factory=dict)
+    catalog_snapshot: Mapping[str, object] = field(default_factory=dict)
+    max_input_tokens: int = 256
     off_topic_policy: ServiceOffTopicPolicy | None = None
+
+    def __post_init__(self) -> None:
+        if self.threshold is None and self.threshold_value is not None:
+            object.__setattr__(self, "threshold", self.threshold_value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +139,8 @@ class RoutingEngine:
                 preset=route_input.release.threshold_preset,
                 threshold=route_input.release.threshold,
                 clarify_margin=route_input.release.clarify_margin,
+                min_candidate_score=route_input.release.min_candidate_score,
+                fallback_score=route_input.release.fallback_score,
             )
         )
         return composer.compose(

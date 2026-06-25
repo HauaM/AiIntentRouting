@@ -1,28 +1,21 @@
-from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
-from uuid import uuid4
+from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from intent_routing.api.admin import router as admin_router
-from intent_routing.api.dependencies import AuthContext, require_api_key
-from intent_routing.domain.enums import Decision, ErrorCode
-from intent_routing.domain.schemas import (
-    ErrorEnvelope,
-    ErrorInfo,
-    FallbackPolicy,
-    RuntimeRequest,
-    RuntimeResponse,
-)
-from intent_routing.security.api_keys import ApiKeyRecord, check_scope
+from intent_routing.api.runtime import router as runtime_router
+from intent_routing.domain.enums import ErrorCode
+from intent_routing.domain.schemas import ErrorEnvelope, ErrorInfo, FallbackPolicy
+from intent_routing.logging.trace import build_trace_id
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Intent Routing Service")
     app.include_router(admin_router)
+    app.include_router(runtime_router)
 
     @app.exception_handler(HTTPException)
     def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
@@ -39,7 +32,7 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=422,
             content=ErrorEnvelope(
-                trace_id=f"irt-{uuid4().hex}",
+                trace_id=build_trace_id(),
                 request_id=request_id if request_id else None,
                 error=ErrorInfo(
                     code=ErrorCode.INVALID_REQUEST,
@@ -52,46 +45,6 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
-
-    @app.post("/v1/intent-route", response_model=RuntimeResponse)
-    def intent_route(
-        request: RuntimeRequest,
-        auth: Annotated[AuthContext, Depends(require_api_key)],
-    ) -> RuntimeResponse:
-        trace_id = f"irt-{uuid4().hex}"
-        candidate_route_key, candidate_intent_id = _candidate_scope(request.user_context)
-        if candidate_route_key is not None or candidate_intent_id is not None:
-            scope_record = _auth_scope_record(auth)
-            scope_result = check_scope(
-                scope_record,
-                app_id=auth.app_id,
-                service_id=auth.service_id,
-                route_key=candidate_route_key,
-                intent_id=candidate_intent_id,
-            )
-            if not scope_result.allowed:
-                return RuntimeResponse(
-                    trace_id=trace_id,
-                    request_id=auth.request_id,
-                    decision=Decision.unauthorized,
-                    fallback_policy=FallbackPolicy(
-                        type="client_fallback",
-                        retryable=False,
-                        recommended_action="deny_route",
-                    ),
-                )
-
-        return RuntimeResponse(
-            trace_id=trace_id,
-            request_id=auth.request_id,
-            decision=Decision.fallback,
-            fallback_policy=FallbackPolicy(
-                type="client_fallback",
-                retryable=True,
-                recommended_action="route_engine_pending",
-                message="Runtime routing is not implemented yet.",
-            ),
-        )
 
     def custom_openapi() -> dict[str, Any]:
         if app.openapi_schema:
@@ -180,28 +133,3 @@ def _remove_null_schema(schema: dict[str, Any]) -> None:
             for item in value:
                 if isinstance(item, dict):
                     _remove_null_schema(item)
-
-
-def _candidate_scope(user_context: dict[str, Any]) -> tuple[str | None, str | None]:
-    route_key = user_context.get("candidate_route_key")
-    intent_id = user_context.get("candidate_intent_id")
-    return (
-        route_key if isinstance(route_key, str) else None,
-        intent_id if isinstance(intent_id, str) else None,
-    )
-
-
-def _auth_scope_record(auth: AuthContext) -> ApiKeyRecord:
-    return ApiKeyRecord(
-        key_id=auth.key_id,
-        key_hash="",
-        key_fingerprint="",
-        environment="",
-        app_id=auth.app_id,
-        service_id=auth.service_id,
-        allowed_intents=auth.allowed_intents,
-        allowed_route_keys=auth.allowed_route_keys,
-        status="active",
-        expires_at=datetime.now(UTC) + timedelta(seconds=1),
-        revoked_at=None,
-    )

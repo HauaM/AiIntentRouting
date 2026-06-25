@@ -184,6 +184,20 @@ class IntentRoutingRepository:
     def create_catalog_version(self, **values: Any) -> models.IntentCatalogVersion:
         return self._add_and_flush(models.IntentCatalogVersion(**values))
 
+    def get_catalog_version(
+        self,
+        service_id: str,
+        intent_catalog_version: str,
+    ) -> models.IntentCatalogVersion | None:
+        return self.session.scalar(
+            select(models.IntentCatalogVersion)
+            .where(models.IntentCatalogVersion.service_id == service_id)
+            .where(
+                models.IntentCatalogVersion.intent_catalog_version
+                == intent_catalog_version
+            )
+        )
+
     def create_test_dataset(
         self,
         dataset_values: dict[str, Any],
@@ -218,6 +232,9 @@ class IntentRoutingRepository:
             )
         self.session.flush()
         return test_run
+
+    def get_test_run(self, test_run_id: str) -> models.TestRun | None:
+        return self.session.get(models.TestRun, test_run_id)
 
     def create_release(self, **values: Any) -> models.Release:
         return self._add_and_flush(models.Release(**values))
