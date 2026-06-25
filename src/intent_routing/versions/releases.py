@@ -114,6 +114,14 @@ def create_release(
         test_run_id=test_run_id,
         rollback_target=rollback_target,
     )
+    for lock_key in sorted(
+        [
+            f"release-version:{service_id}:{now:%Y%m%d}",
+            f"vector-index-version:{intent_catalog_version}:{model_version}",
+        ]
+    ):
+        repository.acquire_advisory_xact_lock(lock_key)
+
     vector_index_version = vector_index_version_id(
         repository,
         intent_catalog_version=intent_catalog_version,

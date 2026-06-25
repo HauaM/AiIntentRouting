@@ -482,6 +482,124 @@ def test_release_creation_succeeds_when_gate_and_versions_match(
     )
 
 
+def test_release_creation_acquires_sequence_locks_in_deterministic_order(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_id, policy_version, catalog_version, client = _release_setup(
+        db_session,
+        monkeypatch,
+    )
+    monkeypatch.setattr(
+        "intent_routing.api.admin.get_embedding_provider",
+        lambda: _ReleaseEmbeddingProvider("emb-fake/v1"),
+    )
+    test_run_id = _seed_test_run(
+        db_session,
+        service_id=service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        gate_passed=True,
+        risk_pass_rate=Decimal("1.0"),
+    )
+    acquired_lock_keys: list[str] = []
+
+    def capture_lock(
+        self: IntentRoutingRepository,
+        lock_key: str,
+    ) -> None:
+        del self
+        acquired_lock_keys.append(lock_key)
+
+    monkeypatch.setattr(
+        IntentRoutingRepository,
+        "acquire_advisory_xact_lock",
+        capture_lock,
+    )
+
+    response = _create_release_response(
+        client,
+        service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        test_run_id=test_run_id,
+    )
+
+    body = response.json()
+    released_day = _date_segment(body["released_at"])
+    expected_lock_keys = sorted(
+        [
+            f"release-version:{service_id}:{released_day}",
+            f"vector-index-version:{catalog_version}:emb-fake/v1",
+        ]
+    )
+    assert response.status_code == 201
+    assert acquired_lock_keys == expected_lock_keys
+
+
+def test_release_creation_strips_environment_whitespace(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_id, policy_version, catalog_version, client = _release_setup(
+        db_session,
+        monkeypatch,
+    )
+    test_run_id = _seed_test_run(
+        db_session,
+        service_id=service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        gate_passed=True,
+        risk_pass_rate=Decimal("1.0"),
+    )
+
+    response = _create_release_response(
+        client,
+        service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        test_run_id=test_run_id,
+        environment=" prod ",
+    )
+
+    assert response.status_code == 201
+    assert response.json()["environment"] == "prod"
+
+
+def test_release_creation_rejects_environment_mismatch(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_id, policy_version, catalog_version, client = _release_setup(
+        db_session,
+        monkeypatch,
+    )
+    test_run_id = _seed_test_run(
+        db_session,
+        service_id=service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        gate_passed=True,
+        risk_pass_rate=Decimal("1.0"),
+    )
+
+    response = _create_release_response(
+        client,
+        service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        test_run_id=test_run_id,
+        environment="staging",
+    )
+
+    body = response.json()
+    assert response.status_code == 400
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "INVALID_REQUEST"
+    assert body["error"]["message"] == "Release environment must match service environment."
+
+
 def test_release_activation_deactivates_previous_active_release(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -988,12 +1106,13 @@ def _create_release_response(
     intent_catalog_version: str,
     test_run_id: str,
     rollback_target: str | None = None,
+    environment: str = "prod",
 ) -> Any:
     return client.post(
         f"/admin/v1/services/{service_id}/releases",
         headers=_admin_headers(),
         json={
-            "environment": "prod",
+            "environment": environment,
             "policy_version": policy_version,
             "intent_catalog_version": intent_catalog_version,
             "test_run_id": test_run_id,

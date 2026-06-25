@@ -322,6 +322,16 @@ class ReleaseCreateRequest(BaseModel):
     test_run_id: str = Field(min_length=1)
     rollback_target: str | None = None
 
+    @field_validator("environment", mode="before")
+    @classmethod
+    def environment_must_not_be_blank(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("release environment must not be blank")
+            return stripped
+        return value
+
 
 class ReleaseResponse(BaseModel):
     release_version: str
@@ -1331,7 +1341,11 @@ def create_release(
     _require_system_admin(context)
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
-    _ensure_service_exists(repository, service_id)
+    service = repository.get_service(service_id)
+    if service is None:
+        _raise_not_found("Service does not exist.")
+    if request.environment != service.environment:
+        _raise_bad_request("Release environment must match service environment.")
     try:
         model_version = get_embedding_provider().model_version
         release = release_service.create_release(

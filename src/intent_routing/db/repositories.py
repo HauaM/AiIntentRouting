@@ -264,6 +264,12 @@ class IntentRoutingRepository:
     def create_release(self, **values: Any) -> models.Release:
         return self._add_and_flush(models.Release(**values))
 
+    def acquire_advisory_xact_lock(self, lock_key: str) -> None:
+        self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint)"),
+            {"lock_key": lock_key},
+        )
+
     def create_vector_index_version(self, **values: Any) -> models.VectorIndexVersion:
         return self._add_and_flush(models.VectorIndexVersion(**values))
 
