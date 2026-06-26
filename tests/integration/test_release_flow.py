@@ -13,6 +13,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session
 
 from intent_routing.api.admin import get_admin_session
@@ -786,152 +787,166 @@ def test_sprint_zero_vertical_slice(
     monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
     monkeypatch.setenv("INTENT_ROUTING_ENVIRONMENT", "prod")
     clear_embedding_provider_cache()
-    _purge_service_rows(db_session, SPRINT_ZERO_SERVICE_ID)
-    client = _client(db_session)
+    lock_connection = _acquire_sprint_zero_lock(db_session)
+    try:
+        _purge_service_rows(db_session, SPRINT_ZERO_SERVICE_ID)
+        client = _client(db_session)
 
-    _create_service(client, SPRINT_ZERO_SERVICE_ID)
-    api_key_response = client.post(
-        "/admin/v1/api-keys",
-        headers=_admin_headers(),
-        json={
-            "service_id": SPRINT_ZERO_SERVICE_ID,
-            "environment": "prod",
-            "app_id": "dify-platform",
-            "allowed_intents": [],
-            "allowed_route_keys": [],
-            "expires_in_days": 30,
-        },
-    )
-    api_key_body = api_key_response.json()
-    assert api_key_response.status_code == 201
+        _create_service(client, SPRINT_ZERO_SERVICE_ID)
+        api_key_response = client.post(
+            "/admin/v1/api-keys",
+            headers=_admin_headers(),
+            json={
+                "service_id": SPRINT_ZERO_SERVICE_ID,
+                "environment": "prod",
+                "app_id": "dify-platform",
+                "allowed_intents": [],
+                "allowed_route_keys": [],
+                "expires_in_days": 30,
+            },
+        )
+        assert api_key_response.status_code == 201
+        api_key_body = api_key_response.json()
 
-    intent_examples = {
-        "it_api_timeout": {
-            "route_key": "it.helpdesk.api_timeout",
-            "include_keywords": ["api", "timeout", "500", "에러"],
-            "positive": [
-                "API Timeout이 발생해요",
-                "보험금 청구 화면에서 500 에러가 나요",
-                "api timeout gateway incident latency",
-            ],
-            "negative": ["비밀번호 재설정 요청", "계정 잠금 해제 필요"],
-        },
-        "it_password_reset": {
-            "route_key": "it.helpdesk.password_reset",
-            "include_keywords": ["password", "비밀번호", "reset", "재설정"],
-            "positive": ["비밀번호 재설정 요청", "password reset help"],
-            "negative": ["API Timeout이 발생해요", "계정 잠금 해제 필요"],
-        },
-        "it_account_unlock": {
-            "route_key": "it.helpdesk.account_unlock",
-            "include_keywords": ["account", "unlock", "계정", "잠금"],
-            "positive": ["계정 잠금 해제 필요", "account unlock request"],
-            "negative": ["API Timeout이 발생해요", "비밀번호 재설정 요청"],
-        },
-    }
-    for intent_id, config in intent_examples.items():
-        _create_intent(
+        intent_examples = {
+            "it_api_timeout": {
+                "route_key": "it.helpdesk.api_timeout",
+                "include_keywords": ["api", "timeout", "500", "에러"],
+                "positive": [
+                    "API Timeout이 발생해요",
+                    "보험금 청구 화면에서 500 에러가 나요",
+                    "api timeout gateway incident latency",
+                ],
+                "negative": ["비밀번호 재설정 요청", "계정 잠금 해제 필요"],
+            },
+            "it_password_reset": {
+                "route_key": "it.helpdesk.password_reset",
+                "include_keywords": ["password", "비밀번호", "reset", "재설정"],
+                "positive": ["비밀번호 재설정 요청", "password reset help"],
+                "negative": ["API Timeout이 발생해요", "계정 잠금 해제 필요"],
+            },
+            "it_account_unlock": {
+                "route_key": "it.helpdesk.account_unlock",
+                "include_keywords": ["account", "unlock", "계정", "잠금"],
+                "positive": ["계정 잠금 해제 필요", "account unlock request"],
+                "negative": ["API Timeout이 발생해요", "비밀번호 재설정 요청"],
+            },
+        }
+        expected_example_count = _sprint_zero_example_count(intent_examples)
+        for intent_id, config in intent_examples.items():
+            _create_intent(
+                client,
+                SPRINT_ZERO_SERVICE_ID,
+                intent_id=intent_id,
+                route_key=str(config["route_key"]),
+                include_keywords=cast("list[str]", config["include_keywords"]),
+            )
+            _patch_intent(client, SPRINT_ZERO_SERVICE_ID, intent_id, {"status": "active"})
+            for example_type in ("positive", "negative"):
+                for text_raw in cast("list[str]", config[example_type]):
+                    example = _create_example(
+                        client,
+                        SPRINT_ZERO_SERVICE_ID,
+                        intent_id,
+                        text_raw,
+                        example_type=example_type,
+                    )
+                    _approve_example(
+                        client,
+                        SPRINT_ZERO_SERVICE_ID,
+                        example["example_id"],
+                    )
+
+        _assert_approved_examples_have_fake_embeddings(
+            db_session,
+            SPRINT_ZERO_SERVICE_ID,
+            expected_count=expected_example_count,
+        )
+        policy_version = _create_sprint_zero_policy_version(client, SPRINT_ZERO_SERVICE_ID)
+        catalog_version = _create_catalog_version(client, SPRINT_ZERO_SERVICE_ID)
+        test_run_body = _run_sprint_zero_csv(
             client,
             SPRINT_ZERO_SERVICE_ID,
-            intent_id=intent_id,
-            route_key=str(config["route_key"]),
-            include_keywords=cast("list[str]", config["include_keywords"]),
+            policy_version=policy_version,
+            catalog_version=catalog_version,
         )
-        _patch_intent(client, SPRINT_ZERO_SERVICE_ID, intent_id, {"status": "active"})
-        for example_type in ("positive", "negative"):
-            for text_raw in cast("list[str]", config[example_type]):
-                example = _create_example(
-                    client,
-                    SPRINT_ZERO_SERVICE_ID,
-                    intent_id,
-                    text_raw,
-                    example_type=example_type,
-                )
-                _approve_example(
-                    client,
-                    SPRINT_ZERO_SERVICE_ID,
-                    example["example_id"],
-                )
+        assert test_run_body["gate_passed"] is True
+        assert test_run_body["pass_rate"] >= 0.70
 
-    _assert_approved_examples_have_fake_embeddings(db_session, SPRINT_ZERO_SERVICE_ID)
-    policy_version = _create_sprint_zero_policy_version(client, SPRINT_ZERO_SERVICE_ID)
-    catalog_version = _create_catalog_version(client, SPRINT_ZERO_SERVICE_ID)
-    test_run_body = _run_sprint_zero_csv(
-        client,
-        SPRINT_ZERO_SERVICE_ID,
-        policy_version=policy_version,
-        catalog_version=catalog_version,
-    )
-    assert test_run_body["gate_passed"] is True
-    assert test_run_body["pass_rate"] >= 0.70
+        release_response = _create_release_response(
+            client,
+            SPRINT_ZERO_SERVICE_ID,
+            policy_version=policy_version,
+            intent_catalog_version=catalog_version,
+            test_run_id=str(test_run_body["test_run_id"]),
+        )
+        release_body = release_response.json()
+        assert release_response.status_code == 201
+        release_version = str(release_body["release_version"])
+        activate_response = client.post(
+            f"/admin/v1/services/{SPRINT_ZERO_SERVICE_ID}/releases/{release_version}:activate",
+            headers=_admin_headers(),
+        )
+        assert activate_response.status_code == 200
+        assert activate_response.json()["active"] is True
 
-    release_response = _create_release_response(
-        client,
-        SPRINT_ZERO_SERVICE_ID,
-        policy_version=policy_version,
-        intent_catalog_version=catalog_version,
-        test_run_id=str(test_run_body["test_run_id"]),
-    )
-    release_body = release_response.json()
-    assert release_response.status_code == 201
-    release_version = str(release_body["release_version"])
-    activate_response = client.post(
-        f"/admin/v1/services/{SPRINT_ZERO_SERVICE_ID}/releases/{release_version}:activate",
-        headers=_admin_headers(),
-    )
-    assert activate_response.status_code == 200
-    assert activate_response.json()["active"] is True
+        raw_query = "api timeout gateway incident latency 전화 010-1234-5678"
+        route_response = client.post(
+            "/v1/intent-route",
+            headers={
+                "Authorization": f"Bearer {api_key_body['api_key']}",
+                "X-Key-Id": api_key_body["key_id"],
+                "X-App-Id": "dify-platform",
+                "X-Service-Id": SPRINT_ZERO_SERVICE_ID,
+                "X-Request-Id": "req-sprint-zero-vertical-slice",
+            },
+            json=_dify_request(query=raw_query),
+        )
+        route_body = route_response.json()
+        assert route_response.status_code == 200
+        assert route_body["trace_id"]
+        assert route_body["decision"] == "confident"
+        assert route_body["route_key"] == "it.helpdesk.api_timeout"
+        assert route_body["release_version"] == release_version
 
-    raw_query = "api timeout gateway incident latency 전화 010-1234-5678"
-    route_response = client.post(
-        "/v1/intent-route",
-        headers={
-            "Authorization": f"Bearer {api_key_body['api_key']}",
-            "X-Key-Id": api_key_body["key_id"],
-            "X-App-Id": "dify-platform",
-            "X-Service-Id": SPRINT_ZERO_SERVICE_ID,
-            "X-Request-Id": "req-sprint-zero-vertical-slice",
-        },
-        json=_dify_request(query=raw_query),
-    )
-    route_body = route_response.json()
-    assert route_response.status_code == 200
-    assert route_body["trace_id"]
-    assert route_body["decision"] == "confident"
-    assert route_body["route_key"] == "it.helpdesk.api_timeout"
-    assert route_body["release_version"] == release_version
+        trace_id = str(route_body["trace_id"])
+        log_response = client.get(
+            f"/admin/v1/services/{SPRINT_ZERO_SERVICE_ID}/runtime-logs/{trace_id}",
+            headers=_operator_headers(SPRINT_ZERO_SERVICE_ID),
+        )
+        log_body = log_response.json()
+        serialized_log_body = json.dumps(log_body, ensure_ascii=False)
+        assert log_response.status_code == 200
+        assert log_body["trace_id"] == trace_id
+        assert log_body["query_masked"] == (
+            "api timeout gateway incident latency 전화 010-****-5678"
+        )
+        assert "query_raw" not in serialized_log_body
+        assert raw_query not in serialized_log_body
+        assert "010-1234-5678" not in serialized_log_body
 
-    trace_id = str(route_body["trace_id"])
-    log_response = client.get(
-        f"/admin/v1/services/{SPRINT_ZERO_SERVICE_ID}/runtime-logs/{trace_id}",
-        headers=_operator_headers(SPRINT_ZERO_SERVICE_ID),
-    )
-    log_body = log_response.json()
-    assert log_response.status_code == 200
-    assert log_body["trace_id"] == trace_id
-    assert log_body["query_masked"] == (
-        "api timeout gateway incident latency 전화 010-****-5678"
-    )
-    assert "query_raw" not in json.dumps(log_body, ensure_ascii=False)
-
-    view_reason = "Sprint 0 acceptance audit ticket INC-20260626-001"
-    decrypt_response = client.post(
-        f"/admin/v1/services/{SPRINT_ZERO_SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
-        headers=_auditor_headers(SPRINT_ZERO_SERVICE_ID),
-        json={"view_reason": view_reason},
-    )
-    decrypt_body = decrypt_response.json()
-    assert decrypt_response.status_code == 200
-    assert decrypt_body["query_raw"] == raw_query
-    audit_log = db_session.scalar(
-        select(models.AuditLog)
-        .where(models.AuditLog.event_type == "raw_query.viewed")
-        .where(models.AuditLog.trace_id == trace_id)
-        .where(models.AuditLog.actor_id == "auditor-user")
-    )
-    assert audit_log is not None
-    assert audit_log.service_id == SPRINT_ZERO_SERVICE_ID
-    assert audit_log.view_reason == view_reason
+        view_reason = "Sprint 0 acceptance audit ticket INC-20260626-001"
+        decrypt_response = client.post(
+            f"/admin/v1/services/{SPRINT_ZERO_SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
+            headers=_auditor_headers(SPRINT_ZERO_SERVICE_ID),
+            json={"view_reason": view_reason},
+        )
+        decrypt_body = decrypt_response.json()
+        assert decrypt_response.status_code == 200
+        assert decrypt_body["query_raw"] == raw_query
+        audit_log = db_session.scalar(
+            select(models.AuditLog)
+            .where(models.AuditLog.event_type == "raw_query.viewed")
+            .where(models.AuditLog.trace_id == trace_id)
+            .where(models.AuditLog.actor_id == "auditor-user")
+        )
+        assert audit_log is not None
+        assert audit_log.service_id == SPRINT_ZERO_SERVICE_ID
+        assert audit_log.view_reason == view_reason
+    finally:
+        db_session.rollback()
+        _purge_service_rows(db_session, SPRINT_ZERO_SERVICE_ID)
+        _release_sprint_zero_lock(lock_connection)
 
 
 def test_release_list_and_audit_logs_cover_catalog_release_activation_and_rollback(
@@ -1278,9 +1293,19 @@ def _auditor_headers(service_id: str) -> dict[str, str]:
     )
 
 
+def _sprint_zero_example_count(intent_examples: dict[str, dict[str, object]]) -> int:
+    return sum(
+        len(cast("list[str]", config["positive"]))
+        + len(cast("list[str]", config["negative"]))
+        for config in intent_examples.values()
+    )
+
+
 def _assert_approved_examples_have_fake_embeddings(
     db_session: Session,
     service_id: str,
+    *,
+    expected_count: int,
 ) -> None:
     examples = db_session.scalars(
         select(models.IntentExample).where(
@@ -1288,10 +1313,32 @@ def _assert_approved_examples_have_fake_embeddings(
             models.IntentExample.approved.is_(True),
         )
     ).all()
-    assert len(examples) == 13
+    assert len(examples) == expected_count
     for example in examples:
         assert example.embedding is not None
         assert len(example.embedding) == 1024
+
+
+def _acquire_sprint_zero_lock(db_session: Session) -> Connection:
+    bind = cast("Engine", db_session.get_bind())
+    connection = bind.connect()
+    connection.execute(
+        text("select pg_advisory_lock(hashtext(:lock_key)::bigint)"),
+        {"lock_key": "test:sprint-zero-vertical-slice"},
+    )
+    connection.commit()
+    return connection
+
+
+def _release_sprint_zero_lock(connection: Connection) -> None:
+    try:
+        connection.execute(
+            text("select pg_advisory_unlock(hashtext(:lock_key)::bigint)"),
+            {"lock_key": "test:sprint-zero-vertical-slice"},
+        )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def _purge_service_rows(db_session: Session, service_id: str) -> None:
