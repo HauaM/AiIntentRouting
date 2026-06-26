@@ -1,7 +1,7 @@
 # Runtime API Examples
 
 `POST /v1/intent-route`의 대표 응답 예시다. 성공 응답은 공통으로 `trace_id`,
-`decision`, `confidence`, `release_version`을 포함한다.
+`decision`, `release_version`을 포함하고, `confidence`는 decision에 따라 포함될 수 있다.
 
 ## Confident
 
@@ -127,9 +127,7 @@
   "request_id": "dify-workflow-run-007",
   "error": {
     "code": "AUTHENTICATION_FAILED",
-    "message": "Authentication failed.",
-    "category": "auth",
-    "layer": "runtime_api",
+    "message": "API key authentication failed.",
     "retryable": false
   }
 }

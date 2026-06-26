@@ -499,6 +499,7 @@ def test_dify_fixture_contract(
     body = response.json()
     assert response.status_code == 200
     assert body["trace_id"]
+    assert body["request_id"] == "dify-workflow-run-001"
     assert body["decision"] in {
         "confident",
         "clarify",
