@@ -25,10 +25,10 @@ from intent_routing.security.encryption import EnvelopeEncryptor
 from intent_routing.security.pii import mask_pii
 
 APP_ID = "dify-platform"
-KEY_ID = "key-live-it-helpdesk"
+KEY_ID = "key-live-it-runtime-helpdesk"
 QUERY_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "dify_request.json"
-RELEASE_VERSION = "rel-it-helpdesk-20260625-001"
-SERVICE_ID = "it-helpdesk"
+RELEASE_VERSION = "rel-it-runtime-helpdesk-20260625-001"
+SERVICE_ID = "it-runtime-helpdesk"
 
 
 def test_healthz_returns_ok() -> None:
@@ -460,11 +460,11 @@ def test_intent_route_confident_query_returns_intent_release_and_runtime_log(
     assert persisted.app_id == APP_ID
     assert persisted.service_id == SERVICE_ID
     assert persisted.release_version == RELEASE_VERSION
-    assert persisted.policy_version == "pol-it-helpdesk-20260625-001"
-    assert persisted.intent_catalog_version == "cat-it-helpdesk-20260625-001"
+    assert persisted.policy_version == "pol-it-runtime-helpdesk-20260625-001"
+    assert persisted.intent_catalog_version == "cat-it-runtime-helpdesk-20260625-001"
     assert persisted.model_version == "emb-fake-v1"
-    assert persisted.vector_index_version == "vec-it-helpdesk-20260625-001"
-    assert getattr(persisted, "test_run_id", None) == "tr-it-helpdesk-20260625-001"
+    assert persisted.vector_index_version == "vec-it-runtime-helpdesk-20260625-001"
+    assert getattr(persisted, "test_run_id", None) == "tr-it-runtime-helpdesk-20260625-001"
     assert persisted.decision == "confident"
     assert persisted.intent_id == "intent-api-timeout"
     assert persisted.route_key == "it.helpdesk.api_timeout"
@@ -725,7 +725,7 @@ def test_intent_route_policy_load_failure_returns_service_unavailable_and_runtim
     secret = _seed_runtime_state(db_session)
     client = _runtime_client(db_session, monkeypatch, raise_server_exceptions=False)
 
-    test_run = db_session.get(models.TestRun, "tr-it-helpdesk-20260625-001")
+    test_run = db_session.get(models.TestRun, "tr-it-runtime-helpdesk-20260625-001")
     assert test_run is not None
     test_run.gate_passed = False
     db_session.commit()
@@ -1031,7 +1031,7 @@ def test_intent_route_uses_only_release_snapshot_candidates(
 
     catalog = db_session.get(
         models.IntentCatalogVersion,
-        "cat-it-helpdesk-20260625-001",
+        "cat-it-runtime-helpdesk-20260625-001",
     )
     assert catalog is not None
     catalog.snapshot = {"intents": [{"display_name": "broken"}]}
@@ -1066,7 +1066,7 @@ def test_intent_route_non_mapping_snapshot_root_falls_back_cleanly(
 
     catalog = db_session.get(
         models.IntentCatalogVersion,
-        "cat-it-helpdesk-20260625-001",
+        "cat-it-runtime-helpdesk-20260625-001",
     )
     assert catalog is not None
     catalog.snapshot = cast("Any", ["broken-root"])
@@ -1285,7 +1285,7 @@ def _seed_runtime_state(
     )
 
     repository.create_policy_version(
-        policy_version="pol-it-helpdesk-20260625-001",
+        policy_version="pol-it-runtime-helpdesk-20260625-001",
         service_id=SERVICE_ID,
         threshold_preset="balanced",
         threshold_value=Decimal("0.80"),
@@ -1307,7 +1307,7 @@ def _seed_runtime_state(
         created_at=now,
     )
     repository.create_catalog_version(
-        intent_catalog_version="cat-it-helpdesk-20260625-001",
+        intent_catalog_version="cat-it-runtime-helpdesk-20260625-001",
         service_id=SERVICE_ID,
         snapshot={"intents": intents},
         created_by="runtime-test",
@@ -1315,7 +1315,7 @@ def _seed_runtime_state(
     )
     repository.create_test_dataset(
         {
-            "test_dataset_version": "ds-it-helpdesk-20260625-001",
+            "test_dataset_version": "ds-it-runtime-helpdesk-20260625-001",
             "service_id": SERVICE_ID,
             "source_filename": "runtime-fixture.jsonl",
             "content_sha256": "sha256-runtime-fixture",
@@ -1325,11 +1325,11 @@ def _seed_runtime_state(
     )
     repository.create_test_run_with_results(
         {
-            "test_run_id": "tr-it-helpdesk-20260625-001",
+            "test_run_id": "tr-it-runtime-helpdesk-20260625-001",
             "service_id": SERVICE_ID,
-            "test_dataset_version": "ds-it-helpdesk-20260625-001",
-            "policy_version": "pol-it-helpdesk-20260625-001",
-            "intent_catalog_version": "cat-it-helpdesk-20260625-001",
+            "test_dataset_version": "ds-it-runtime-helpdesk-20260625-001",
+            "policy_version": "pol-it-runtime-helpdesk-20260625-001",
+            "intent_catalog_version": "cat-it-runtime-helpdesk-20260625-001",
             "threshold_preset": "balanced",
             "threshold_value": Decimal("0.80"),
             "pass_rate": Decimal("0.95"),
@@ -1346,12 +1346,12 @@ def _seed_runtime_state(
             release_version=RELEASE_VERSION,
             service_id=SERVICE_ID,
             environment="prod",
-            policy_version="pol-it-helpdesk-20260625-001",
-            intent_catalog_version="cat-it-helpdesk-20260625-001",
+            policy_version="pol-it-runtime-helpdesk-20260625-001",
+            intent_catalog_version="cat-it-runtime-helpdesk-20260625-001",
             model_version="emb-fake-v1",
-            vector_index_version="vec-it-helpdesk-20260625-001",
-            test_dataset_version="ds-it-helpdesk-20260625-001",
-            test_run_id="tr-it-helpdesk-20260625-001",
+            vector_index_version="vec-it-runtime-helpdesk-20260625-001",
+            test_dataset_version="ds-it-runtime-helpdesk-20260625-001",
+            test_run_id="tr-it-runtime-helpdesk-20260625-001",
             pass_rate=Decimal("0.95"),
             risk_pass_rate=Decimal("1.00"),
             active=True,

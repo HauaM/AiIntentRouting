@@ -880,8 +880,8 @@ def test_sprint_zero_vertical_slice(
             intent_catalog_version=catalog_version,
             test_run_id=str(test_run_body["test_run_id"]),
         )
-        release_body = release_response.json()
         assert release_response.status_code == 201
+        release_body = release_response.json()
         release_version = str(release_body["release_version"])
         activate_response = client.post(
             f"/admin/v1/services/{SPRINT_ZERO_SERVICE_ID}/releases/{release_version}:activate",
@@ -902,8 +902,8 @@ def test_sprint_zero_vertical_slice(
             },
             json=_dify_request(query=raw_query),
         )
-        route_body = route_response.json()
         assert route_response.status_code == 200
+        route_body = route_response.json()
         assert route_body["trace_id"]
         assert route_body["decision"] == "confident"
         assert route_body["route_key"] == "it.helpdesk.api_timeout"
@@ -914,9 +914,9 @@ def test_sprint_zero_vertical_slice(
             f"/admin/v1/services/{SPRINT_ZERO_SERVICE_ID}/runtime-logs/{trace_id}",
             headers=_operator_headers(SPRINT_ZERO_SERVICE_ID),
         )
+        assert log_response.status_code == 200
         log_body = log_response.json()
         serialized_log_body = json.dumps(log_body, ensure_ascii=False)
-        assert log_response.status_code == 200
         assert log_body["trace_id"] == trace_id
         assert log_body["query_masked"] == (
             "api timeout gateway incident latency 전화 010-****-5678"
@@ -931,8 +931,8 @@ def test_sprint_zero_vertical_slice(
             headers=_auditor_headers(SPRINT_ZERO_SERVICE_ID),
             json={"view_reason": view_reason},
         )
-        decrypt_body = decrypt_response.json()
         assert decrypt_response.status_code == 200
+        decrypt_body = decrypt_response.json()
         assert decrypt_body["query_raw"] == raw_query
         audit_log = db_session.scalar(
             select(models.AuditLog)
