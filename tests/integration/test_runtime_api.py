@@ -24,7 +24,7 @@ from intent_routing.security.api_keys import ApiKeyRecord, fingerprint_secret, h
 from intent_routing.security.encryption import EnvelopeEncryptor
 from intent_routing.security.pii import mask_pii
 
-APP_ID = "dify-platform"
+APP_ID = "dify-runtime-platform"
 KEY_ID = "key-live-it-runtime-helpdesk"
 QUERY_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "dify_request.json"
 RELEASE_VERSION = "rel-it-runtime-helpdesk-20260625-001"

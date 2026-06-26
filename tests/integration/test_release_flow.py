@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -1293,10 +1293,12 @@ def _auditor_headers(service_id: str) -> dict[str, str]:
     )
 
 
-def _sprint_zero_example_count(intent_examples: dict[str, dict[str, object]]) -> int:
+def _sprint_zero_example_count(
+    intent_examples: Mapping[str, Mapping[str, Sequence[str]]],
+) -> int:
     return sum(
-        len(cast("list[str]", config["positive"]))
-        + len(cast("list[str]", config["negative"]))
+        len(config["positive"])
+        + len(config["negative"])
         for config in intent_examples.values()
     )
 
