@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import base64
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
@@ -20,6 +22,9 @@ from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.embedding.provider import clear_embedding_provider_cache
 from intent_routing.main import create_app
 from intent_routing.security.api_keys import ApiKeyRecord
+
+QUERY_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "dify_request.json"
+SPRINT_ZERO_SERVICE_ID = "it-helpdesk"
 
 
 def test_pgvector_extension_and_core_tables_exist(db_session: Session) -> None:
@@ -772,6 +777,163 @@ def test_runtime_uses_active_release_versions_after_activation(
     assert runtime_log.test_run_id == test_run_id
 
 
+def test_sprint_zero_vertical_slice(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    monkeypatch.setenv("INTENT_ROUTING_ENVIRONMENT", "prod")
+    clear_embedding_provider_cache()
+    _purge_service_rows(db_session, SPRINT_ZERO_SERVICE_ID)
+    client = _client(db_session)
+
+    _create_service(client, SPRINT_ZERO_SERVICE_ID)
+    api_key_response = client.post(
+        "/admin/v1/api-keys",
+        headers=_admin_headers(),
+        json={
+            "service_id": SPRINT_ZERO_SERVICE_ID,
+            "environment": "prod",
+            "app_id": "dify-platform",
+            "allowed_intents": [],
+            "allowed_route_keys": [],
+            "expires_in_days": 30,
+        },
+    )
+    api_key_body = api_key_response.json()
+    assert api_key_response.status_code == 201
+
+    intent_examples = {
+        "it_api_timeout": {
+            "route_key": "it.helpdesk.api_timeout",
+            "include_keywords": ["api", "timeout", "500", "에러"],
+            "positive": [
+                "API Timeout이 발생해요",
+                "보험금 청구 화면에서 500 에러가 나요",
+                "api timeout gateway incident latency",
+            ],
+            "negative": ["비밀번호 재설정 요청", "계정 잠금 해제 필요"],
+        },
+        "it_password_reset": {
+            "route_key": "it.helpdesk.password_reset",
+            "include_keywords": ["password", "비밀번호", "reset", "재설정"],
+            "positive": ["비밀번호 재설정 요청", "password reset help"],
+            "negative": ["API Timeout이 발생해요", "계정 잠금 해제 필요"],
+        },
+        "it_account_unlock": {
+            "route_key": "it.helpdesk.account_unlock",
+            "include_keywords": ["account", "unlock", "계정", "잠금"],
+            "positive": ["계정 잠금 해제 필요", "account unlock request"],
+            "negative": ["API Timeout이 발생해요", "비밀번호 재설정 요청"],
+        },
+    }
+    for intent_id, config in intent_examples.items():
+        _create_intent(
+            client,
+            SPRINT_ZERO_SERVICE_ID,
+            intent_id=intent_id,
+            route_key=str(config["route_key"]),
+            include_keywords=cast("list[str]", config["include_keywords"]),
+        )
+        _patch_intent(client, SPRINT_ZERO_SERVICE_ID, intent_id, {"status": "active"})
+        for example_type in ("positive", "negative"):
+            for text_raw in cast("list[str]", config[example_type]):
+                example = _create_example(
+                    client,
+                    SPRINT_ZERO_SERVICE_ID,
+                    intent_id,
+                    text_raw,
+                    example_type=example_type,
+                )
+                _approve_example(
+                    client,
+                    SPRINT_ZERO_SERVICE_ID,
+                    example["example_id"],
+                )
+
+    _assert_approved_examples_have_fake_embeddings(db_session, SPRINT_ZERO_SERVICE_ID)
+    policy_version = _create_sprint_zero_policy_version(client, SPRINT_ZERO_SERVICE_ID)
+    catalog_version = _create_catalog_version(client, SPRINT_ZERO_SERVICE_ID)
+    test_run_body = _run_sprint_zero_csv(
+        client,
+        SPRINT_ZERO_SERVICE_ID,
+        policy_version=policy_version,
+        catalog_version=catalog_version,
+    )
+    assert test_run_body["gate_passed"] is True
+    assert test_run_body["pass_rate"] >= 0.70
+
+    release_response = _create_release_response(
+        client,
+        SPRINT_ZERO_SERVICE_ID,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        test_run_id=str(test_run_body["test_run_id"]),
+    )
+    release_body = release_response.json()
+    assert release_response.status_code == 201
+    release_version = str(release_body["release_version"])
+    activate_response = client.post(
+        f"/admin/v1/services/{SPRINT_ZERO_SERVICE_ID}/releases/{release_version}:activate",
+        headers=_admin_headers(),
+    )
+    assert activate_response.status_code == 200
+    assert activate_response.json()["active"] is True
+
+    raw_query = "api timeout gateway incident latency 전화 010-1234-5678"
+    route_response = client.post(
+        "/v1/intent-route",
+        headers={
+            "Authorization": f"Bearer {api_key_body['api_key']}",
+            "X-Key-Id": api_key_body["key_id"],
+            "X-App-Id": "dify-platform",
+            "X-Service-Id": SPRINT_ZERO_SERVICE_ID,
+            "X-Request-Id": "req-sprint-zero-vertical-slice",
+        },
+        json=_dify_request(query=raw_query),
+    )
+    route_body = route_response.json()
+    assert route_response.status_code == 200
+    assert route_body["trace_id"]
+    assert route_body["decision"] == "confident"
+    assert route_body["route_key"] == "it.helpdesk.api_timeout"
+    assert route_body["release_version"] == release_version
+
+    trace_id = str(route_body["trace_id"])
+    log_response = client.get(
+        f"/admin/v1/services/{SPRINT_ZERO_SERVICE_ID}/runtime-logs/{trace_id}",
+        headers=_operator_headers(SPRINT_ZERO_SERVICE_ID),
+    )
+    log_body = log_response.json()
+    assert log_response.status_code == 200
+    assert log_body["trace_id"] == trace_id
+    assert log_body["query_masked"] == (
+        "api timeout gateway incident latency 전화 010-****-5678"
+    )
+    assert "query_raw" not in json.dumps(log_body, ensure_ascii=False)
+
+    view_reason = "Sprint 0 acceptance audit ticket INC-20260626-001"
+    decrypt_response = client.post(
+        f"/admin/v1/services/{SPRINT_ZERO_SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
+        headers=_auditor_headers(SPRINT_ZERO_SERVICE_ID),
+        json={"view_reason": view_reason},
+    )
+    decrypt_body = decrypt_response.json()
+    assert decrypt_response.status_code == 200
+    assert decrypt_body["query_raw"] == raw_query
+    audit_log = db_session.scalar(
+        select(models.AuditLog)
+        .where(models.AuditLog.event_type == "raw_query.viewed")
+        .where(models.AuditLog.trace_id == trace_id)
+        .where(models.AuditLog.actor_id == "auditor-user")
+    )
+    assert audit_log is not None
+    assert audit_log.service_id == SPRINT_ZERO_SERVICE_ID
+    assert audit_log.view_reason == view_reason
+
+
 def test_release_list_and_audit_logs_cover_catalog_release_activation_and_rollback(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -956,12 +1118,14 @@ def _create_example(
     service_id: str,
     intent_id: str,
     text_raw: str,
+    *,
+    example_type: str = "positive",
 ) -> dict[str, Any]:
     response = client.post(
         f"/admin/v1/services/{service_id}/intents/{intent_id}/examples",
         headers=_admin_headers(),
         json={
-            "example_type": "positive",
+            "example_type": example_type,
             "text_raw": text_raw,
             "source": "release-flow-test",
             "test_case_id": None,
@@ -1032,6 +1196,164 @@ def _create_catalog_version(client: TestClient, service_id: str) -> str:
     )
     assert response.status_code == 201
     return str(response.json()["intent_catalog_version"])
+
+
+def _create_sprint_zero_policy_version(client: TestClient, service_id: str) -> str:
+    response = client.post(
+        f"/admin/v1/services/{service_id}/policy-versions",
+        headers=_admin_headers(),
+        json={
+            "threshold_preset": "balanced",
+            "clarify_margin": 0.08,
+            "min_candidate_score": 0.55,
+            "fallback_score": 0.45,
+            "risk_policy": {"enabled": True},
+            "off_topic_policy": {
+                "enabled": True,
+                "keywords": ["날씨", "점심"],
+                "message": "서비스 범위 밖 문의입니다.",
+                "fallback_policy": {
+                    "type": "fixed_message",
+                    "retryable": False,
+                    "recommended_action": "handoff_to_default_channel",
+                },
+            },
+        },
+    )
+    assert response.status_code == 201
+    return str(response.json()["policy_version"])
+
+
+def _run_sprint_zero_csv(
+    client: TestClient,
+    service_id: str,
+    *,
+    policy_version: str,
+    catalog_version: str,
+) -> dict[str, Any]:
+    response = client.post(
+        f"/admin/v1/services/{service_id}/test-runs",
+        headers=_admin_headers(),
+        json={
+            "policy_version": policy_version,
+            "intent_catalog_version": catalog_version,
+            "threshold_preset": "balanced",
+            "source_filename": "sprint0_cases.csv",
+            "csv_text": _sprint0_csv_text(),
+        },
+    )
+    assert response.status_code == 201
+    return cast("dict[str, Any]", response.json())
+
+
+def _sprint0_csv_text() -> str:
+    return (
+        Path(__file__).resolve().parents[1] / "fixtures" / "sprint0_cases.csv"
+    ).read_text()
+
+
+def _dify_request(*, query: str) -> dict[str, object]:
+    payload = cast("dict[str, object]", json.loads(QUERY_FIXTURE.read_text()))
+    payload["query"] = query
+    return payload
+
+
+def _operator_headers(service_id: str) -> dict[str, str]:
+    return _admin_headers(
+        **{
+            "X-Actor-Id": "operator-user",
+            "X-Actor-Roles": "service_operator",
+            "X-Service-Scope": service_id,
+        }
+    )
+
+
+def _auditor_headers(service_id: str) -> dict[str, str]:
+    return _admin_headers(
+        **{
+            "X-Actor-Id": "auditor-user",
+            "X-Actor-Roles": "auditor",
+            "X-Service-Scope": service_id,
+        }
+    )
+
+
+def _assert_approved_examples_have_fake_embeddings(
+    db_session: Session,
+    service_id: str,
+) -> None:
+    examples = db_session.scalars(
+        select(models.IntentExample).where(
+            models.IntentExample.service_id == service_id,
+            models.IntentExample.approved.is_(True),
+        )
+    ).all()
+    assert len(examples) == 13
+    for example in examples:
+        assert example.embedding is not None
+        assert len(example.embedding) == 1024
+
+
+def _purge_service_rows(db_session: Session, service_id: str) -> None:
+    db_session.execute(
+        text(
+            """
+            delete from audit_logs
+            where service_id = :service_id
+               or target_id in (
+                   select release_version from releases where service_id = :service_id
+               )
+               or target_id in (
+                   select intent_catalog_version
+                   from intent_catalog_versions
+                   where service_id = :service_id
+               )
+            """
+        ),
+        {"service_id": service_id},
+    )
+    db_session.execute(
+        text(
+            """
+            delete from test_results
+            where test_run_id in (
+                select test_run_id from test_runs where service_id = :service_id
+            )
+            """
+        ),
+        {"service_id": service_id},
+    )
+    db_session.execute(
+        text(
+            """
+            delete from test_cases
+            where test_dataset_version in (
+                select test_dataset_version
+                from test_datasets
+                where service_id = :service_id
+            )
+            """
+        ),
+        {"service_id": service_id},
+    )
+    for table_name in (
+        "runtime_logs",
+        "releases",
+        "test_runs",
+        "test_datasets",
+        "vector_index_versions",
+        "intent_catalog_versions",
+        "policy_versions",
+        "intent_examples",
+        "intents",
+        "api_keys",
+        "services",
+    ):
+        db_session.execute(
+            text(f"delete from {table_name} where service_id = :service_id"),
+            {"service_id": service_id},
+        )
+    db_session.commit()
 
 
 def _release_setup(
