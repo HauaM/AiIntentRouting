@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from types import TracebackType
 from typing import Any
 
 import httpx
@@ -40,6 +41,20 @@ class AdminApiClient:
 
     def patch(self, path: str, *, json: Mapping[str, Any] | None = None) -> Any:
         return self._request("PATCH", path, json=json)
+
+    def close(self) -> None:
+        self._client.close()
+
+    def __enter__(self) -> AdminApiClient:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         response = self._client.request(method, path, **kwargs)
