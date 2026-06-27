@@ -13,13 +13,17 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 3. Start the API:
    `uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 8000`
 
-The pilot seed and Dify-style runtime smoke commands become available after the Sprint 1 pilot tooling tasks are complete.
-
 4. Seed the pilot:
-   `uv run python scripts/seed_pilot.py --base-url http://127.0.0.1:8000 --service-id it-helpdesk-pilot --environment dev`
+   `uv run python scripts/seed_pilot.py --base-url http://127.0.0.1:8000 --admin-token local-admin-token --service-id it-helpdesk-pilot --environment dev --state-path var/pilot/it-helpdesk-pilot.state.secret.json`
 
-5. Run a Dify-style runtime smoke:
+5. Compare CSV gate thresholds:
+   `uv run python scripts/run_csv_gate.py --base-url http://127.0.0.1:8000 --admin-token local-admin-token --state var/pilot/it-helpdesk-pilot.state.secret.json --csv docs/pilot/it-helpdesk-pilot-cases.csv --out-dir var/reports`
+
+6. Run a Dify-style runtime smoke:
    `uv run python scripts/smoke_runtime_dify.py --base-url http://127.0.0.1:8000 --state var/pilot/it-helpdesk-pilot.state.secret.json --query "API timeout 500 에러가 납니다" --expect-decision confident`
+
+7. Inspect masked runtime logs:
+   `uv run python scripts/trace_audit_drill.py --base-url http://127.0.0.1:8000 --admin-token local-admin-token --state var/pilot/it-helpdesk-pilot.state.secret.json`
 
 ## Documents
 

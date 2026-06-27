@@ -88,3 +88,18 @@ Run these manually before Dify handoff:
 | Off-topic query | HTTP 200 with `decision=off_topic` |
 | Risk query | HTTP 200 with `decision=risk` |
 | Ambiguous query | HTTP 200 with `decision=clarify` or documented fallback |
+
+## Release Readiness Checklist
+
+- [ ] `.env.example` uses `RAW_TEXT_KEK_ID` and `RAW_TEXT_KEK_BASE64`.
+- [ ] `docker compose up -d postgres` succeeds.
+- [ ] `uv run alembic upgrade head` succeeds.
+- [ ] `uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 8000` starts the API.
+- [ ] `seed_pilot.py` creates service, API key, policy version, catalog version, test run, release, and active release.
+- [ ] `run_csv_gate.py` writes JSON and Markdown reports for `strict`, `balanced`, and `exploratory`.
+- [ ] Balanced CSV gate pass rate is at least 70%.
+- [ ] Risk pass rate is 100%.
+- [ ] `smoke_runtime_dify.py` returns `decision=confident` for the pilot API timeout query.
+- [ ] Masked runtime log list does not expose raw query fields.
+- [ ] Raw query decrypt requires auditor or system admin role and writes `raw_query.viewed` audit log.
+- [ ] Dify HTTP Request node is configured with `Authorization`, `X-Key-Id`, `X-App-Id`, `X-Service-Id`, and `X-Request-Id`.
