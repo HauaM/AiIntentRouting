@@ -10,45 +10,45 @@ from intent_routing.ops.reports import render_threshold_report
 
 
 def test_render_threshold_report_orders_presets_and_shows_gate_state() -> None:
-    report = render_threshold_report(
-        service_id="it-helpdesk-pilot",
-        runs={
-            "exploratory": {
-                "test_run_id": "tr-exp",
-                "threshold_value": 0.6,
-                "pass_rate": 0.7,
-                "review_rate": 0.2,
-                "risk_pass_rate": 1.0,
-                "gate_passed": True,
-                "block_reasons": [],
-                "recommendations": ["review rate above 15%"],
-            },
-            "strict": {
-                "test_run_id": "tr-strict",
-                "threshold_value": 1.0,
-                "pass_rate": 0.5,
-                "review_rate": 0.5,
-                "risk_pass_rate": 1.0,
-                "gate_passed": False,
-                "block_reasons": ["pass rate below 70%"],
-                "recommendations": ["review rate above 15%"],
-            },
-            "balanced": {
-                "test_run_id": "tr-balanced",
-                "threshold_value": 0.8,
-                "pass_rate": 0.8,
-                "review_rate": 0.1,
-                "risk_pass_rate": 1.0,
-                "gate_passed": True,
-                "block_reasons": [],
-                "recommendations": [],
-            },
+    runs = {
+        "exploratory": {
+            "test_run_id": "tr-exp",
+            "threshold_value": 0.6,
+            "pass_rate": 0.7,
+            "review_rate": 0.2,
+            "risk_pass_rate": 1.0,
+            "gate_passed": True,
+            "block_reasons": [],
+            "recommendations": ["review rate above 15%"],
         },
-    )
+        "strict": {
+            "test_run_id": "tr-strict",
+            "threshold_value": 1.0,
+            "pass_rate": 0.5,
+            "review_rate": 0.5,
+            "risk_pass_rate": 1.0,
+            "gate_passed": False,
+            "block_reasons": ["pass rate below 70%"],
+            "recommendations": ["review rate above 15%"],
+        },
+        "balanced": {
+            "test_run_id": "tr-balanced",
+            "threshold_value": 0.8,
+            "pass_rate": 0.8,
+            "review_rate": 0.1,
+            "risk_pass_rate": 1.0,
+            "gate_passed": True,
+            "block_reasons": [],
+            "recommendations": [],
+        },
+    }
+
+    report = render_threshold_report("it-helpdesk-pilot", runs)
 
     assert "| strict | 1.00 | 50.0% | 50.0% | 100.0% | FAIL |" in report
     assert "| balanced | 0.80 | 80.0% | 10.0% | 100.0% | PASS |" in report
     assert "| exploratory | 0.60 | 70.0% | 20.0% | 100.0% | PASS |" in report
+    assert "| --- | ---: | ---: | ---: | ---: | --- | --- |" in report
     assert report.index("| strict |") < report.index("| balanced |")
     assert report.index("| balanced |") < report.index("| exploratory |")
 

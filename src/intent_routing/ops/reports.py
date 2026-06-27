@@ -6,12 +6,12 @@ from typing import Any
 PRESET_ORDER = ("strict", "balanced", "exploratory")
 
 
-def render_threshold_report(*, service_id: str, runs: Mapping[str, Mapping[str, Any]]) -> str:
+def render_threshold_report(service_id: str, runs: Mapping[str, Mapping[str, Any]]) -> str:
     lines = [
         f"# CSV Gate Threshold Comparison: {service_id}",
         "",
         "| preset | threshold | pass_rate | review_rate | risk_pass_rate | gate | test_run_id |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| --- | ---: | ---: | ---: | ---: | --- | --- |",
     ]
 
     findings: list[str] = []
