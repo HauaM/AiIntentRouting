@@ -13,6 +13,8 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 3. Start the API:
    `uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 8000`
 
+The pilot seed and Dify-style runtime smoke commands become available after the Sprint 1 pilot tooling tasks are complete.
+
 4. Seed the pilot:
    `uv run python scripts/seed_pilot.py --base-url http://127.0.0.1:8000 --service-id it-helpdesk-pilot --environment dev`
 
