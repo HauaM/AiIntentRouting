@@ -3,6 +3,28 @@
 `POST /v1/intent-route`의 대표 응답 예시다. 성공 응답은 공통으로 `trace_id`,
 `decision`, `release_version`을 포함하고, `confidence`는 decision에 따라 포함될 수 있다.
 
+## Pilot Request
+
+```http
+POST /v1/intent-route
+Authorization: Bearer <api_key>
+X-Key-Id: key_live_<generated>
+X-App-Id: dify-platform
+X-Service-Id: it-helpdesk-pilot
+X-Request-Id: dify-workflow-run-001
+Content-Type: application/json
+```
+
+```json
+{
+  "query": "API timeout 500 에러가 납니다",
+  "channel": "chat",
+  "user_context": {
+    "workflow_run_id": "dify-workflow-run-001"
+  }
+}
+```
+
 ## Confident
 
 ```json
