@@ -1,0 +1,65 @@
+{
+  "service_id": "it-helpdesk-pilot",
+  "display_name": "IT Helpdesk Pilot",
+  "environment": "dev",
+  "app_id": "dify-platform",
+  "threshold_preset": "balanced",
+  "off_topic_keywords": ["날씨", "점심", "주가"],
+  "off_topic_message": "서비스 범위 밖 문의입니다. IT Helpdesk 문의만 처리할 수 있습니다.",
+  "intents": [
+    {
+      "intent_id": "it_api_timeout",
+      "domain": "it",
+      "display_name": "API timeout incident",
+      "description": "API timeout, HTTP 500, latency incident triage.",
+      "route_key": "it.api_timeout.manual_lookup",
+      "include_keywords": ["api", "timeout", "타임아웃", "500", "에러"],
+      "exclude_keywords": ["비밀번호", "vpn"],
+      "positive_examples": [
+        "API timeout 500 에러가 납니다",
+        "gateway timeout 때문에 업무 API가 실패합니다",
+        "서버 응답 지연과 500 오류를 확인해 주세요"
+      ],
+      "negative_examples": [
+        "비밀번호 초기화가 필요합니다",
+        "VPN 접속 신청을 하고 싶습니다"
+      ]
+    },
+    {
+      "intent_id": "it_password_reset",
+      "domain": "it",
+      "display_name": "Password reset",
+      "description": "Employee password reset or account unlock request.",
+      "route_key": "it.password_reset.self_service",
+      "include_keywords": ["비밀번호", "password", "초기화", "계정 잠금"],
+      "exclude_keywords": ["api", "timeout", "vpn"],
+      "positive_examples": [
+        "비밀번호 초기화가 필요합니다",
+        "password reset 경로를 알려주세요",
+        "계정 잠금 해제를 요청합니다"
+      ],
+      "negative_examples": [
+        "API timeout 500 에러가 납니다",
+        "VPN 접속 신청을 하고 싶습니다"
+      ]
+    },
+    {
+      "intent_id": "it_vpn_access",
+      "domain": "it",
+      "display_name": "VPN access request",
+      "description": "VPN access request for employee remote work.",
+      "route_key": "it.vpn_access.ticket_create",
+      "include_keywords": ["vpn", "VPN", "원격", "접속 신청"],
+      "exclude_keywords": ["api", "timeout", "비밀번호"],
+      "positive_examples": [
+        "VPN 접속 신청을 하고 싶습니다",
+        "원격 근무용 VPN 권한이 필요합니다",
+        "사내망 VPN 접속이 안 됩니다"
+      ],
+      "negative_examples": [
+        "API timeout 500 에러가 납니다",
+        "비밀번호 초기화가 필요합니다"
+      ]
+    }
+  ]
+}

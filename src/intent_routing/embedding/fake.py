@@ -29,10 +29,19 @@ def _normalized_vector(text: str) -> list[float]:
         vector[0] = 1.0
         vector[1] = 0.2
         vector[2] = 0.02
-    elif "비밀번호" in lower_text or "password" in lower_text:
+    elif (
+        "비밀번호" in lower_text
+        or "password" in lower_text
+        or "계정 잠금" in lower_text
+    ):
         vector[0] = 0.2
         vector[1] = 1.0
         vector[2] = 0.02
+    elif "vpn" in lower_text or "원격" in lower_text or "사내망" in lower_text:
+        vector[0] = 0.02
+        vector[1] = 0.02
+        vector[2] = 0.02
+        vector[4] = 1.0
     elif "날씨" in lower_text or "weather" in lower_text:
         vector[0] = 0.02
         vector[1] = 0.02
