@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, cast
 
@@ -16,6 +17,7 @@ def run_runtime_smoke(
     expected_decision: str,
     http_client: Any | None = None,
 ) -> dict[str, Any]:
+    request_url = f"{base_url.rstrip('/')}/v1/intent-route"
     headers = {
         "Authorization": f"Bearer {state['api_key']}",
         "X-Key-Id": state["key_id"],
@@ -32,14 +34,19 @@ def run_runtime_smoke(
     if http_client is not None:
         response = http_client.post("/v1/intent-route", headers=headers, json=payload)
     else:
-        response = httpx.post(
-            f"{base_url.rstrip('/')}/v1/intent-route",
-            headers=headers,
-            json=payload,
-            timeout=8.0,
-        )
+        try:
+            response = httpx.post(
+                request_url,
+                headers=headers,
+                json=payload,
+                timeout=8.0,
+            )
+        except httpx.RequestError as exc:
+            raise RuntimeError(
+                f"request failed for {request_url}: {exc}"
+            ) from exc
 
-    body = cast("dict[str, Any]", response.json())
+    body = _response_body(response)
     if response.status_code != 200:
         raise RuntimeError(f"{response.status_code} {body}")
     if body.get("decision") != expected_decision:
@@ -47,6 +54,20 @@ def run_runtime_smoke(
             f"expected decision {expected_decision}, got {body.get('decision')}: {body}"
         )
     return body
+
+
+def _response_body(response: httpx.Response) -> dict[str, Any]:
+    try:
+        return cast("dict[str, Any]", response.json())
+    except JSONDecodeError:
+        return {"body": _trim_text(response.text)}
+
+
+def _trim_text(value: str, *, limit: int = 200) -> str:
+    compact = " ".join(value.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: limit - 3]}..."
 
 
 def main() -> None:

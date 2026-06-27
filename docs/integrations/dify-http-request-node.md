@@ -78,6 +78,9 @@ uv run python scripts/smoke_runtime_dify.py \
 
 ## Dify Variable Mapping
 
+아래 표는 원래 Dify 시스템 변수 이름을 기준으로 적었고, 위 HTTP Request 예시는 사전 매핑 후
+로컬 alias인 `{{workflow_run_id}}`를 사용한다.
+
 | Intent Routing field | Dify source |
 | --- | --- |
 | `Authorization` | Secret variable `intent_routing_api_key` |
