@@ -2,6 +2,21 @@
 
 ## 1. Start Local Stack
 
+Export the local runtime contract first:
+
+```bash
+export DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:5432/intent_routing
+export INTENT_ROUTING_ENVIRONMENT=dev
+export ADMIN_BOOTSTRAP_TOKEN=local-admin-token
+export RAW_TEXT_KEK_ID=local-kek-001
+export RAW_TEXT_KEK_BASE64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+export EMBEDDING_PROVIDER=fake
+export SERVICE_ID=it-helpdesk-pilot-$(date +%Y%m%d%H%M%S)
+export STATE_PATH="var/pilot/${SERVICE_ID}.state.secret.json"
+```
+
+Use a new `SERVICE_ID` for each pilot run on a persistent local database. The admin API intentionally rejects duplicate services.
+
 ```bash
 docker compose up -d postgres
 uv run alembic upgrade head
@@ -13,10 +28,10 @@ uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 
 ```bash
 uv run python scripts/seed_pilot.py \
   --base-url http://127.0.0.1:8000 \
-  --admin-token local-admin-token \
-  --service-id it-helpdesk-pilot \
-  --environment dev \
-  --state-path var/pilot/it-helpdesk-pilot.state.secret.json
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --service-id ${SERVICE_ID} \
+  --environment ${INTENT_ROUTING_ENVIRONMENT} \
+  --state-path ${STATE_PATH}
 ```
 
 ## 3. Compare Thresholds
@@ -24,8 +39,8 @@ uv run python scripts/seed_pilot.py \
 ```bash
 uv run python scripts/run_csv_gate.py \
   --base-url http://127.0.0.1:8000 \
-  --admin-token local-admin-token \
-  --state var/pilot/it-helpdesk-pilot.state.secret.json \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --state ${STATE_PATH} \
   --csv docs/pilot/it-helpdesk-pilot-cases.csv \
   --out-dir var/reports
 ```
@@ -37,7 +52,7 @@ Acceptance: `balanced` passes the 70% gate and risk pass rate is 100%.
 ```bash
 uv run python scripts/smoke_runtime_dify.py \
   --base-url http://127.0.0.1:8000 \
-  --state var/pilot/it-helpdesk-pilot.state.secret.json \
+  --state ${STATE_PATH} \
   --query "API timeout 500 에러가 납니다" \
   --expect-decision confident
 ```
@@ -51,8 +66,8 @@ List masked logs:
 ```bash
 uv run python scripts/trace_audit_drill.py \
   --base-url http://127.0.0.1:8000 \
-  --admin-token local-admin-token \
-  --state var/pilot/it-helpdesk-pilot.state.secret.json
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --state ${STATE_PATH}
 ```
 
 Fetch one masked log:
@@ -60,8 +75,8 @@ Fetch one masked log:
 ```bash
 uv run python scripts/trace_audit_drill.py \
   --base-url http://127.0.0.1:8000 \
-  --admin-token local-admin-token \
-  --state var/pilot/it-helpdesk-pilot.state.secret.json \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --state ${STATE_PATH} \
   --trace-id <trace_id>
 ```
 
@@ -70,8 +85,8 @@ Record raw-query access audit without printing raw text:
 ```bash
 uv run python scripts/trace_audit_drill.py \
   --base-url http://127.0.0.1:8000 \
-  --admin-token local-admin-token \
-  --state var/pilot/it-helpdesk-pilot.state.secret.json \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --state ${STATE_PATH} \
   --trace-id <trace_id> \
   --view-reason "장애 분석 ticket INC-20260626-001"
 ```

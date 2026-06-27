@@ -43,13 +43,13 @@ HTTP 200 응답은 `decision`으로 분기한다.
   "trace_id": "irt-...",
   "decision": "confident",
   "confidence": 0.94,
-  "release_version": "rel-it-helpdesk-20260625-001",
-  "intent_id": "intent-api-timeout",
-  "route_key": "it.helpdesk.api_timeout"
+  "release_version": "rel-it-helpdesk-pilot-20260627-001",
+  "intent_id": "it_api_timeout",
+  "route_key": "it.api_timeout.manual_lookup"
 }
 ```
 
-- `decision=confident`: `route_key`로 분기한다. 예: `it.helpdesk.api_timeout`이면 API 장애 처리 Agent 또는 업무 API 호출 노드로 연결한다.
+- `decision=confident`: `route_key`로 분기한다. 예: `it.api_timeout.manual_lookup`이면 API 장애 처리 Agent 또는 업무 API 호출 노드로 연결한다.
 - `decision=clarify`: Answer 노드에서 `clarify_question`을 출력하고, `clarify.candidates`를 선택지로 보여준다.
 - `decision=fallback`: 고정 fallback 메시지를 반환하거나 상담원/기본 채널로 handoff한다.
 - `decision=off_topic`: 서비스별 고정 메시지를 반환하거나 클라이언트의 기본 fallback 경로로 보낸다.
@@ -71,7 +71,7 @@ After seeding:
 ```bash
 uv run python scripts/smoke_runtime_dify.py \
   --base-url http://127.0.0.1:8000 \
-  --state var/pilot/it-helpdesk-pilot.state.secret.json \
+  --state "${STATE_PATH}" \
   --query "API timeout 500 에러가 납니다" \
   --expect-decision confident
 ```

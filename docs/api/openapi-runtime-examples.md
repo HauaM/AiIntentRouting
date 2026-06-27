@@ -33,9 +33,9 @@ Content-Type: application/json
   "request_id": "dify-workflow-run-001",
   "decision": "confident",
   "confidence": 0.94,
-  "release_version": "rel-it-helpdesk-20260625-001",
-  "intent_id": "intent-api-timeout",
-  "route_key": "it.helpdesk.api_timeout"
+  "release_version": "rel-it-helpdesk-pilot-20260627-001",
+  "intent_id": "it_api_timeout",
+  "route_key": "it.api_timeout.manual_lookup"
 }
 ```
 
@@ -47,22 +47,22 @@ Content-Type: application/json
   "request_id": "dify-workflow-run-002",
   "decision": "clarify",
   "confidence": 0.63,
-  "release_version": "rel-it-helpdesk-20260625-001",
-  "clarify_question": "어떤 timeout 문제인지 선택해 주세요.",
+  "release_version": "rel-it-helpdesk-pilot-20260627-001",
+  "clarify_question": "어떤 IT 문의인지 선택해 주세요.",
   "clarify": {
     "reason": "low_margin",
-    "message": "어떤 timeout 문제인지 선택해 주세요.",
+    "message": "어떤 IT 문의인지 선택해 주세요.",
     "candidates": [
       {
-        "intent_id": "intent-api-timeout",
-        "route_key": "it.helpdesk.api_timeout",
+        "intent_id": "it_api_timeout",
+        "route_key": "it.api_timeout.manual_lookup",
         "display_name": "API timeout incident",
         "confidence": 0.63
       },
       {
-        "intent_id": "intent-db-timeout",
-        "route_key": "it.helpdesk.db_timeout",
-        "display_name": "Database timeout",
+        "intent_id": "it_password_reset",
+        "route_key": "it.password_reset.self_service",
+        "display_name": "Password reset",
         "confidence": 0.59
       }
     ]
@@ -78,7 +78,7 @@ Content-Type: application/json
   "request_id": "dify-workflow-run-003",
   "decision": "risk",
   "confidence": 1.0,
-  "release_version": "rel-it-helpdesk-20260625-001",
+  "release_version": "rel-it-helpdesk-pilot-20260627-001",
   "risk": {
     "risk_type": "credential_secret",
     "action": "block",
@@ -95,7 +95,7 @@ Content-Type: application/json
   "request_id": "dify-workflow-run-004",
   "decision": "fallback",
   "confidence": 0.31,
-  "release_version": "rel-it-helpdesk-20260625-001",
+  "release_version": "rel-it-helpdesk-pilot-20260627-001",
   "fallback_policy": {
     "type": "client_fallback",
     "retryable": true,
@@ -113,7 +113,7 @@ Content-Type: application/json
   "request_id": "dify-workflow-run-005",
   "decision": "off_topic",
   "confidence": 1.0,
-  "release_version": "rel-it-helpdesk-20260625-001",
+  "release_version": "rel-it-helpdesk-pilot-20260627-001",
   "fallback_policy": {
     "type": "fixed_message",
     "retryable": false,
@@ -131,7 +131,7 @@ Content-Type: application/json
   "request_id": "dify-workflow-run-006",
   "decision": "unauthorized",
   "confidence": 0.91,
-  "release_version": "rel-it-helpdesk-20260625-001",
+  "release_version": "rel-it-helpdesk-pilot-20260627-001",
   "fallback_policy": {
     "type": "client_fallback",
     "retryable": false,
@@ -162,7 +162,7 @@ Content-Type: application/json
   "status": "error",
   "trace_id": "irt-20260625-000008",
   "request_id": "dify-workflow-run-008",
-  "release_version": "rel-it-helpdesk-20260625-001",
+  "release_version": "rel-it-helpdesk-pilot-20260627-001",
   "error": {
     "code": "VECTOR_STORE_UNAVAILABLE",
     "message": "Vector search is temporarily unavailable.",
