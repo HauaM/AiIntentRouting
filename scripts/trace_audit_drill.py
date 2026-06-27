@@ -16,7 +16,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     if not admin_token:
         raise SystemExit("--admin-token or ADMIN_BOOTSTRAP_TOKEN is required")
 
-    state = json.loads(Path(args.state).read_text(encoding="utf-8"))
+    state = json.loads(args.state.read_text(encoding="utf-8"))
     service_id = state["service_id"]
 
     with AdminApiClient(
@@ -70,7 +70,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--admin-token", default="local-admin-token")
-    parser.add_argument("--state", required=True)
+    parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--trace-id")
     parser.add_argument("--view-reason")
     return parser.parse_args(argv)

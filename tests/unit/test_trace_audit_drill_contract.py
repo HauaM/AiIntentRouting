@@ -69,6 +69,22 @@ def test_main_decrypt_mode_prints_redacted_metadata_only(
     assert '"trace_id": "trace-123"' in stdout
 
 
+def test_parse_args_reads_state_as_path_type() -> None:
+    trace_audit_drill = importlib.import_module("scripts.trace_audit_drill")
+
+    args = trace_audit_drill._parse_args(
+        [
+            "--base-url",
+            "http://admin.test",
+            "--state",
+            "var/pilot/example.state.secret.json",
+        ]
+    )
+
+    assert isinstance(args.state, Path)
+    assert args.state == Path("var/pilot/example.state.secret.json")
+
+
 def _stdout_safe_strings(text: str) -> str:
     lines = []
     for line in text.splitlines():
