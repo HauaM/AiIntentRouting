@@ -1,6 +1,7 @@
 import base64
 from collections.abc import Iterator
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -30,6 +31,7 @@ def test_seed_pilot_creates_active_release_and_runtime_secret(
 
     app.dependency_overrides[get_admin_session] = override_session
     app.dependency_overrides[get_runtime_session] = override_session
+    service_id = f"it-helpdesk-pilot-test-{uuid4().hex}"
 
     with TestClient(app) as client:
         state = seed_pilot(
@@ -37,14 +39,14 @@ def test_seed_pilot_creates_active_release_and_runtime_secret(
             admin_token="local-admin-token",
             catalog_path=ROOT / "docs/pilot/it-helpdesk-pilot-catalog.json",
             csv_path=ROOT / "docs/pilot/it-helpdesk-pilot-cases.csv",
-            service_id="it-helpdesk-pilot-test",
+            service_id=service_id,
             environment="dev",
             http_client=client,
         )
 
-    assert state["service_id"] == "it-helpdesk-pilot-test"
+    assert state["service_id"] == service_id
     assert state["environment"] == "dev"
     assert state["api_key"].startswith("irt_")
     assert state["key_id"].startswith("key_live_")
-    assert state["release_version"].startswith("rel-it-helpdesk-pilot-test-")
+    assert state["release_version"].startswith(f"rel-{service_id}-")
     assert state["test_runs"]["balanced"]["gate_passed"] is True
