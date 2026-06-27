@@ -24,6 +24,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     state = json.loads(state_path.read_text(encoding="utf-8"))
     service_id = state["service_id"]
+    _validate_service_id_for_output(service_id)
     csv_text = csv_path.read_text(encoding="utf-8")
 
     runs: dict[str, dict[str, Any]] = {}
@@ -66,6 +67,13 @@ def main(argv: Sequence[str] | None = None) -> None:
     for preset in PRESET_ORDER:
         gate_state = "PASS" if runs[preset]["gate_passed"] else "FAIL"
         print(f"{preset}: {gate_state}")
+
+
+def _validate_service_id_for_output(service_id: str) -> None:
+    if service_id in {"", ".", ".."} or "/" in service_id or "\\" in service_id:
+        raise ValueError(
+            "service_id must be a direct filename-safe identifier without path separators"
+        )
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

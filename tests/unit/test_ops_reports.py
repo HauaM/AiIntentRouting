@@ -9,39 +9,48 @@ import pytest
 from intent_routing.ops.reports import render_threshold_report
 
 
-def test_render_threshold_report_orders_presets_and_shows_gate_state() -> None:
-    runs = {
-        "exploratory": {
-            "test_run_id": "tr-exp",
-            "threshold_value": 0.6,
-            "pass_rate": 0.7,
-            "review_rate": 0.2,
-            "risk_pass_rate": 1.0,
-            "gate_passed": True,
-            "block_reasons": [],
-            "recommendations": ["review rate above 15%"],
-        },
+def _complete_runs(
+    *,
+    strict_findings: bool = True,
+    balanced_findings: bool = False,
+    exploratory_findings: bool = True,
+) -> dict[str, dict[str, object]]:
+    return {
         "strict": {
             "test_run_id": "tr-strict",
             "threshold_value": 1.0,
-            "pass_rate": 0.5,
-            "review_rate": 0.5,
+            "pass_rate": 0.5 if strict_findings else 0.9,
+            "review_rate": 0.5 if strict_findings else 0.1,
             "risk_pass_rate": 1.0,
-            "gate_passed": False,
-            "block_reasons": ["pass rate below 70%"],
-            "recommendations": ["review rate above 15%"],
+            "gate_passed": not strict_findings,
+            "block_reasons": ["pass rate below 70%"] if strict_findings else [],
+            "recommendations": ["review rate above 15%"] if strict_findings else [],
         },
         "balanced": {
             "test_run_id": "tr-balanced",
             "threshold_value": 0.8,
             "pass_rate": 0.8,
-            "review_rate": 0.1,
+            "review_rate": 0.1 if not balanced_findings else 0.2,
             "risk_pass_rate": 1.0,
             "gate_passed": True,
             "block_reasons": [],
-            "recommendations": [],
+            "recommendations": ["review rate above 15%"] if balanced_findings else [],
+        },
+        "exploratory": {
+            "test_run_id": "tr-exp",
+            "threshold_value": 0.6,
+            "pass_rate": 0.7,
+            "review_rate": 0.2 if exploratory_findings else 0.1,
+            "risk_pass_rate": 1.0,
+            "gate_passed": True,
+            "block_reasons": [],
+            "recommendations": ["review rate above 15%"] if exploratory_findings else [],
         },
     }
+
+
+def test_render_threshold_report_orders_presets_and_shows_gate_state() -> None:
+    runs = _complete_runs()
 
     report = render_threshold_report("it-helpdesk-pilot", runs)
 
@@ -56,23 +65,24 @@ def test_render_threshold_report_orders_presets_and_shows_gate_state() -> None:
 def test_render_threshold_report_uses_default_findings_message_when_none_exist() -> None:
     report = render_threshold_report(
         service_id="it-helpdesk-pilot",
-        runs={
-            "strict": {
-                "test_run_id": "tr-strict",
-                "threshold_value": 1.0,
-                "pass_rate": 0.9,
-                "review_rate": 0.1,
-                "risk_pass_rate": 1.0,
-                "gate_passed": True,
-                "block_reasons": [],
-                "recommendations": [],
-            }
-        },
+        runs=_complete_runs(
+            strict_findings=False,
+            balanced_findings=False,
+            exploratory_findings=False,
+        ),
     )
 
     assert "## Findings" in report
     assert "- All presets passed without recommendations." in report
     assert report.endswith("\n")
+
+
+def test_render_threshold_report_raises_when_a_preset_is_missing() -> None:
+    runs = _complete_runs()
+    del runs["exploratory"]
+
+    with pytest.raises(ValueError, match="exploratory"):
+        render_threshold_report("it-helpdesk-pilot", runs)
 
 
 def test_run_csv_gate_posts_presets_writes_outputs_and_avoids_secret_logging(
@@ -190,3 +200,154 @@ def test_run_csv_gate_posts_presets_writes_outputs_and_avoids_secret_logging(
         out_dir / "it-helpdesk-pilot-threshold-comparison.md"
     ).read_text(encoding="utf-8")
     assert "# CSV Gate Threshold Comparison: it-helpdesk-pilot" in markdown_output
+
+
+def test_run_csv_gate_rejects_service_id_path_escape_and_writes_nothing_outside_out_dir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.run_csv_gate as run_csv_gate
+
+    state_path = tmp_path / "seed-state.json"
+    csv_path = tmp_path / "cases.csv"
+    out_dir = tmp_path / "reports"
+    outside_json = tmp_path / "outside-threshold-comparison.json"
+    outside_md = tmp_path / "outside-threshold-comparison.md"
+
+    state_path.write_text(
+        json.dumps(
+            {
+                "service_id": "../../outside",
+                "policy_version": 3,
+                "intent_catalog_version": 7,
+            }
+        ),
+        encoding="utf-8",
+    )
+    csv_path.write_text(
+        "case_id,query,expected_intent,case_type,memo\n"
+        "C001,hello,it_api_timeout,positive,sample\n",
+        encoding="utf-8",
+    )
+
+    class FakeAdminApiClient:
+        def __init__(self, **_: object) -> None:
+            raise AssertionError("AdminApiClient should not be constructed for invalid service_id")
+
+        def __enter__(self) -> FakeAdminApiClient:
+            return self
+
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            traceback: TracebackType | None,
+        ) -> None:
+            return None
+
+        def post(self, path: str, *, json: dict[str, object] | None = None) -> dict[str, object]:
+            raise AssertionError(f"unexpected post call: {path} {json}")
+
+    monkeypatch.setattr(run_csv_gate, "AdminApiClient", FakeAdminApiClient)
+
+    with pytest.raises(ValueError, match="service_id"):
+        run_csv_gate.main(
+            [
+                "--base-url",
+                "http://testserver",
+                "--admin-token",
+                "bootstrap-token",
+                "--state",
+                str(state_path),
+                "--csv",
+                str(csv_path),
+                "--out-dir",
+                str(out_dir),
+            ]
+        )
+
+    assert not outside_json.exists()
+    assert not outside_md.exists()
+    assert list(out_dir.glob("*")) == []
+
+
+def test_run_csv_gate_uses_admin_token_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.run_csv_gate as run_csv_gate
+
+    state_path = tmp_path / "seed-state.json"
+    csv_path = tmp_path / "cases.csv"
+    out_dir = tmp_path / "reports"
+
+    state_path.write_text(
+        json.dumps(
+            {
+                "service_id": "it-helpdesk-pilot",
+                "policy_version": 3,
+                "intent_catalog_version": 7,
+            }
+        ),
+        encoding="utf-8",
+    )
+    csv_path.write_text(
+        "case_id,query,expected_intent,case_type,memo\n"
+        "C001,hello,it_api_timeout,positive,sample\n",
+        encoding="utf-8",
+    )
+
+    class FakeAdminApiClient:
+        def __init__(
+            self,
+            *,
+            base_url: str,
+            admin_token: str,
+            actor_id: str,
+            actor_roles: str,
+        ) -> None:
+            assert base_url == "http://testserver"
+            assert admin_token == "env-bootstrap-token"
+            assert actor_id == "csv-gate"
+            assert actor_roles == "system_admin"
+
+        def __enter__(self) -> FakeAdminApiClient:
+            return self
+
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            traceback: TracebackType | None,
+        ) -> None:
+            return None
+
+        def post(self, _path: str, *, json: dict[str, object] | None = None) -> dict[str, object]:
+            assert json is not None
+            preset = str(json["threshold_preset"])
+            return {
+                "test_run_id": f"tr-{preset}",
+                "threshold_value": {"strict": 1.0, "balanced": 0.8, "exploratory": 0.6}[preset],
+                "pass_rate": {"strict": 0.7, "balanced": 0.8, "exploratory": 0.7}[preset],
+                "review_rate": {"strict": 0.1, "balanced": 0.1, "exploratory": 0.1}[preset],
+                "risk_pass_rate": 1.0,
+                "gate_passed": True,
+                "block_reasons": [],
+                "recommendations": [],
+            }
+
+    monkeypatch.setattr(run_csv_gate, "AdminApiClient", FakeAdminApiClient)
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "env-bootstrap-token")
+
+    run_csv_gate.main(
+        [
+            "--base-url",
+            "http://testserver",
+            "--state",
+            str(state_path),
+            "--csv",
+            str(csv_path),
+            "--out-dir",
+            str(out_dir),
+        ]
+    )

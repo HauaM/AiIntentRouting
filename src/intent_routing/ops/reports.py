@@ -7,6 +7,13 @@ PRESET_ORDER = ("strict", "balanced", "exploratory")
 
 
 def render_threshold_report(service_id: str, runs: Mapping[str, Mapping[str, Any]]) -> str:
+    missing_presets = [preset for preset in PRESET_ORDER if preset not in runs]
+    if missing_presets:
+        raise ValueError(
+            "Missing threshold preset results for comparison: "
+            + ", ".join(missing_presets)
+        )
+
     lines = [
         f"# CSV Gate Threshold Comparison: {service_id}",
         "",
@@ -16,9 +23,7 @@ def render_threshold_report(service_id: str, runs: Mapping[str, Mapping[str, Any
 
     findings: list[str] = []
     for preset in PRESET_ORDER:
-        run = runs.get(preset)
-        if run is None:
-            continue
+        run = runs[preset]
         row = (
             "| {preset} | {threshold} | {pass_rate} | {review_rate} | "
             "{risk_pass_rate} | {gate} | {test_run_id} |"
