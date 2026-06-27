@@ -1,5 +1,7 @@
 *.save
 .worktrees/
+var/
+*.secret.json
 .venv/
 .pytest_cache/
 .mypy_cache/
