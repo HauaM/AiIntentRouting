@@ -6,8 +6,14 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from intent_routing.domain.enums import ThresholdPreset
 from intent_routing.domain.schemas import validate_route_key
-from intent_routing.testing.csv_runner import CSV_COLUMNS, ParsedTestCase, parse_test_cases_csv
+from intent_routing.testing.csv_runner import (
+    CSV_COLUMNS,
+    CsvValidationError,
+    ParsedTestCase,
+    parse_test_cases_csv,
+)
 
 
 class PilotIntent(BaseModel):
@@ -36,7 +42,7 @@ class PilotCatalog(BaseModel):
     display_name: str = Field(min_length=1)
     environment: str = Field(min_length=1)
     app_id: str = Field(min_length=1)
-    threshold_preset: str = "balanced"
+    threshold_preset: ThresholdPreset = ThresholdPreset.balanced
     intents: list[PilotIntent] = Field(min_length=1)
     off_topic_keywords: list[str] = Field(default_factory=list)
     off_topic_message: str = "서비스 범위 밖 문의입니다."
@@ -48,12 +54,16 @@ def load_pilot_catalog(path: Path) -> PilotCatalog:
 
 
 def load_pilot_cases(path: Path) -> list[ParsedTestCase]:
+    assert_csv_header(path)
     return parse_test_cases_csv(path.read_text(encoding="utf-8"))
 
 
 def assert_csv_header(path: Path) -> None:
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.reader(handle)
-        header = next(reader)
+        try:
+            header = next(reader)
+        except StopIteration as exc:
+            raise CsvValidationError(f"CSV header must be {CSV_COLUMNS}") from exc
     if header != CSV_COLUMNS:
-        raise ValueError(f"CSV header must be {CSV_COLUMNS}")
+        raise CsvValidationError(f"CSV header must be {CSV_COLUMNS}")
