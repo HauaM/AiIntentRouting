@@ -69,6 +69,46 @@ def test_main_decrypt_mode_prints_redacted_metadata_only(
     assert '"trace_id": "trace-123"' in stdout
 
 
+def test_main_uses_env_admin_token_when_cli_token_is_omitted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    trace_audit_drill = importlib.import_module("scripts.trace_audit_drill")
+    state_path = tmp_path / "pilot.state.secret.json"
+    state_path.write_text(json.dumps({"service_id": "svc-test"}), encoding="utf-8")
+    fake_client = _FakeAdminApiClient(
+        response=[
+            {
+                "trace_id": "trace-123",
+                "service_id": "svc-test",
+                "query_masked": "***",
+            }
+        ]
+    )
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "env-admin-token")
+    monkeypatch.setattr(trace_audit_drill, "AdminApiClient", fake_client.factory)
+
+    trace_audit_drill.main(
+        [
+            "--base-url",
+            "http://admin.test",
+            "--state",
+            str(state_path),
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    assert fake_client.init_kwargs["admin_token"] == "env-admin-token"
+    assert fake_client.calls == [
+        {
+            "path": "/admin/v1/services/svc-test/runtime-logs",
+            "params": {"limit": 5},
+        }
+    ]
+    assert '"trace_id": "trace-123"' in stdout
+
+
 def test_parse_args_reads_state_as_path_type() -> None:
     trace_audit_drill = importlib.import_module("scripts.trace_audit_drill")
 
@@ -85,6 +125,22 @@ def test_parse_args_reads_state_as_path_type() -> None:
     assert args.state == Path("var/pilot/example.state.secret.json")
 
 
+def test_parse_args_rejects_view_reason_without_trace_id() -> None:
+    trace_audit_drill = importlib.import_module("scripts.trace_audit_drill")
+
+    with pytest.raises(SystemExit, match="--view-reason requires --trace-id"):
+        trace_audit_drill._parse_args(
+            [
+                "--base-url",
+                "http://admin.test",
+                "--state",
+                "var/pilot/example.state.secret.json",
+                "--view-reason",
+                "ticket INC-20260626-001",
+            ]
+        )
+
+
 def _stdout_safe_strings(text: str) -> str:
     lines = []
     for line in text.splitlines():
@@ -94,13 +150,15 @@ def _stdout_safe_strings(text: str) -> str:
 
 
 class _FakeAdminApiClient:
-    def __init__(self, *, response: dict[str, str]) -> None:
+    def __init__(self, *, response: object) -> None:
         self._response = response
         self.calls: list[dict[str, object]] = []
         self.entered = False
         self.exited = False
+        self.init_kwargs: dict[str, object] = {}
 
-    def factory(self, **_kwargs: object) -> "_FakeAdminApiClient":
+    def factory(self, **kwargs: object) -> "_FakeAdminApiClient":
+        self.init_kwargs = dict(kwargs)
         return self
 
     def __enter__(self) -> "_FakeAdminApiClient":
@@ -115,6 +173,10 @@ class _FakeAdminApiClient:
     ) -> None:
         self.exited = True
 
-    def post(self, path: str, *, json: dict[str, str] | None = None) -> dict[str, str]:
+    def get(self, path: str, *, params: dict[str, int] | None = None) -> object:
+        self.calls.append({"path": path, "params": params})
+        return self._response
+
+    def post(self, path: str, *, json: dict[str, str] | None = None) -> object:
         self.calls.append({"path": path, "json": json})
         return self._response

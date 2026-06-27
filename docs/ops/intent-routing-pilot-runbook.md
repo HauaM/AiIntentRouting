@@ -44,11 +44,14 @@ uv run python scripts/smoke_runtime_dify.py \
 
 ## 5. Trace/Audit Drill
 
+Pass `--admin-token local-admin-token` in each drill command unless you export `ADMIN_BOOTSTRAP_TOKEN` first.
+
 List masked logs:
 
 ```bash
 uv run python scripts/trace_audit_drill.py \
   --base-url http://127.0.0.1:8000 \
+  --admin-token local-admin-token \
   --state var/pilot/it-helpdesk-pilot.state.secret.json
 ```
 
@@ -57,6 +60,7 @@ Fetch one masked log:
 ```bash
 uv run python scripts/trace_audit_drill.py \
   --base-url http://127.0.0.1:8000 \
+  --admin-token local-admin-token \
   --state var/pilot/it-helpdesk-pilot.state.secret.json \
   --trace-id <trace_id>
 ```
@@ -66,6 +70,7 @@ Record raw-query access audit without printing raw text:
 ```bash
 uv run python scripts/trace_audit_drill.py \
   --base-url http://127.0.0.1:8000 \
+  --admin-token local-admin-token \
   --state var/pilot/it-helpdesk-pilot.state.secret.json \
   --trace-id <trace_id> \
   --view-reason "장애 분석 ticket INC-20260626-001"

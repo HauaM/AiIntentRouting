@@ -69,11 +69,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         description="Run the intent routing trace and audit drill."
     )
     parser.add_argument("--base-url", required=True)
-    parser.add_argument("--admin-token", default="local-admin-token")
+    parser.add_argument("--admin-token")
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--trace-id")
     parser.add_argument("--view-reason")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.view_reason and not args.trace_id:
+        raise SystemExit("--view-reason requires --trace-id")
+    return args
 
 
 if __name__ == "__main__":
