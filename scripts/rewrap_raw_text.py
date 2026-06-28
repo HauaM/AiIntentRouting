@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.db.session import create_db_engine
+from intent_routing.security.encryption import EncryptedText
 from intent_routing.security.keyring import load_raw_text_keyring
 from intent_routing.security.rewrap import (
     apply_intent_example_encrypted_text,
@@ -22,6 +23,7 @@ from intent_routing.security.rewrap import (
     build_raw_text_rewrap_report,
     intent_example_encrypted_text,
     normalize_raw_text_rewrap_includes,
+    raw_text_key_counts_by_table,
     raw_text_rewrap_audit_after_state,
     reencrypt_envelope,
     render_raw_text_rewrap_markdown,
@@ -129,6 +131,11 @@ def run_raw_text_rewrap(
         included_tables=included_tables,
         active_key_id=keyring.active_key_id,
     )
+    report_key_counts = raw_text_key_counts_by_table(
+        key_counts,
+        included_tables=included_tables,
+        active_key_id=keyring.active_key_id,
+    )
     run = repository.create_raw_text_rewrap_run(
         rewrap_run_id=rewrap_run_id,
         service_id=service_id,
@@ -167,6 +174,7 @@ def run_raw_text_rewrap(
         target_key_id=keyring.active_key_id,
         source_key_ids=source_key_ids,
         included_tables=included_tables,
+        key_counts=report_key_counts,
         scanned_count=counts.scanned,
         rewrapped_count=counts.rewrapped,
         skipped_count=counts.skipped,
@@ -184,6 +192,7 @@ def run_raw_text_rewrap(
         completed_at=completed_at,
     )
     if not dry_run:
+        assert approval_id is not None
         repository.insert_audit_log(
             event_type="raw_text.rewrap.executed",
             actor_id=actor_id,
@@ -327,17 +336,17 @@ def _process_candidates(
     return counts
 
 
-def _candidate_encrypted_text(candidate: _RewrapCandidate) -> Any:
-    if candidate.table_name == "intent_examples":
+def _candidate_encrypted_text(candidate: _RewrapCandidate) -> EncryptedText | None:
+    if isinstance(candidate.record, models.IntentExample):
         return intent_example_encrypted_text(candidate.record)
     return runtime_log_encrypted_query(candidate.record)
 
 
 def _apply_candidate_encrypted_text(
     candidate: _RewrapCandidate,
-    encrypted: Any,
+    encrypted: EncryptedText,
 ) -> None:
-    if candidate.table_name == "intent_examples":
+    if isinstance(candidate.record, models.IntentExample):
         apply_intent_example_encrypted_text(candidate.record, encrypted)
         return
     apply_runtime_log_encrypted_query(candidate.record, encrypted)

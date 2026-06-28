@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import TypedDict
 
 from intent_routing.db.models import IntentExample, RuntimeLog
 from intent_routing.security.encryption import EncryptedText
 from intent_routing.security.keyring import RawTextKeyring
+
+
+class RawTextKeyCountDetail(TypedDict):
+    legacy: dict[str, int]
+    active: dict[str, int]
+    total: int
+
+
+RawTextKeyCountsByTable = dict[str, RawTextKeyCountDetail]
+
 
 RAW_TEXT_REWRAP_TABLES = ("intent_examples", "runtime_logs")
 RAW_TEXT_REWRAP_INCLUDE_ALIASES = {
@@ -128,6 +139,35 @@ def source_key_ids_from_counts(
     return sorted(source_key_ids)
 
 
+def raw_text_key_counts_by_table(
+    key_counts: Mapping[str, object],
+    *,
+    included_tables: Sequence[str],
+    active_key_id: str,
+) -> RawTextKeyCountsByTable:
+    counts_by_table: RawTextKeyCountsByTable = {}
+    for table_name in included_tables:
+        legacy_counts: dict[str, int] = {}
+        active_counts: dict[str, int] = {}
+        total = 0
+        raw_table_counts = key_counts.get(table_name, {})
+        if isinstance(raw_table_counts, Mapping):
+            for key_id, raw_count in raw_table_counts.items():
+                if not isinstance(key_id, str) or not isinstance(raw_count, int):
+                    continue
+                total += raw_count
+                if key_id == active_key_id:
+                    active_counts[key_id] = raw_count
+                else:
+                    legacy_counts[key_id] = raw_count
+        counts_by_table[table_name] = {
+            "legacy": legacy_counts,
+            "active": active_counts,
+            "total": total,
+        }
+    return counts_by_table
+
+
 def build_raw_text_rewrap_report(
     *,
     rewrap_run_id: str,
@@ -136,6 +176,7 @@ def build_raw_text_rewrap_report(
     target_key_id: str,
     source_key_ids: Sequence[str],
     included_tables: Sequence[str],
+    key_counts: RawTextKeyCountsByTable,
     scanned_count: int,
     rewrapped_count: int,
     skipped_count: int,
@@ -148,6 +189,7 @@ def build_raw_text_rewrap_report(
         "target_key_id": target_key_id,
         "source_key_ids": list(source_key_ids),
         "included_tables": list(included_tables),
+        "key_counts": key_counts,
         "scanned_count": scanned_count,
         "rewrapped_count": rewrapped_count,
         "skipped_count": skipped_count,
@@ -173,10 +215,13 @@ def render_raw_text_rewrap_markdown(report: Mapping[str, object]) -> str:
     lines = [
         "# Raw Text Rewrap Report",
         "",
+        "## Summary",
+        "",
         "| Field | Value |",
         "| --- | --- |",
     ]
     lines.extend(f"| {field} | {value} |" for field, value in rows)
+    lines.extend(_markdown_key_count_lines(report.get("key_counts", {})))
     return "\n".join(lines) + "\n"
 
 
@@ -200,3 +245,27 @@ def _markdown_list_value(value: object) -> str:
     if isinstance(value, list):
         return ", ".join(str(item) for item in value) or "(none)"
     return str(value)
+
+
+def _markdown_key_count_lines(raw_key_counts: object) -> list[str]:
+    lines = [
+        "",
+        "## Key Counts",
+        "",
+        "| Table | Key role | Key ID | Count |",
+        "| --- | --- | --- | --- |",
+    ]
+    if not isinstance(raw_key_counts, Mapping):
+        return lines
+    for table_name, raw_detail in raw_key_counts.items():
+        if not isinstance(table_name, str) or not isinstance(raw_detail, Mapping):
+            continue
+        for key_role in ("legacy", "active"):
+            raw_counts = raw_detail.get(key_role, {})
+            if not isinstance(raw_counts, Mapping):
+                continue
+            for key_id, count in raw_counts.items():
+                if not isinstance(key_id, str) or not isinstance(count, int):
+                    continue
+                lines.append(f"| {table_name} | {key_role} | {key_id} | {count} |")
+    return lines

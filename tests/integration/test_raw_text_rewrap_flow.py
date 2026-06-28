@@ -68,7 +68,7 @@ def test_dry_run_reports_legacy_counts_and_writes_no_data_changes(
 
     db_session.expire_all()
     run = _latest_run(db_session, service_id)
-    report = _read_only_json_report(tmp_path)
+    report, markdown_report = _read_reports(tmp_path)
     assert run.dry_run is True
     assert run.status == "completed"
     assert run.rewrapped_count == 0
@@ -82,6 +82,22 @@ def test_dry_run_reports_legacy_counts_and_writes_no_data_changes(
     assert report["rewrapped_count"] == 0
     assert report["skipped_count"] == 2
     assert report["plaintext_exported"] is False
+    assert report["key_counts"] == {
+        "intent_examples": {
+            "legacy": {LEGACY_KEY_ID: 2},
+            "active": {ACTIVE_KEY_ID: 1},
+            "total": 3,
+        },
+        "runtime_logs": {
+            "legacy": {LEGACY_KEY_ID: 2},
+            "active": {ACTIVE_KEY_ID: 1},
+            "total": 3,
+        },
+    }
+    assert f"| intent_examples | legacy | {LEGACY_KEY_ID} | 2 |" in markdown_report
+    assert f"| intent_examples | active | {ACTIVE_KEY_ID} | 1 |" in markdown_report
+    assert f"| runtime_logs | legacy | {LEGACY_KEY_ID} | 2 |" in markdown_report
+    assert f"| runtime_logs | active | {ACTIVE_KEY_ID} | 1 |" in markdown_report
     assert _example_envelopes(db_session, service_id) == before_examples
     assert _runtime_log_envelopes(db_session, service_id) == before_logs
 
@@ -478,12 +494,15 @@ def _run_count(db_session: Session, service_id: str) -> int:
     )
 
 
-def _read_only_json_report(report_dir: Path) -> dict[str, object]:
+def _read_reports(report_dir: Path) -> tuple[dict[str, object], str]:
     reports = sorted(report_dir.glob("raw-text-rewrap-*.json"))
     assert len(reports) == 1
     markdown_reports = sorted(report_dir.glob("raw-text-rewrap-*.md"))
     assert len(markdown_reports) == 1
-    return json.loads(reports[0].read_text(encoding="utf-8"))
+    return (
+        json.loads(reports[0].read_text(encoding="utf-8")),
+        markdown_reports[0].read_text(encoding="utf-8"),
+    )
 
 
 def _example_envelopes(
