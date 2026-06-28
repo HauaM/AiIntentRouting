@@ -1331,6 +1331,14 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
             query_masked="masked rawless query",
             created_at=now,
         )
+        partial_envelope_log = repository.insert_runtime_log(
+            trace_id=f"trace-lifecycle-partial-{uuid4().hex}",
+            service_id=service_id,
+            latency_ms=12,
+            query_raw_key_id="key-old",
+            query_masked="masked partial query",
+            created_at=now,
+        )
         other_log = repository.insert_runtime_log(
             trace_id=f"trace-lifecycle-other-{uuid4().hex}",
             service_id=other_service_id,
@@ -1392,6 +1400,7 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
                 first_log.trace_id,
                 already_redacted_log.trace_id,
                 rawless_log.trace_id,
+                partial_envelope_log.trace_id,
                 other_log.trace_id,
             ],
             actor_id="security-admin",
@@ -1404,6 +1413,7 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
                 first_log.trace_id,
                 already_redacted_log.trace_id,
                 rawless_log.trace_id,
+                partial_envelope_log.trace_id,
                 other_log.trace_id,
             ],
             actor_id="second-admin",
@@ -1447,6 +1457,10 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
         assert rawless_log.raw_query_deleted_at is None
         assert rawless_log.raw_query_deleted_by is None
         assert rawless_log.raw_query_delete_reason is None
+        assert partial_envelope_log.query_raw_key_id == "key-old"
+        assert partial_envelope_log.raw_query_deleted_at is None
+        assert partial_envelope_log.raw_query_deleted_by is None
+        assert partial_envelope_log.raw_query_delete_reason is None
         assert other_log.query_raw_key_id == "key-old"
         assert other_log.raw_query_deleted_at is None
     finally:
