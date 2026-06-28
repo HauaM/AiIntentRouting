@@ -268,6 +268,92 @@ def test_export_ops_evidence_writes_redacted_json_and_markdown(
     ]
 
 
+def test_export_ops_evidence_reports_rewrap_collection_status_without_database_url(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    service_id = "svc-task7-no-db"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/readyz":
+            return httpx.Response(200, json={"status": "ready"})
+        if request.url.path == f"/admin/v1/services/{service_id}/releases/active":
+            return httpx.Response(
+                200,
+                json={
+                    "release_version": "rel-no-db-001",
+                    "service_id": service_id,
+                    "environment": "dev",
+                    "policy_version": "pol-no-db-001",
+                    "intent_catalog_version": "cat-no-db-001",
+                    "model_version": "emb-fake-v1",
+                    "vector_index_version": "vec-no-db-001",
+                    "test_dataset_version": "tds-no-db-001",
+                    "test_run_id": "trn-no-db-001",
+                    "pass_rate": 1.0,
+                    "risk_pass_rate": 1.0,
+                    "active": True,
+                    "released_by": "release-operator",
+                    "released_at": "2026-06-29T00:00:00Z",
+                    "rollback_target": None,
+                },
+            )
+        if request.url.path == f"/admin/v1/services/{service_id}/runtime-metrics":
+            return httpx.Response(
+                200,
+                json={
+                    "service_id": service_id,
+                    "window_hours": 24,
+                    "request_count": 0,
+                    "decision_counts": {},
+                    "error_counts": {},
+                    "latency_ms": {"p50": None, "p95": None, "max": None},
+                    "top_route_keys": [],
+                    "raw_query_retention": {"encrypted_count": 0, "redacted_count": 0},
+                },
+            )
+        if (
+            request.url.path
+            == f"/admin/v1/services/{service_id}/security/raw-text-key-summary"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "service_id": service_id,
+                    "active_key_id": "pilot-kek-20260628-002",
+                    "intent_examples": [],
+                    "runtime_logs": [],
+                },
+            )
+        if request.url.path == f"/admin/v1/services/{service_id}/audit-logs":
+            return httpx.Response(200, json=[])
+        return httpx.Response(404, json={"error": "unexpected path"})
+
+    result = export_ops_evidence.run_ops_evidence_export(
+        base_url="http://testserver",
+        admin_token="local-admin-token",
+        service_id=service_id,
+        out_dir=tmp_path,
+        window_hours=24,
+        actor_id="ops-evidence",
+        environment="dev",
+        transport=httpx.MockTransport(handler),
+    )
+
+    json_text = Path(result["json_path"]).read_text(encoding="utf-8")
+    markdown = Path(result["markdown_path"]).read_text(encoding="utf-8")
+    parsed = json.loads(json_text)
+    assert parsed["latest_rewrap_runs"] == []
+    assert parsed["latest_rewrap_runs_status"] == {
+        "collected": False,
+        "reason": "DATABASE_URL missing",
+    }
+    assert "Rewrap runs collected: `false`" in markdown
+    assert "Rewrap runs collection reason: `DATABASE_URL missing`" in markdown
+
+
 def _seed_rewrap_runs(db_session: Session, service_id: str) -> str:
     run_prefix = f"rtr-export-{service_id.removeprefix('svc-task7-export-')[:8]}"
     old_run_id = f"{run_prefix}-001"

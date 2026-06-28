@@ -70,6 +70,10 @@ def run_ops_evidence_export(
             service_id=service_id,
             limit=DEFAULT_AUDIT_LIMIT,
         )
+    latest_rewrap_runs, latest_rewrap_runs_status = _latest_rewrap_run_evidence(
+        service_id=service_id,
+        limit=DEFAULT_REWRAP_LIMIT,
+    )
 
     payload = {
         "service_id": service_id,
@@ -81,10 +85,8 @@ def run_ops_evidence_export(
         "active_release": active_release,
         "runtime_metrics": runtime_metrics,
         "raw_text_key_summary": raw_text_key_summary,
-        "latest_rewrap_runs": _latest_rewrap_run_summaries(
-            service_id=service_id,
-            limit=DEFAULT_REWRAP_LIMIT,
-        ),
+        "latest_rewrap_runs": latest_rewrap_runs,
+        "latest_rewrap_runs_status": latest_rewrap_runs_status,
         "runtime_raw_query_retention": _raw_query_retention(runtime_metrics),
         "audit_evidence": {
             "count": len(audit_logs) if isinstance(audit_logs, list) else 0,
@@ -170,14 +172,14 @@ def _get_json(
     }
 
 
-def _latest_rewrap_run_summaries(
+def _latest_rewrap_run_evidence(
     *,
     service_id: str,
     limit: int,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     database_url = _database_url_from_env()
     if database_url is None:
-        return []
+        return [], {"collected": False, "reason": "DATABASE_URL missing"}
     engine = create_db_engine(database_url)
     try:
         with Session(engine) as session:
@@ -192,7 +194,12 @@ def _latest_rewrap_run_summaries(
                     .limit(limit)
                 )
             )
-            return [_rewrap_run_summary(run) for run in runs]
+            summaries = [_rewrap_run_summary(run) for run in runs]
+            return summaries, {
+                "collected": True,
+                "source": "database",
+                "count": len(summaries),
+            }
     finally:
         engine.dispose()
 

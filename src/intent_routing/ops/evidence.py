@@ -60,6 +60,20 @@ SENSITIVE_TEXT_PATTERNS = (
     re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE),
     re.compile(r"irt_secret[A-Za-z0-9._:-]*", re.IGNORECASE),
     re.compile(r"RAW_TEXT_LEGACY_KEKS_JSON\s*[:=]\s*\{[^}]*\}", re.IGNORECASE),
+    re.compile(
+        r"\b(?:query_raw|text_raw)(?:_[A-Za-z0-9]+)*\s*[:=]\s*[^;\s|,]+",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\b(?:query_raw|text_raw)(?:_[A-Za-z0-9]+)+\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:ciphertext|encrypted[_-]?dek)\s*[:=]\s*[^;\s|,]+",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bapi[_-]?key\s*[:=]\s*[^;\s|,]+", re.IGNORECASE),
+    re.compile(r"\bX-API-Key\s*:\s*[^;\s|,]+", re.IGNORECASE),
+    re.compile(r"\birt_[A-Za-z0-9_-]{20,}\b", re.IGNORECASE),
+    re.compile(r"\S*\.state\.secret\.json\b", re.IGNORECASE),
+    re.compile(r"\bvar/pilot/\S*secret\.json\b", re.IGNORECASE),
     re.compile(r"RAW_TEXT_KEK_BASE64", re.IGNORECASE),
     re.compile(r"RAW_TEXT_LEGACY_KEKS_JSON", re.IGNORECASE),
     re.compile(r"Authorization", re.IGNORECASE),
@@ -83,6 +97,7 @@ def render_ops_evidence_markdown(payload: Mapping[str, Any]) -> str:
     readyz = _mapping(redacted.get("readyz"))
     runtime_metrics = _mapping(redacted.get("runtime_metrics"))
     key_summary = _mapping(redacted.get("raw_text_key_summary"))
+    rewrap_status = _mapping(redacted.get("latest_rewrap_runs_status"))
     retention = _mapping(
         redacted.get("runtime_raw_query_retention")
         or runtime_metrics.get("raw_query_retention")
@@ -169,6 +184,17 @@ def render_ops_evidence_markdown(payload: Mapping[str, Any]) -> str:
             "",
             "## KEK Rewrap Runs",
             "",
+        ]
+    )
+    if rewrap_status:
+        collected = str(bool(rewrap_status.get("collected"))).lower()
+        lines.append(f"- Rewrap runs collected: `{collected}`")
+        reason = rewrap_status.get("reason")
+        if reason:
+            lines.append(f"- Rewrap runs collection reason: `{reason}`")
+        lines.append("")
+    lines.extend(
+        [
             "| run id | status | dry run | scanned | rewrapped | skipped | failed |",
             "| --- | --- | --- | ---: | ---: | ---: | ---: |",
         ]
@@ -276,7 +302,10 @@ def _latency_value(metrics: Mapping[str, Any], key: str) -> Any:
 def _count_rows(value: Any) -> list[str]:
     if not isinstance(value, Mapping) or not value:
         return ["| none | 0 |"]
-    return [f"| {name} | {count} |" for name, count in value.items()]
+    return [
+        f"| {_markdown_cell(name)} | {_markdown_cell(count)} |"
+        for name, count in value.items()
+    ]
 
 
 def _route_key_rows(value: Any) -> list[str]:
@@ -284,7 +313,10 @@ def _route_key_rows(value: Any) -> list[str]:
     if not rows:
         return ["| none | 0 |"]
     return [
-        f"| {row.get('route_key', 'unknown')} | {row.get('count', 0)} |"
+        "| {route_key} | {count} |".format(
+            route_key=_markdown_cell(row.get("route_key", "unknown")),
+            count=_markdown_cell(row.get("count", 0)),
+        )
         for row in rows
     ]
 
@@ -294,7 +326,7 @@ def _key_summary_rows(value: Any) -> list[str]:
     if not rows:
         return ["| none | 0 |"]
     return [
-        f"| {row.get('key_id', 'none')} | {row.get('count', 0)} |"
+        f"| {_markdown_cell(row.get('key_id', 'none'))} | {_markdown_cell(row.get('count', 0))} |"
         for row in rows
     ]
 
@@ -305,9 +337,9 @@ def _runtime_key_summary_rows(value: Any) -> list[str]:
         return ["| none | none | 0 |"]
     return [
         "| {key_id} | {state} | {count} |".format(
-            key_id=row.get("key_id", "none"),
-            state=row.get("state", "encrypted"),
-            count=row.get("count", 0),
+            key_id=_markdown_cell(row.get("key_id", "none")),
+            state=_markdown_cell(row.get("state", "encrypted")),
+            count=_markdown_cell(row.get("count", 0)),
         )
         for row in rows
     ]
@@ -322,13 +354,13 @@ def _rewrap_rows(value: Any) -> list[str]:
             "| {run_id} | {status} | {dry_run} | {scanned} | "
             "{rewrapped} | {skipped} | {failed} |"
         ).format(
-            run_id=row.get("rewrap_run_id", "unknown"),
-            status=row.get("status", "unknown"),
-            dry_run=row.get("dry_run", "unknown"),
-            scanned=row.get("scanned_count", 0),
-            rewrapped=row.get("rewrapped_count", 0),
-            skipped=row.get("skipped_count", 0),
-            failed=row.get("failed_count", 0),
+            run_id=_markdown_cell(row.get("rewrap_run_id", "unknown")),
+            status=_markdown_cell(row.get("status", "unknown")),
+            dry_run=_markdown_cell(row.get("dry_run", "unknown")),
+            scanned=_markdown_cell(row.get("scanned_count", 0)),
+            rewrapped=_markdown_cell(row.get("rewrapped_count", 0)),
+            skipped=_markdown_cell(row.get("skipped_count", 0)),
+            failed=_markdown_cell(row.get("failed_count", 0)),
         )
         for row in rows
     ]
@@ -340,13 +372,19 @@ def _audit_rows(value: Any) -> list[str]:
         return ["| none | none | none | none |"]
     return [
         "| {event_type} | {actor} | {target} | {created_at} |".format(
-            event_type=row.get("event_type", "unknown"),
-            actor=row.get("actor_id", "unknown"),
-            target=row.get("target_id", "unknown"),
-            created_at=row.get("created_at", "unknown"),
+            event_type=_markdown_cell(row.get("event_type", "unknown")),
+            actor=_markdown_cell(row.get("actor_id", "unknown")),
+            target=_markdown_cell(row.get("target_id", "unknown")),
+            created_at=_markdown_cell(row.get("created_at", "unknown")),
         )
         for row in rows
     ]
+
+
+def _markdown_cell(value: Any) -> str:
+    text = str(value)
+    text = re.sub(r"[\r\n]+", " ", text)
+    return text.replace("|", r"\|")
 
 
 def _sequence_of_mappings(value: Any) -> list[Mapping[str, Any]]:
