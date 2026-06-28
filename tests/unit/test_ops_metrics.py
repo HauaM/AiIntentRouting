@@ -90,9 +90,47 @@ def test_safe_audit_log_item_omits_state_snapshots() -> None:
         "trace_id": "irt-abc",
         "target_type": "runtime_log",
         "target_id": "irt-abc",
-        "view_reason": "approval=SEC-20260628-001; reason=장애 분석 ticket INC-20260628-001",
+        "view_reason": "approval=SEC-20260628-001; reason=[REDACTED]",
         "source_ip": "127.0.0.1",
         "created_at": datetime(2026, 6, 28, tzinfo=UTC),
     }
     assert "before_state" not in item
     assert "after_state" not in item
+
+
+def test_safe_audit_log_item_sanitizes_view_reason() -> None:
+    audit_log = models.AuditLog(
+        audit_id=uuid4(),
+        event_type="raw_query.viewed",
+        actor_id="auditor-user",
+        service_id="it-helpdesk-pilot",
+        trace_id="irt-abc",
+        target_type="runtime_log",
+        target_id="irt-abc",
+        view_reason=(
+            "approval=SEC-20260628-001; "
+            "reason=query_raw text_raw plain raw query; "
+            "authorization=Bearer irt_secret_task6_token; "
+            "kek_base64=bm90LWEtcmVhbC1rZWstYnV0LXNlbnNpdGl2ZQ=="
+        ),
+        source_ip="127.0.0.1",
+        before_state=None,
+        after_state=None,
+        created_at=datetime(2026, 6, 28, tzinfo=UTC),
+    )
+
+    item = safe_audit_log_item(audit_log)
+
+    assert item["view_reason"] == (
+        "approval=SEC-20260628-001; "
+        "reason=[REDACTED]; "
+        "authorization=[REDACTED]; "
+        "kek_base64=[REDACTED]"
+    )
+    serialized = str(item["view_reason"])
+    assert "Bearer" not in serialized
+    assert "irt_secret" not in serialized
+    assert "bm90LWEtcmVhbC1rZWstYnV0LXNlbnNpdGl2ZQ==" not in serialized
+    assert "query_raw" not in serialized
+    assert "text_raw" not in serialized
+    assert "plain raw query" not in serialized

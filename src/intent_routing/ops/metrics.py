@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any, cast
 
@@ -10,6 +11,27 @@ from intent_routing.db import models
 from intent_routing.domain.enums import Decision
 
 DECISION_COUNT_KEYS = tuple(decision.value for decision in Decision)
+_VIEW_REASON_VALUE_REDACT_KEYS = {
+    "api_key",
+    "authorization",
+    "bearer_token",
+    "kek_base64",
+    "query_raw",
+    "raw_query",
+    "raw_text_kek_base64",
+    "reason",
+    "text_raw",
+    "view_reason",
+}
+_BEARER_TOKEN_PATTERN = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
+_IRT_SECRET_PATTERN = re.compile(r"\birt_[A-Za-z0-9._~+/=-]+\b")
+_RAW_FIELD_PATTERN = re.compile(r"(?i)\b(query_raw|text_raw)\b")
+_BASE64_SECRET_PATTERN = re.compile(
+    r"\b(?=[A-Za-z0-9+/]{32,}={0,2}\b)"
+    r"(?=[A-Za-z0-9+/]*[A-Za-z])"
+    r"(?=[A-Za-z0-9+/]*[0-9])"
+    r"[A-Za-z0-9+/]+={0,2}\b"
+)
 
 
 def empty_runtime_metrics(service_id: str, window_hours: int) -> dict[str, Any]:
@@ -139,10 +161,40 @@ def safe_audit_log_item(audit_log: models.AuditLog) -> dict[str, Any]:
         "trace_id": audit_log.trace_id,
         "target_type": audit_log.target_type,
         "target_id": audit_log.target_id,
-        "view_reason": audit_log.view_reason,
+        "view_reason": sanitize_audit_view_reason(audit_log.view_reason),
         "source_ip": audit_log.source_ip,
         "created_at": audit_log.created_at,
     }
+
+
+def sanitize_audit_view_reason(view_reason: str | None) -> str | None:
+    if view_reason is None:
+        return None
+
+    sanitized_segments: list[str] = []
+    for raw_segment in view_reason.split(";"):
+        segment = raw_segment.strip()
+        if not segment:
+            continue
+        key, separator, value = segment.partition("=")
+        if separator:
+            normalized_key = key.strip().lower()
+            if normalized_key in _VIEW_REASON_VALUE_REDACT_KEYS:
+                sanitized_segments.append(f"{key.strip()}=[REDACTED]")
+                continue
+            sanitized_segments.append(
+                f"{key.strip()}={_sanitize_audit_text(value.strip())}"
+            )
+            continue
+
+        sanitized_text = _sanitize_audit_text(segment)
+        sanitized_segments.append(
+            sanitized_text if sanitized_text != segment else "[REDACTED]"
+        )
+
+    if not sanitized_segments:
+        return None
+    return "; ".join(sanitized_segments)
 
 
 def _decision_counts(session: Session, params: Mapping[str, object]) -> dict[str, int]:
@@ -220,4 +272,11 @@ def _key_counts(value: object, *, active_key_id: str | None) -> dict[str, int]:
 def _optional_int(value: object) -> int | None:
     if value is None:
         return None
-    return int(value)
+    return int(cast("int | str", value))
+
+
+def _sanitize_audit_text(value: str) -> str:
+    sanitized = _BEARER_TOKEN_PATTERN.sub("[REDACTED]", value)
+    sanitized = _IRT_SECRET_PATTERN.sub("[REDACTED]", sanitized)
+    sanitized = _BASE64_SECRET_PATTERN.sub("[REDACTED]", sanitized)
+    return _RAW_FIELD_PATTERN.sub("[REDACTED_FIELD]", sanitized)

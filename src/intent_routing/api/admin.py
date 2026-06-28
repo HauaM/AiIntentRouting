@@ -1158,7 +1158,7 @@ def get_raw_text_key_summary(
         raw_text_key_summary_from_counts(
             service_id=service_id,
             active_key_id=active_key_id,
-            counts=repository.count_raw_text_key_ids(service_id),
+            counts=repository.count_raw_text_key_inventory(service_id),
         )
     )
 

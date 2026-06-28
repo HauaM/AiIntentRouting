@@ -501,6 +501,42 @@ class IntentRoutingRepository:
             "runtime_logs_redacted": int(redacted_count or 0),
         }
 
+    def count_raw_text_key_inventory(self, service_id: str) -> RawTextKeyIdCounts:
+        example_rows = self.session.execute(
+            select(
+                models.IntentExample.text_raw_key_id,
+                func.count(models.IntentExample.example_id),
+            )
+            .where(models.IntentExample.service_id == service_id)
+            .group_by(models.IntentExample.text_raw_key_id)
+        )
+        runtime_log_rows = self.session.execute(
+            select(
+                models.RuntimeLog.query_raw_key_id,
+                func.count(models.RuntimeLog.trace_id),
+            )
+            .where(models.RuntimeLog.service_id == service_id)
+            .where(models.RuntimeLog.query_raw_key_id.is_not(None))
+            .group_by(models.RuntimeLog.query_raw_key_id)
+        )
+        redacted_count = self.session.scalar(
+            select(func.count(models.RuntimeLog.trace_id))
+            .where(models.RuntimeLog.service_id == service_id)
+            .where(models.RuntimeLog.raw_query_deleted_at.is_not(None))
+        )
+
+        return {
+            "intent_examples": {
+                key_id: int(count)
+                for key_id, count in example_rows
+            },
+            "runtime_logs": {
+                key_id: int(count)
+                for key_id, count in runtime_log_rows
+            },
+            "runtime_logs_redacted": int(redacted_count or 0),
+        }
+
     def list_audit_logs(
         self,
         service_id: str,

@@ -19,9 +19,11 @@ SERVICE_ID = "it-helpdesk-pilot"
 OTHER_SERVICE_ID = "hr-helpdesk-pilot"
 ACTIVE_KEY_ID = "pilot-kek-20260628-002"
 LEGACY_KEY_ID = "pilot-kek-20260628-001"
+PARTIAL_KEY_ID = "pilot-kek-20260628-partial"
 RAW_QUERY = "plain raw query with bearer token"
 RAW_EXAMPLE_TEXT = "plain raw example text"
 BEARER_TOKEN = "Bearer irt_runtime_secret_token"
+API_KEY_SECRET = "irt_secret_task6_token"
 KEK_BASE64 = "bm90LWEtcmVhbC1rZWstYnV0LXNlbnNpdGl2ZQ=="
 
 
@@ -52,7 +54,7 @@ def test_scoped_auditor_can_list_audit_logs_and_raw_text_key_summary_for_service
             "trace_id": seed.trace_id,
             "target_type": "runtime_log",
             "target_id": seed.trace_id,
-            "view_reason": "approval=SEC-20260628-001; reason=장애 분석 ticket INC-20260628-001",
+            "view_reason": "approval=SEC-20260628-001; reason=[REDACTED]",
             "source_ip": "127.0.0.1",
             "created_at": "2026-06-28T00:00:00Z",
         }
@@ -71,6 +73,7 @@ def test_scoped_auditor_can_list_audit_logs_and_raw_text_key_summary_for_service
         "runtime_logs": [
             {"key_id": ACTIVE_KEY_ID, "count": 3},
             {"key_id": LEGACY_KEY_ID, "count": 1},
+            {"key_id": PARTIAL_KEY_ID, "count": 1},
             {"key_id": None, "count": 1, "state": "raw_query_redacted"},
         ],
     }
@@ -224,9 +227,62 @@ def test_new_operations_responses_do_not_expose_sensitive_material(
         RAW_QUERY,
         RAW_EXAMPLE_TEXT,
         BEARER_TOKEN,
+        API_KEY_SECRET,
         KEK_BASE64,
     ):
         assert forbidden not in serialized
+
+
+def test_audit_log_view_reason_is_sanitized(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_ops_state(db_session)
+    client = _client(db_session, monkeypatch)
+
+    response = client.get(
+        f"/admin/v1/services/{SERVICE_ID}/audit-logs",
+        headers=_auditor_headers(SERVICE_ID),
+        params={"trace_id": "irt-ops-metrics-secret-reason"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()[0]["view_reason"] == (
+        "approval=SEC-SECRET; "
+        "reason=[REDACTED]; "
+        "authorization=[REDACTED]; "
+        "api_key=[REDACTED]; "
+        "kek_base64=[REDACTED]"
+    )
+    for forbidden in (
+        BEARER_TOKEN,
+        API_KEY_SECRET,
+        KEK_BASE64,
+        RAW_QUERY,
+        "query_raw",
+        "text_raw",
+    ):
+        assert forbidden not in response.text
+
+
+def test_raw_text_key_summary_counts_partial_envelope_without_valid_kek(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_ops_state(db_session)
+    client = _client(
+        db_session,
+        monkeypatch,
+        raw_text_kek_base64="not-valid-base64",
+    )
+
+    response = client.get(
+        f"/admin/v1/services/{SERVICE_ID}/security/raw-text-key-summary",
+        headers=_auditor_headers(SERVICE_ID),
+    )
+
+    assert response.status_code == 200
+    assert {"key_id": PARTIAL_KEY_ID, "count": 1} in response.json()["runtime_logs"]
 
 
 class _SeedResult:
@@ -235,10 +291,18 @@ class _SeedResult:
         self.audit_id = audit_id
 
 
-def _client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def _client(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    raw_text_kek_base64: str | None = KEK_BASE64,
+) -> TestClient:
     monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
     monkeypatch.setenv("RAW_TEXT_KEK_ID", ACTIVE_KEY_ID)
-    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", KEK_BASE64)
+    if raw_text_kek_base64 is None:
+        monkeypatch.delenv("RAW_TEXT_KEK_BASE64", raising=False)
+    else:
+        monkeypatch.setenv("RAW_TEXT_KEK_BASE64", raw_text_kek_base64)
     app = create_app()
 
     def override_session() -> Iterator[Session]:
@@ -355,6 +419,16 @@ def _seed_ops_state(db_session: Session) -> _SeedResult:
     )
     _insert_runtime_log(
         repository,
+        trace_id="irt-ops-metrics-partial",
+        decision="confident",
+        route_key="it.partial.manual_lookup",
+        latency_ms=55,
+        raw_key_id=PARTIAL_KEY_ID,
+        raw_envelope_complete=False,
+        created_at=now - timedelta(days=7),
+    )
+    _insert_runtime_log(
+        repository,
         trace_id="irt-ops-metrics-other",
         service_id=OTHER_SERVICE_ID,
         decision="confident",
@@ -384,6 +458,25 @@ def _seed_ops_state(db_session: Session) -> _SeedResult:
             "text_raw": RAW_EXAMPLE_TEXT,
         },
         created_at=audit_created_at,
+    )
+    repository.insert_audit_log(
+        event_type="raw_query.viewed",
+        actor_id="auditor-user",
+        service_id=SERVICE_ID,
+        trace_id="irt-ops-metrics-secret-reason",
+        target_type="runtime_log",
+        target_id="irt-ops-metrics-secret-reason",
+        view_reason=(
+            "approval=SEC-SECRET; "
+            f"reason=query_raw text_raw {RAW_QUERY}; "
+            f"authorization={BEARER_TOKEN}; "
+            f"api_key={API_KEY_SECRET}; "
+            f"kek_base64={KEK_BASE64}"
+        ),
+        source_ip="127.0.0.1",
+        before_state=None,
+        after_state=None,
+        created_at=audit_created_at + timedelta(seconds=1),
     )
     repository.insert_audit_log(
         event_type="raw_query.viewed",
@@ -484,21 +577,23 @@ def _insert_runtime_log(
     service_id: str = SERVICE_ID,
     error_code: str | None = None,
     raw_query_deleted_at: datetime | None = None,
+    raw_envelope_complete: bool = True,
 ) -> models.RuntimeLog:
-    raw_envelope = (
-        {
-            "query_raw_ciphertext": b"runtime-ciphertext",
-            "query_raw_encrypted_dek": b"runtime-encrypted-dek",
-            "query_raw_encrypted_dek_iv": b"runtime-dek-iv",
-            "query_raw_encrypted_dek_auth_tag": b"runtime-dek-auth-tag",
-            "query_raw_key_id": raw_key_id,
-            "query_raw_iv": b"runtime-iv",
-            "query_raw_auth_tag": b"runtime-auth-tag",
-            "query_raw_algorithm": "AES-256-GCM",
-        }
-        if raw_key_id is not None and raw_query_deleted_at is None
-        else {}
-    )
+    raw_envelope: dict[str, object] = {}
+    if raw_key_id is not None and raw_query_deleted_at is None:
+        raw_envelope["query_raw_key_id"] = raw_key_id
+        if raw_envelope_complete:
+            raw_envelope.update(
+                {
+                    "query_raw_ciphertext": b"runtime-ciphertext",
+                    "query_raw_encrypted_dek": b"runtime-encrypted-dek",
+                    "query_raw_encrypted_dek_iv": b"runtime-dek-iv",
+                    "query_raw_encrypted_dek_auth_tag": b"runtime-dek-auth-tag",
+                    "query_raw_iv": b"runtime-iv",
+                    "query_raw_auth_tag": b"runtime-auth-tag",
+                    "query_raw_algorithm": "AES-256-GCM",
+                }
+            )
     return repository.insert_runtime_log(
         trace_id=trace_id,
         request_id=f"req-{trace_id}",
