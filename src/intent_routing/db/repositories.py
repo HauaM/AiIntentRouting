@@ -519,6 +519,20 @@ class IntentRoutingRepository:
         ).limit(limit)
         return list(self.session.scalars(statement))
 
+    def runtime_metrics(
+        self,
+        service_id: str,
+        *,
+        window_hours: int,
+    ) -> dict[str, Any]:
+        from intent_routing.ops.metrics import runtime_metrics_for_service
+
+        return runtime_metrics_for_service(
+            self.session,
+            service_id,
+            window_hours=window_hours,
+        )
+
     def redact_runtime_raw_queries(
         self,
         service_id: str,

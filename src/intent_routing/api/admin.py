@@ -4,7 +4,7 @@ from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from os import environ
-from typing import Annotated, Any, NoReturn
+from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -48,6 +48,10 @@ from intent_routing.logging.audit import (
     raw_query_view_after_state,
     runtime_log_encrypted_raw_query,
     source_ip_from_request,
+)
+from intent_routing.ops.metrics import (
+    raw_text_key_summary_from_counts,
+    safe_audit_log_item,
 )
 from intent_routing.security.admin_auth import (
     AdminContext,
@@ -387,6 +391,64 @@ class RuntimeLogResponse(BaseModel):
     created_at: datetime
 
 
+class LatencyMetricsResponse(BaseModel):
+    p50: int | None
+    p95: int | None
+    max: int | None
+
+
+class RawQueryRetentionMetricsResponse(BaseModel):
+    encrypted_count: int
+    redacted_count: int
+
+
+class TopRouteKeyResponse(BaseModel):
+    route_key: str
+    count: int
+
+
+class RuntimeMetricsResponse(BaseModel):
+    service_id: str
+    window_hours: int
+    request_count: int
+    decision_counts: dict[str, int]
+    error_counts: dict[str, int]
+    latency_ms: LatencyMetricsResponse
+    top_route_keys: list[TopRouteKeyResponse]
+    raw_query_retention: RawQueryRetentionMetricsResponse
+
+
+class AuditLogResponse(BaseModel):
+    audit_id: UUID
+    event_type: str
+    actor_id: str
+    service_id: str
+    trace_id: str | None
+    target_type: str
+    target_id: str
+    view_reason: str | None
+    source_ip: str | None
+    created_at: datetime
+
+
+class RawTextStoredKeyCountResponse(BaseModel):
+    key_id: str
+    count: int
+
+
+class RawTextRedactedCountResponse(BaseModel):
+    key_id: None
+    count: int
+    state: Literal["raw_query_redacted"]
+
+
+class RawTextKeySummaryResponse(BaseModel):
+    service_id: str
+    active_key_id: str | None
+    intent_examples: list[RawTextStoredKeyCountResponse]
+    runtime_logs: list[RawTextStoredKeyCountResponse | RawTextRedactedCountResponse]
+
+
 class RawQueryDecryptRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -528,6 +590,25 @@ def _require_runtime_log_access(context: AdminContext, service_id: str) -> None:
     if context.roles.intersection(allowed_roles) and context.can_access_service(service_id):
         return
     raise_admin_forbidden("Runtime log scope is required for this action.")
+
+
+def _require_runtime_metrics_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_role("service_operator") and context.can_access_service(service_id):
+        return
+    raise_admin_forbidden("Runtime metrics scope is required for this action.")
+
+
+def _require_security_lifecycle_read_access(
+    context: AdminContext,
+    service_id: str,
+) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_role("auditor") and context.can_access_service(service_id):
+        return
+    raise_admin_forbidden("Security lifecycle audit scope is required for this action.")
 
 
 def _require_raw_query_access(context: AdminContext, service_id: str) -> None:
@@ -1014,6 +1095,72 @@ def list_runtime_logs(
         _runtime_log_response(runtime_log)
         for runtime_log in repository.list_masked_runtime_logs(service_id, limit=limit)
     ]
+
+
+@router.get(
+    "/services/{service_id}/runtime-metrics",
+    response_model=RuntimeMetricsResponse,
+)
+def get_runtime_metrics(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    window_hours: Annotated[int, Query(ge=1, le=24 * 31)] = 24,
+) -> RuntimeMetricsResponse:
+    _require_runtime_metrics_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    return RuntimeMetricsResponse.model_validate(
+        repository.runtime_metrics(service_id, window_hours=window_hours)
+    )
+
+
+@router.get(
+    "/services/{service_id}/audit-logs",
+    response_model=list[AuditLogResponse],
+)
+def list_audit_logs(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    event_type: Annotated[str | None, Query(min_length=1)] = None,
+    trace_id: Annotated[str | None, Query(min_length=1)] = None,
+) -> list[AuditLogResponse]:
+    _require_security_lifecycle_read_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    return [
+        AuditLogResponse.model_validate(safe_audit_log_item(audit_log))
+        for audit_log in repository.list_audit_logs(
+            service_id,
+            limit=limit,
+            event_type=event_type,
+            trace_id=trace_id,
+        )
+    ]
+
+
+@router.get(
+    "/services/{service_id}/security/raw-text-key-summary",
+    response_model=RawTextKeySummaryResponse,
+)
+def get_raw_text_key_summary(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> RawTextKeySummaryResponse:
+    _require_security_lifecycle_read_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    active_key_id = (environ.get("RAW_TEXT_KEK_ID") or "").strip() or None
+    return RawTextKeySummaryResponse.model_validate(
+        raw_text_key_summary_from_counts(
+            service_id=service_id,
+            active_key_id=active_key_id,
+            counts=repository.count_raw_text_key_ids(service_id),
+        )
+    )
 
 
 @router.post(
