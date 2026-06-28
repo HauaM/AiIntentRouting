@@ -158,6 +158,37 @@ def test_ops_evidence_redacts_sensitive_free_text_assignments() -> None:
         assert "REDACTED" in rendered
 
 
+def test_ops_evidence_redacts_bare_urlsafe_generated_api_tokens() -> None:
+    generated_token = "AbCDefGhIjKlMnOpQrStUvWxYz0123456789aBcDeFg"
+    payload = _payload()
+    payload["audit_evidence"] = {
+        "count": 1,
+        "events": [
+            {
+                "event_type": "raw_query.viewed",
+                "actor_id": "auditor-user",
+                "target_id": "trace-token-review",
+                "view_reason": (
+                    "approval=SEC-20260628-RAW; "
+                    f"operator pasted token {generated_token} into notes"
+                ),
+                "created_at": "2026-06-29T00:00:00Z",
+            }
+        ],
+    }
+
+    json_text = render_ops_evidence_json(payload)
+    markdown = render_ops_evidence_markdown(payload)
+
+    for rendered in (json_text, markdown):
+        assert generated_token not in rendered
+        assert "REDACTED" in rendered
+        assert "rel-task7-001" in rendered
+        assert "rtr-20260628-002" in rendered
+        assert "it.api_timeout.manual_lookup" in rendered
+    assert "SEC-20260628-RAW" in json_text
+
+
 def test_ops_evidence_markdown_escapes_table_cells() -> None:
     payload = _payload()
     payload["runtime_metrics"] = {

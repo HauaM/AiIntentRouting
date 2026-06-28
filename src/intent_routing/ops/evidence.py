@@ -83,6 +83,9 @@ SENSITIVE_TEXT_PATTERNS = (
     re.compile(r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{40,}={0,2}(?![A-Za-z0-9+/=])"),
     *[re.compile(re.escape(value)) for value in KNOWN_SECRET_VALUES],
 )
+URLSAFE_TOKEN_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_-])([A-Za-z0-9_-]{43,96})(?![A-Za-z0-9_-])"
+)
 REDACTED = "REDACTED"
 
 
@@ -278,7 +281,27 @@ def _redact_text(value: str) -> str:
     redacted = value
     for pattern in SENSITIVE_TEXT_PATTERNS:
         redacted = pattern.sub(REDACTED, redacted)
+    redacted = URLSAFE_TOKEN_PATTERN.sub(_redact_urlsafe_token_match, redacted)
     return re.sub(r"(?:REDACTED[\s,;:=]*){2,}", f"{REDACTED} ", redacted).strip()
+
+
+def _redact_urlsafe_token_match(match: re.Match[str]) -> str:
+    token = match.group(1)
+    if _looks_like_generated_urlsafe_token(token):
+        return REDACTED
+    return token
+
+
+def _looks_like_generated_urlsafe_token(token: str) -> bool:
+    if "." in token or len(token) < 43:
+        return False
+    has_upper = any(character.isupper() for character in token)
+    has_lower = any(character.islower() for character in token)
+    has_digit = any(character.isdigit() for character in token)
+    if not (has_upper and has_lower and has_digit):
+        return False
+    unique_ratio = len(set(token)) / len(token)
+    return unique_ratio >= 0.45
 
 
 def _redacted_key(existing: Mapping[str, Any], number: int) -> str:
