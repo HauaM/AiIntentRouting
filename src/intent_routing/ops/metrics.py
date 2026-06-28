@@ -11,27 +11,8 @@ from intent_routing.db import models
 from intent_routing.domain.enums import Decision
 
 DECISION_COUNT_KEYS = tuple(decision.value for decision in Decision)
-_VIEW_REASON_VALUE_REDACT_KEYS = {
-    "api_key",
-    "authorization",
-    "bearer_token",
-    "kek_base64",
-    "query_raw",
-    "raw_query",
-    "raw_text_kek_base64",
-    "reason",
-    "text_raw",
-    "view_reason",
-}
-_BEARER_TOKEN_PATTERN = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
-_IRT_SECRET_PATTERN = re.compile(r"\birt_[A-Za-z0-9._~+/=-]+\b")
-_RAW_FIELD_PATTERN = re.compile(r"(?i)\b(query_raw|text_raw)\b")
-_BASE64_SECRET_PATTERN = re.compile(
-    r"\b(?=[A-Za-z0-9+/]{32,}={0,2}\b)"
-    r"(?=[A-Za-z0-9+/]*[A-Za-z])"
-    r"(?=[A-Za-z0-9+/]*[0-9])"
-    r"[A-Za-z0-9+/]+={0,2}\b"
-)
+_VIEW_REASON_SAFE_KEYS = {"approval", "approval_id", "ticket", "ticket_id"}
+_VIEW_REASON_SAFE_VALUE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 def empty_runtime_metrics(service_id: str, window_hours: int) -> dict[str, Any]:
@@ -172,27 +153,29 @@ def sanitize_audit_view_reason(view_reason: str | None) -> str | None:
         return None
 
     sanitized_segments: list[str] = []
+    redacted = False
     for raw_segment in view_reason.split(";"):
         segment = raw_segment.strip()
         if not segment:
             continue
         key, separator, value = segment.partition("=")
-        if separator:
-            normalized_key = key.strip().lower()
-            if normalized_key in _VIEW_REASON_VALUE_REDACT_KEYS:
-                sanitized_segments.append(f"{key.strip()}=[REDACTED]")
-                continue
-            sanitized_segments.append(
-                f"{key.strip()}={_sanitize_audit_text(value.strip())}"
-            )
+        if not separator:
+            redacted = True
             continue
 
-        sanitized_text = _sanitize_audit_text(segment)
-        sanitized_segments.append(
-            sanitized_text if sanitized_text != segment else "[REDACTED]"
-        )
+        safe_key = key.strip()
+        safe_value = value.strip()
+        if (
+            safe_key.lower() in _VIEW_REASON_SAFE_KEYS
+            and _VIEW_REASON_SAFE_VALUE.fullmatch(safe_value)
+        ):
+            sanitized_segments.append(f"{safe_key}={safe_value}")
+            continue
+        redacted = True
 
-    if not sanitized_segments:
+    if redacted:
+        sanitized_segments.append("reason_redacted=true")
+    if not sanitized_segments and not redacted:
         return None
     return "; ".join(sanitized_segments)
 
@@ -273,10 +256,3 @@ def _optional_int(value: object) -> int | None:
     if value is None:
         return None
     return int(cast("int | str", value))
-
-
-def _sanitize_audit_text(value: str) -> str:
-    sanitized = _BEARER_TOKEN_PATTERN.sub("[REDACTED]", value)
-    sanitized = _IRT_SECRET_PATTERN.sub("[REDACTED]", sanitized)
-    sanitized = _BASE64_SECRET_PATTERN.sub("[REDACTED]", sanitized)
-    return _RAW_FIELD_PATTERN.sub("[REDACTED_FIELD]", sanitized)

@@ -90,7 +90,7 @@ def test_safe_audit_log_item_omits_state_snapshots() -> None:
         "trace_id": "irt-abc",
         "target_type": "runtime_log",
         "target_id": "irt-abc",
-        "view_reason": "approval=SEC-20260628-001; reason=[REDACTED]",
+        "view_reason": "approval=SEC-20260628-001; reason_redacted=true",
         "source_ip": "127.0.0.1",
         "created_at": datetime(2026, 6, 28, tzinfo=UTC),
     }
@@ -111,7 +111,45 @@ def test_safe_audit_log_item_sanitizes_view_reason() -> None:
             "approval=SEC-20260628-001; "
             "reason=query_raw text_raw plain raw query; "
             "authorization=Bearer irt_secret_task6_token; "
-            "kek_base64=bm90LWEtcmVhbC1rZWstYnV0LXNlbnNpdGl2ZQ=="
+            "kek_base64=bm90LWEtcmVhbC1rZWstYnV0LXNlbnNpdGl2ZQ==; "
+            "details=plain customer raw text; "
+            "note=some arbitrary plaintext secret"
+        ),
+        source_ip="127.0.0.1",
+        before_state=None,
+        after_state=None,
+        created_at=datetime(2026, 6, 28, tzinfo=UTC),
+    )
+
+    item = safe_audit_log_item(audit_log)
+
+    assert item["view_reason"] == "approval=SEC-20260628-001; reason_redacted=true"
+    serialized = str(item["view_reason"])
+    assert "Bearer" not in serialized
+    assert "irt_secret" not in serialized
+    assert "bm90LWEtcmVhbC1rZWstYnV0LXNlbnNpdGl2ZQ==" not in serialized
+    assert "query_raw" not in serialized
+    assert "text_raw" not in serialized
+    assert "plain raw query" not in serialized
+    assert "plain customer raw text" not in serialized
+    assert "some arbitrary plaintext secret" not in serialized
+    assert "details" not in serialized
+    assert "note" not in serialized
+
+
+def test_safe_audit_log_item_preserves_only_allowlisted_view_reason_metadata() -> None:
+    audit_log = models.AuditLog(
+        audit_id=uuid4(),
+        event_type="raw_query.viewed",
+        actor_id="auditor-user",
+        service_id="it-helpdesk-pilot",
+        trace_id="irt-abc",
+        target_type="runtime_log",
+        target_id="irt-abc",
+        view_reason=(
+            "approval_id=SEC-20260628-001; "
+            "ticket_id=INC-20260628-001; "
+            "details=plain customer raw text"
         ),
         source_ip="127.0.0.1",
         before_state=None,
@@ -122,15 +160,7 @@ def test_safe_audit_log_item_sanitizes_view_reason() -> None:
     item = safe_audit_log_item(audit_log)
 
     assert item["view_reason"] == (
-        "approval=SEC-20260628-001; "
-        "reason=[REDACTED]; "
-        "authorization=[REDACTED]; "
-        "kek_base64=[REDACTED]"
+        "approval_id=SEC-20260628-001; "
+        "ticket_id=INC-20260628-001; "
+        "reason_redacted=true"
     )
-    serialized = str(item["view_reason"])
-    assert "Bearer" not in serialized
-    assert "irt_secret" not in serialized
-    assert "bm90LWEtcmVhbC1rZWstYnV0LXNlbnNpdGl2ZQ==" not in serialized
-    assert "query_raw" not in serialized
-    assert "text_raw" not in serialized
-    assert "plain raw query" not in serialized

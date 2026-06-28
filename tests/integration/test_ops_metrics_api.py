@@ -54,7 +54,7 @@ def test_scoped_auditor_can_list_audit_logs_and_raw_text_key_summary_for_service
             "trace_id": seed.trace_id,
             "target_type": "runtime_log",
             "target_id": seed.trace_id,
-            "view_reason": "approval=SEC-20260628-001; reason=[REDACTED]",
+            "view_reason": "approval=SEC-20260628-001; reason_redacted=true",
             "source_ip": "127.0.0.1",
             "created_at": "2026-06-28T00:00:00Z",
         }
@@ -247,13 +247,7 @@ def test_audit_log_view_reason_is_sanitized(
     )
 
     assert response.status_code == 200
-    assert response.json()[0]["view_reason"] == (
-        "approval=SEC-SECRET; "
-        "reason=[REDACTED]; "
-        "authorization=[REDACTED]; "
-        "api_key=[REDACTED]; "
-        "kek_base64=[REDACTED]"
-    )
+    assert response.json()[0]["view_reason"] == "approval=SEC-SECRET; reason_redacted=true"
     for forbidden in (
         BEARER_TOKEN,
         API_KEY_SECRET,
@@ -261,6 +255,10 @@ def test_audit_log_view_reason_is_sanitized(
         RAW_QUERY,
         "query_raw",
         "text_raw",
+        "plain customer raw text",
+        "some arbitrary plaintext secret",
+        "details",
+        "note",
     ):
         assert forbidden not in response.text
 
@@ -471,7 +469,9 @@ def _seed_ops_state(db_session: Session) -> _SeedResult:
             f"reason=query_raw text_raw {RAW_QUERY}; "
             f"authorization={BEARER_TOKEN}; "
             f"api_key={API_KEY_SECRET}; "
-            f"kek_base64={KEK_BASE64}"
+            f"kek_base64={KEK_BASE64}; "
+            "details=plain customer raw text; "
+            "note=some arbitrary plaintext secret"
         ),
         source_ip="127.0.0.1",
         before_state=None,
