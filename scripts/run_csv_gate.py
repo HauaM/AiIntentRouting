@@ -15,6 +15,8 @@ from intent_routing.ops.reports import PRESET_ORDER, render_threshold_report
 class _AdminApi(Protocol):
     def post(self, path: str, *, json: dict[str, Any] | None = None) -> Any: ...
 
+    def get(self, path: str) -> Any: ...
+
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
@@ -54,6 +56,7 @@ def run_threshold_comparison(
     csv_text = csv_path.read_text(encoding="utf-8")
 
     runs: dict[str, dict[str, Any]] = {}
+    results: dict[str, list[dict[str, Any]]] = {}
     api_context: AbstractContextManager[_AdminApi]
     if http_client is None:
         api_context = AdminApiClient(
@@ -82,12 +85,17 @@ def run_threshold_comparison(
                     "csv_text": csv_text,
                 },
             )
+            test_run_id = runs[preset]["test_run_id"]
+            results[preset] = api.get(
+                f"/admin/v1/services/{service_id}/test-runs/{test_run_id}/results"
+            )
 
     report_json = {
         "service_id": service_id,
         "policy_version": state["policy_version"],
         "intent_catalog_version": state["intent_catalog_version"],
         "runs": runs,
+        "results": results,
     }
     json_path = out_dir / f"{service_id}-threshold-comparison.json"
     markdown_path = out_dir / f"{service_id}-threshold-comparison.md"
@@ -96,7 +104,11 @@ def run_threshold_comparison(
         encoding="utf-8",
     )
     markdown_path.write_text(
-        render_threshold_report(service_id=service_id, runs=runs),
+        render_threshold_report(
+            service_id=service_id,
+            runs=runs,
+            results_by_preset=results,
+        ),
         encoding="utf-8",
     )
     return {
@@ -104,6 +116,7 @@ def run_threshold_comparison(
         "policy_version": state["policy_version"],
         "intent_catalog_version": state["intent_catalog_version"],
         "runs": runs,
+        "results": results,
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
@@ -138,6 +151,12 @@ class _TestClientAdminApi:
 
     def post(self, path: str, *, json: dict[str, Any] | None = None) -> Any:
         response = self._http_client.post(path, headers=self._headers, json=json)
+        if response.status_code >= 400:
+            raise RuntimeError(f"{response.status_code} {response.json()}")
+        return response.json()
+
+    def get(self, path: str) -> Any:
+        response = self._http_client.get(path, headers=self._headers)
         if response.status_code >= 400:
             raise RuntimeError(f"{response.status_code} {response.json()}")
         return response.json()

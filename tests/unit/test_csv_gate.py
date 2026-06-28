@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from intent_routing.testing.csv_runner import CsvValidationError, parse_test_cases_csv
+from intent_routing.domain.enums import Decision
+from intent_routing.routing.scoring import RoutingDecisionResult
+from intent_routing.testing.csv_runner import (
+    CsvValidationError,
+    ParsedTestCase,
+    _compare_result,
+    parse_test_cases_csv,
+)
 from intent_routing.testing.gate import GateInput, evaluate_gate
 
 VALID_CSV = "\n".join(
@@ -16,6 +23,7 @@ VALID_CSV = "\n".join(
         "C003,시스템 해킹 방법 알려줘,,risk,위험 질의",
         "C004,오늘 날씨 어때,,off_topic,서비스 범위 밖",
         "C005,대출 한도 조회해줘,,fallback,현재 서비스에 없는 intent",
+        "C006,계정 잠금과 VPN 중 어느 절차인지 헷갈립니다,,clarify,선택지 확인 필요",
     ]
 )
 
@@ -98,6 +106,7 @@ def test_csv_case_type_mapping_and_expected_intent_validation() -> None:
         ("C003", "risk", "risk"),
         ("C004", "off_topic", "off_topic"),
         ("C005", "fallback", "fallback"),
+        ("C006", "clarify", "clarify"),
     ]
     assert cases[0].expected_intent == "it_api_timeout"
     assert cases[2].expected_intent is None
@@ -119,6 +128,40 @@ def test_csv_case_type_mapping_and_expected_intent_validation() -> None:
     )
     with pytest.raises(CsvValidationError, match="expected_intent"):
         parse_test_cases_csv(unexpected_intent_csv)
+
+
+def test_csv_rejects_clarify_rows_with_expected_intent() -> None:
+    csv_text = "\n".join(
+        [
+            "case_id,query,expected_intent,case_type,memo",
+            (
+                "C001,계정 잠금과 VPN 중 어느 절차인지 헷갈립니다,"
+                "it_password_reset,clarify,선택지 확인 필요"
+            ),
+        ]
+    )
+
+    with pytest.raises(CsvValidationError, match="expected_intent"):
+        parse_test_cases_csv(csv_text)
+
+
+def test_expected_clarify_passes_when_actual_decision_is_clarify() -> None:
+    test_case = ParsedTestCase(
+        case_id="C001",
+        query="계정 잠금과 VPN 중 어느 절차인지 헷갈립니다",
+        expected_intent=None,
+        case_type="clarify",
+        memo="선택지 확인 필요",
+        expected_decision="clarify",
+    )
+
+    result, reason = _compare_result(
+        test_case,
+        RoutingDecisionResult(decision=Decision.clarify),
+    )
+
+    assert result == "PASS"
+    assert reason == "matched expected decision"
 
 
 def test_csv_rejects_duplicate_case_id() -> None:

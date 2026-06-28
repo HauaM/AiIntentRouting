@@ -12,6 +12,20 @@ from intent_routing.testing.csv_runner import CsvValidationError
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "docs/pilot/it-helpdesk-pilot-catalog.json"
 CASES = ROOT / "docs/pilot/it-helpdesk-pilot-cases.csv"
+TIERED_CASES = {
+    30: ROOT / "docs/pilot/it-helpdesk-pilot-cases-30.csv",
+    50: ROOT / "docs/pilot/it-helpdesk-pilot-cases-50.csv",
+    100: ROOT / "docs/pilot/it-helpdesk-pilot-cases-100.csv",
+}
+RISK_TYPES = {
+    "abuse",
+    "dangerous_command",
+    "sensitive_data",
+    "credential_secret",
+    "unauthorized_access",
+    "prompt_injection",
+    "fraud_or_illegal",
+}
 
 
 def test_pilot_catalog_has_route_key_and_example_contract() -> None:
@@ -46,9 +60,9 @@ def test_pilot_catalog_rejects_unknown_threshold_preset(tmp_path: Path) -> None:
 def test_pilot_cases_cover_decision_families() -> None:
     cases = load_pilot_cases(CASES)
 
-    assert {case.case_type for case in cases} == {
+    assert {case.case_type for case in cases} >= {
         "positive",
-        "confusing",
+        "clarify",
         "risk",
         "off_topic",
         "fallback",
@@ -82,3 +96,45 @@ def test_raw_csv_header_matches_sprint_zero_runner_contract() -> None:
     with CASES.open(newline="", encoding="utf-8") as handle:
         reader = csv.reader(handle)
         assert next(reader) == ["case_id", "query", "expected_intent", "case_type", "memo"]
+
+
+def test_tiered_pilot_case_files_exist_and_default_alias_is_standard() -> None:
+    for path in TIERED_CASES.values():
+        assert path.exists()
+
+    assert CASES.read_bytes() == TIERED_CASES[50].read_bytes()
+
+
+def test_tiered_pilot_cases_have_required_coverage_and_no_obvious_secrets() -> None:
+    for expected_count, path in TIERED_CASES.items():
+        cases = load_pilot_cases(path)
+        by_type = {
+            case_type: 0
+            for case_type in ("positive", "clarify", "risk", "off_topic", "fallback")
+        }
+        positive_intents: set[str] = set()
+        risk_memos = " ".join(case.memo for case in cases if case.case_type == "risk")
+
+        for case in cases:
+            by_type[case.case_type] = by_type.get(case.case_type, 0) + 1
+            if case.case_type == "positive" and case.expected_intent is not None:
+                positive_intents.add(case.expected_intent)
+            assert "010-" not in case.query
+            assert "4111" not in case.query
+            assert "1234-5678" not in case.query
+            assert "irt_" not in case.query
+            assert "sk-" not in case.query.casefold()
+
+        assert len(cases) == expected_count
+        assert by_type["positive"] >= expected_count * 0.4
+        assert by_type["clarify"] >= expected_count * 0.1
+        assert by_type["risk"] >= 7
+        assert by_type["off_topic"] >= expected_count * 0.1
+        assert by_type["fallback"] >= expected_count * 0.1
+        assert positive_intents == {
+            "it_api_timeout",
+            "it_password_reset",
+            "it_vpn_access",
+        }
+        for risk_type in RISK_TYPES:
+            assert risk_type in risk_memos

@@ -36,6 +36,7 @@ CSV_COLUMNS = ["case_id", "query", "expected_intent", "case_type", "memo"]
 EXPECTED_DECISIONS = {
     "positive": "confident",
     "confusing": "confident",
+    "clarify": "clarify",
     "risk": "risk",
     "off_topic": "off_topic",
     "fallback": "fallback",
@@ -379,6 +380,8 @@ def _compare_result(
 ) -> tuple[str, str]:
     actual_decision = decision.decision.value
     if actual_decision == Decision.clarify.value:
+        if test_case.expected_decision == Decision.clarify.value:
+            return "PASS", "matched expected decision"
         return "REVIEW", "requires human inspection"
 
     decision_matches = actual_decision == test_case.expected_decision

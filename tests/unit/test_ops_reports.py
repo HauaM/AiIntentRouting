@@ -85,6 +85,56 @@ def test_render_threshold_report_raises_when_a_preset_is_missing() -> None:
         render_threshold_report("it-helpdesk-pilot", runs)
 
 
+def test_render_threshold_report_includes_case_counts_failures_and_reviews() -> None:
+    report = render_threshold_report(
+        service_id="it-helpdesk-pilot",
+        runs=_complete_runs(),
+        results_by_preset={
+            "strict": [],
+            "balanced": [
+                {
+                    "case_id": "C001",
+                    "case_type": "positive",
+                    "expected_decision": "confident",
+                    "expected_intent": "it_api_timeout",
+                    "actual_decision": "fallback",
+                    "actual_intent": None,
+                    "confidence": None,
+                    "result": "FAIL",
+                    "reason": "actual decision did not match expected decision",
+                },
+                {
+                    "case_id": "C002",
+                    "case_type": "clarify",
+                    "expected_decision": "clarify",
+                    "expected_intent": None,
+                    "actual_decision": "clarify",
+                    "actual_intent": None,
+                    "confidence": 0.72,
+                    "result": "REVIEW",
+                    "reason": "requires human inspection",
+                },
+            ],
+            "exploratory": [],
+        },
+    )
+
+    assert "## Case Result Counts" in report
+    assert "| balanced | positive | 0 | 0 | 1 | 1 |" in report
+    assert "## Failed Cases" in report
+    failed_row = (
+        "| balanced | C001 | positive | confident | fallback | it_api_timeout |  |  | "
+        "actual decision did not match expected decision |"
+    )
+    assert failed_row in report
+    assert "## Review Cases" in report
+    review_row = (
+        "| balanced | C002 | clarify | clarify | clarify |  |  | 72.0% | "
+        "requires human inspection |"
+    )
+    assert review_row in report
+
+
 def test_run_csv_gate_posts_presets_writes_outputs_and_avoids_secret_logging(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -109,7 +159,7 @@ def test_run_csv_gate_posts_presets_writes_outputs_and_avoids_secret_logging(
         encoding="utf-8",
     )
 
-    calls: list[tuple[str, dict[str, object]]] = []
+    calls: list[tuple[str, str, dict[str, object] | None]] = []
 
     class FakeAdminApiClient:
         def __init__(
@@ -138,7 +188,7 @@ def test_run_csv_gate_posts_presets_writes_outputs_and_avoids_secret_logging(
 
         def post(self, path: str, *, json: dict[str, object] | None = None) -> dict[str, object]:
             assert json is not None
-            calls.append((path, json))
+            calls.append(("POST", path, json))
             preset = str(json["threshold_preset"])
             return {
                 "test_run_id": f"tr-{preset}",
@@ -150,6 +200,28 @@ def test_run_csv_gate_posts_presets_writes_outputs_and_avoids_secret_logging(
                 "block_reasons": ["pass rate below 70%"] if preset == "strict" else [],
                 "recommendations": ["review rate above 15%"] if preset != "balanced" else [],
             }
+
+        def get(self, path: str) -> list[dict[str, object]]:
+            calls.append(("GET", path, None))
+            test_run_id = path.rsplit("/", 2)[1]
+            preset = test_run_id.removeprefix("tr-")
+            return [
+                {
+                    "case_id": f"{preset}-001",
+                    "query_masked": "masked query",
+                    "case_type": "clarify" if preset == "balanced" else "positive",
+                    "expected_decision": "clarify" if preset == "balanced" else "confident",
+                    "expected_intent": None if preset == "balanced" else "it_api_timeout",
+                    "actual_decision": "clarify" if preset == "balanced" else "fallback",
+                    "actual_intent": None,
+                    "actual_route_key": None,
+                    "confidence": 0.72 if preset == "balanced" else None,
+                    "result": "REVIEW" if preset == "balanced" else "FAIL",
+                    "reason": "requires human inspection"
+                    if preset == "balanced"
+                    else "actual decision did not match expected decision",
+                }
+            ]
 
     monkeypatch.setattr(run_csv_gate, "AdminApiClient", FakeAdminApiClient)
 
@@ -176,30 +248,46 @@ def test_run_csv_gate_posts_presets_writes_outputs_and_avoids_secret_logging(
     assert "balanced: PASS" in captured.out
     assert "exploratory: PASS" in captured.out
 
-    assert [path for path, _json in calls] == [
-        "/admin/v1/services/it-helpdesk-pilot/test-runs",
-        "/admin/v1/services/it-helpdesk-pilot/test-runs",
-        "/admin/v1/services/it-helpdesk-pilot/test-runs",
+    assert [(method, path) for method, path, _json in calls] == [
+        ("POST", "/admin/v1/services/it-helpdesk-pilot/test-runs"),
+        (
+            "GET",
+            "/admin/v1/services/it-helpdesk-pilot/test-runs/tr-strict/results",
+        ),
+        ("POST", "/admin/v1/services/it-helpdesk-pilot/test-runs"),
+        (
+            "GET",
+            "/admin/v1/services/it-helpdesk-pilot/test-runs/tr-balanced/results",
+        ),
+        ("POST", "/admin/v1/services/it-helpdesk-pilot/test-runs"),
+        (
+            "GET",
+            "/admin/v1/services/it-helpdesk-pilot/test-runs/tr-exploratory/results",
+        ),
     ]
-    assert [str(payload["threshold_preset"]) for _path, payload in calls] == [
+    post_payloads = [payload for method, _path, payload in calls if method == "POST"]
+    assert [str(payload["threshold_preset"]) for payload in post_payloads if payload] == [
         "strict",
         "balanced",
         "exploratory",
     ]
-    assert all(payload["policy_version"] == 3 for _path, payload in calls)
-    assert all(payload["intent_catalog_version"] == 7 for _path, payload in calls)
-    assert all(payload["source_filename"] == "cases.csv" for _path, payload in calls)
+    assert all(payload["policy_version"] == 3 for payload in post_payloads if payload)
+    assert all(payload["intent_catalog_version"] == 7 for payload in post_payloads if payload)
+    assert all(payload["source_filename"] == "cases.csv" for payload in post_payloads if payload)
 
     json_output = json.loads(
         (out_dir / "it-helpdesk-pilot-threshold-comparison.json").read_text(encoding="utf-8")
     )
     assert json_output["service_id"] == "it-helpdesk-pilot"
     assert list(json_output["runs"]) == ["strict", "balanced", "exploratory"]
+    assert json_output["results"]["balanced"][0]["case_id"] == "balanced-001"
 
     markdown_output = (
         out_dir / "it-helpdesk-pilot-threshold-comparison.md"
     ).read_text(encoding="utf-8")
     assert "# CSV Gate Threshold Comparison: it-helpdesk-pilot" in markdown_output
+    assert "## Case Result Counts" in markdown_output
+    assert "## Review Cases" in markdown_output
 
 
 def test_run_csv_gate_rejects_service_id_path_escape_and_writes_nothing_outside_out_dir(
@@ -336,6 +424,24 @@ def test_run_csv_gate_uses_admin_token_from_environment(
                 "recommendations": [],
             }
 
+        def get(self, path: str) -> list[dict[str, object]]:
+            test_run_id = path.rsplit("/", 2)[1]
+            return [
+                {
+                    "case_id": f"{test_run_id}-001",
+                    "query_masked": "masked query",
+                    "case_type": "positive",
+                    "expected_decision": "confident",
+                    "expected_intent": "it_api_timeout",
+                    "actual_decision": "confident",
+                    "actual_intent": "it_api_timeout",
+                    "actual_route_key": "it.api_timeout.manual_lookup",
+                    "confidence": 0.91,
+                    "result": "PASS",
+                    "reason": "matched expected decision and intent",
+                }
+            ]
+
     monkeypatch.setattr(run_csv_gate, "AdminApiClient", FakeAdminApiClient)
     monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "env-bootstrap-token")
 
@@ -407,6 +513,24 @@ def test_run_threshold_comparison_returns_report_paths_and_runs(
                 "recommendations": [],
             }
 
+        def get(self, path: str) -> list[dict[str, object]]:
+            test_run_id = path.rsplit("/", 2)[1]
+            return [
+                {
+                    "case_id": f"{test_run_id}-001",
+                    "query_masked": "masked query",
+                    "case_type": "positive",
+                    "expected_decision": "confident",
+                    "expected_intent": "it_api_timeout",
+                    "actual_decision": "confident",
+                    "actual_intent": "it_api_timeout",
+                    "actual_route_key": "it.api_timeout.manual_lookup",
+                    "confidence": 0.91,
+                    "result": "PASS",
+                    "reason": "matched expected decision and intent",
+                }
+            ]
+
     monkeypatch.setattr(run_csv_gate, "AdminApiClient", FakeAdminApiClient)
 
     result = run_csv_gate.run_threshold_comparison(
@@ -419,5 +543,6 @@ def test_run_threshold_comparison_returns_report_paths_and_runs(
 
     assert result["service_id"] == "it-helpdesk-pilot"
     assert result["runs"]["balanced"]["test_run_id"] == "tr-balanced"
+    assert result["results"]["balanced"][0]["case_id"] == "tr-balanced-001"
     assert Path(result["json_path"]).exists()
     assert Path(result["markdown_path"]).exists()
