@@ -28,3 +28,26 @@ Evidence outputs:
 - the generated `.secret.json` state file under `var/pilot`
 
 Non-secret evidence reports must not include raw API keys, bearer headers, `RAW_TEXT_KEK_BASE64`, or raw decrypted query text.
+
+## Operations Evidence
+
+After readiness and any security lifecycle work, export the operations evidence package:
+
+```bash
+uv run python scripts/export_ops_evidence.py \
+  --base-url http://127.0.0.1:8000 \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --service-id ${SERVICE_ID} \
+  --out-dir var/evidence/${SERVICE_ID}/ops \
+  --window-hours 24 \
+  --actor-id ops-evidence \
+  --environment ${INTENT_ROUTING_ENVIRONMENT}
+```
+
+Outputs:
+
+- `ops-evidence.json`
+- `ops-evidence.md`
+
+Use `docs/ops/security-lifecycle.md` for KEK rewrap, runtime raw-query retention, rollback, and secret leak checks.
+Keep generated `.secret.json` state files outside shared evidence bundles.

@@ -10,7 +10,7 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
    export INTENT_ROUTING_ENVIRONMENT=dev
    export ADMIN_BOOTSTRAP_TOKEN=local-admin-token
    export RAW_TEXT_KEK_ID=local-kek-001
-   export RAW_TEXT_KEK_BASE64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+   export RAW_TEXT_KEK_BASE64="$(openssl rand -base64 32)"
    export EMBEDDING_PROVIDER=fake
    export SERVICE_ID=it-helpdesk-pilot-$(date +%Y%m%d%H%M%S)
    export STATE_PATH="var/pilot/${SERVICE_ID}.state.secret.json"
@@ -39,9 +39,17 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 8. Inspect masked runtime logs:
    `uv run python scripts/trace_audit_drill.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --state ${STATE_PATH}`
 
+9. Export operations evidence:
+   `uv run python scripts/export_ops_evidence.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --out-dir var/evidence/${SERVICE_ID}/ops --window-hours 24 --actor-id ops-evidence --environment ${INTENT_ROUTING_ENVIRONMENT}`
+
+   The evidence command writes `ops-evidence.json` and `ops-evidence.md`.
+
 ## Documents
 
 - Local runbook: `docs/ops/intent-routing-local-runbook.md`
 - Pilot runbook: `docs/ops/intent-routing-pilot-runbook.md`
 - Closed-network deployment: `docs/ops/closed-network-deployment.md`
+- Pilot readiness evidence: `docs/ops/pilot-readiness-evidence.md`
+- Security lifecycle and operations evidence: `docs/ops/security-lifecycle.md`
+- Security operations: `docs/ops/security-operations.md`
 - Dify guide: `docs/integrations/dify-http-request-node.md`
