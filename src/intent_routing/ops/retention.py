@@ -25,8 +25,8 @@ def plan_runtime_raw_query_redaction(
     older_than_days: int,
     limit: int,
 ) -> RuntimeRawQueryRetentionPlan:
-    if older_than_days < 1:
-        raise ValueError("older_than_days must be at least 1")
+    if older_than_days < 0:
+        raise ValueError("older_than_days must be non-negative")
     if limit < 1:
         raise ValueError("limit must be at least 1")
 
@@ -67,28 +67,15 @@ def apply_runtime_raw_query_redaction(
     if not trace_id_values:
         return 0
 
-    redaction_trace_ids = list(
-        repository.session.scalars(
-            select(models.RuntimeLog.trace_id)
-            .where(models.RuntimeLog.service_id == service_id)
-            .where(models.RuntimeLog.trace_id.in_(trace_id_values))
-            .where(models.RuntimeLog.raw_query_deleted_at.is_(None))
-            .where(*_complete_raw_query_envelope_filters())
-            .order_by(models.RuntimeLog.created_at, models.RuntimeLog.trace_id)
-        )
-    )
-    if not redaction_trace_ids:
-        return 0
-
     deleted_at = datetime.now(UTC)
-    redacted_count = repository.redact_runtime_raw_queries(
+    redacted_trace_ids = repository.redact_runtime_raw_query_trace_ids(
         service_id,
-        trace_ids=redaction_trace_ids,
+        trace_ids=trace_id_values,
         actor_id=actor_id,
         reason=reason,
         deleted_at=deleted_at,
     )
-    for trace_id in redaction_trace_ids[:redacted_count]:
+    for trace_id in redacted_trace_ids:
         repository.insert_audit_log(
             event_type="runtime_log.raw_query_redacted",
             actor_id=actor_id,
@@ -107,7 +94,7 @@ def apply_runtime_raw_query_redaction(
             },
             created_at=deleted_at,
         )
-    return redacted_count
+    return len(redacted_trace_ids)
 
 
 def _complete_raw_query_envelope_filters() -> tuple[Any, ...]:

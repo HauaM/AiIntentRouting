@@ -1,22 +1,24 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
+from fastapi.testclient import TestClient
+from sqlalchemy import event, select, update
+from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
+from intent_routing.api.admin import get_admin_session
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
+from intent_routing.embedding.provider import clear_embedding_provider_cache
+from intent_routing.main import create_app
+from intent_routing.ops.retention import apply_runtime_raw_query_redaction
 from scripts import apply_log_retention
-from tests.integration.test_trace_audit_logs import (
-    _auditor_headers,
-    _client,
-    _operator_headers,
-)
 
 ACTOR_ID = "security-operator"
 APPROVAL_ID = "SEC-20260628-RETENTION-001"
@@ -201,6 +203,190 @@ def test_runtime_raw_query_retention_dry_run_execute_and_admin_flow(
     assert viewed_audit_log is None
 
 
+def test_zero_day_retention_includes_logs_created_before_current_instant(
+    db_session: Session,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    service_id = f"it-helpdesk-pilot-{uuid4().hex}"
+    eligible_trace_id = f"trace-retention-old-{uuid4().hex}"
+    recent_trace_id = f"trace-retention-recent-{uuid4().hex}"
+    _seed_retention_fixture(
+        db_session,
+        service_id=service_id,
+        other_service_id=f"{service_id}-other",
+        eligible_trace_id=eligible_trace_id,
+        already_redacted_trace_id=f"trace-retention-redacted-{uuid4().hex}",
+        recent_trace_id=recent_trace_id,
+        other_trace_id=f"trace-retention-other-{uuid4().hex}",
+        now=datetime.now(UTC),
+    )
+
+    apply_log_retention.main(
+        [
+            "--service-id",
+            service_id,
+            "--older-than-days",
+            "0",
+            "--limit",
+            "500",
+            "--actor-id",
+            ACTOR_ID,
+            "--reason",
+            "raw query retention policy immediate",
+            "--report-dir",
+            str(tmp_path),
+            "--dry-run",
+        ]
+    )
+
+    dry_run_stdout = capsys.readouterr().out
+    db_session.expire_all()
+    dry_run_report, dry_run_markdown = _latest_reports(tmp_path)
+    assert dry_run_report["dry_run"] is True
+    assert dry_run_report["older_than_days"] == 0
+    assert dry_run_report["eligible_trace_ids"] == [eligible_trace_id, recent_trace_id]
+    assert dry_run_report["redacted_count"] == 0
+    dry_run_eligible_log = _runtime_log(db_session, eligible_trace_id)
+    dry_run_recent_log = _runtime_log(db_session, recent_trace_id)
+    assert dry_run_eligible_log is not None
+    assert dry_run_recent_log is not None
+    assert dry_run_eligible_log.raw_query_deleted_at is None
+    assert dry_run_recent_log.raw_query_deleted_at is None
+    _assert_no_sensitive_material(dry_run_stdout, dry_run_report, dry_run_markdown)
+
+    apply_log_retention.main(
+        [
+            "--service-id",
+            service_id,
+            "--older-than-days",
+            "0",
+            "--limit",
+            "500",
+            "--actor-id",
+            ACTOR_ID,
+            "--reason",
+            "raw query retention policy immediate",
+            "--report-dir",
+            str(tmp_path),
+            "--execute",
+            "--approval-id",
+            APPROVAL_ID,
+        ]
+    )
+
+    execute_stdout = capsys.readouterr().out
+    db_session.expire_all()
+    execute_report, execute_markdown = _latest_reports(tmp_path)
+    assert execute_report["dry_run"] is False
+    assert execute_report["older_than_days"] == 0
+    assert execute_report["eligible_trace_ids"] == [eligible_trace_id, recent_trace_id]
+    assert execute_report["redacted_count"] == 2
+    execute_eligible_log = _runtime_log(db_session, eligible_trace_id)
+    execute_recent_log = _runtime_log(db_session, recent_trace_id)
+    assert execute_eligible_log is not None
+    assert execute_recent_log is not None
+    assert execute_eligible_log.raw_query_deleted_at is not None
+    assert execute_recent_log.raw_query_deleted_at is not None
+    _assert_no_sensitive_material(execute_stdout, execute_report, execute_markdown)
+
+
+def test_redaction_audit_uses_actual_updated_trace_ids_when_plan_turns_stale(
+    db_session: Session,
+) -> None:
+    service_id = f"it-helpdesk-pilot-{uuid4().hex}"
+    stale_trace_id = f"trace-retention-stale-{uuid4().hex}"
+    actual_trace_id = f"trace-retention-actual-{uuid4().hex}"
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(db_session)
+    repository.create_service(
+        service_id=service_id,
+        display_name="IT Helpdesk Pilot",
+        environment="prod",
+        default_threshold_preset="balanced",
+        max_input_tokens=256,
+        status="active",
+        created_by="retention-test",
+        created_at=now,
+        updated_at=now,
+    )
+    _create_runtime_log(
+        repository,
+        service_id=service_id,
+        trace_id=stale_trace_id,
+        masked="stale masked query",
+        created_at=now - timedelta(days=31, seconds=1),
+    )
+    _create_runtime_log(
+        repository,
+        service_id=service_id,
+        trace_id=actual_trace_id,
+        masked="actual masked query",
+        created_at=now - timedelta(days=31),
+    )
+    db_session.commit()
+
+    triggered = False
+
+    def mark_first_trace_stale_before_update(
+        conn: Connection,
+        clauseelement: object,
+        _multiparams: object,
+        _params: object,
+        _execution_options: object,
+    ) -> None:
+        nonlocal triggered
+        if triggered:
+            return
+        if not str(clauseelement).startswith("UPDATE runtime_logs"):
+            return
+        triggered = True
+        conn.execute(
+            update(models.RuntimeLog)
+            .where(models.RuntimeLog.trace_id == stale_trace_id)
+            .values(
+                raw_query_deleted_at=datetime.now(UTC),
+                raw_query_deleted_by="parallel-retention-job",
+                raw_query_delete_reason="parallel retention already redacted",
+            )
+        )
+
+    bind = db_session.get_bind()
+    event.listen(bind, "before_execute", mark_first_trace_stale_before_update)
+    try:
+        redacted_count = apply_runtime_raw_query_redaction(
+            repository,
+            service_id=service_id,
+            trace_ids=[stale_trace_id, actual_trace_id],
+            actor_id=ACTOR_ID,
+            reason="raw query retention policy 30 days",
+        )
+        db_session.commit()
+    finally:
+        event.remove(bind, "before_execute", mark_first_trace_stale_before_update)
+
+    stale_audit_log = db_session.scalar(
+        select(models.AuditLog)
+        .where(models.AuditLog.event_type == "runtime_log.raw_query_redacted")
+        .where(models.AuditLog.trace_id == stale_trace_id)
+    )
+    actual_audit_log = db_session.scalar(
+        select(models.AuditLog)
+        .where(models.AuditLog.event_type == "runtime_log.raw_query_redacted")
+        .where(models.AuditLog.trace_id == actual_trace_id)
+    )
+    assert triggered is True
+    assert redacted_count == 1
+    assert stale_audit_log is None
+    assert actual_audit_log is not None
+    assert actual_audit_log.after_state == {
+        "trace_id": actual_trace_id,
+        "service_id": service_id,
+        "raw_query_redacted": True,
+        "reason": "raw query retention policy 30 days",
+    }
+
+
 def test_execute_requires_approval_id_and_explicit_database_url(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -238,8 +424,42 @@ def test_execute_requires_approval_id_and_explicit_database_url(
 
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
-    with pytest.raises(SystemExit, match="--execute requires DATABASE_URL"):
+    with pytest.raises(SystemExit, match="requires DATABASE_URL"):
         apply_log_retention.main([*required_args, "--approval-id", APPROVAL_ID])
+
+    assert not list(tmp_path.iterdir())
+
+
+def test_dry_run_requires_explicit_database_url_before_opening_engine(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+
+    def fail_if_engine_is_created(_database_url: str | None = None) -> object:
+        raise AssertionError("dry-run must validate explicit DB URL before engine setup")
+
+    monkeypatch.setattr(apply_log_retention, "create_db_engine", fail_if_engine_is_created)
+
+    with pytest.raises(SystemExit, match="requires DATABASE_URL"):
+        apply_log_retention.main(
+            [
+                "--service-id",
+                "it-helpdesk-pilot",
+                "--older-than-days",
+                "30",
+                "--limit",
+                "500",
+                "--actor-id",
+                ACTOR_ID,
+                "--reason",
+                "raw query retention policy 30 days",
+                "--report-dir",
+                str(tmp_path),
+                "--dry-run",
+            ]
+        )
 
     assert not list(tmp_path.iterdir())
 
@@ -330,6 +550,53 @@ def _create_runtime_log(
 def _runtime_log(db_session: Session, trace_id: str) -> models.RuntimeLog | None:
     return db_session.scalar(
         select(models.RuntimeLog).where(models.RuntimeLog.trace_id == trace_id)
+    )
+
+
+def _client(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> TestClient:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    clear_embedding_provider_cache()
+
+    app = create_app()
+
+    def override_session() -> Iterator[Session]:
+        yield db_session
+
+    app.dependency_overrides[get_admin_session] = override_session
+    return TestClient(app)
+
+
+def _admin_headers(**overrides: str) -> dict[str, str]:
+    headers = {
+        "X-Admin-Token": "local-admin-token",
+        "X-Actor-Id": "admin-user",
+        "X-Actor-Roles": "system_admin",
+    }
+    headers.update(overrides)
+    return headers
+
+
+def _operator_headers(service_id: str) -> dict[str, str]:
+    return _admin_headers(
+        **{
+            "X-Actor-Id": "operator-user",
+            "X-Actor-Roles": "service_operator",
+            "X-Service-Scope": service_id,
+        }
+    )
+
+
+def _auditor_headers(service_id: str, *, actor_id: str = "auditor-user") -> dict[str, str]:
+    return _admin_headers(
+        **{
+            "X-Actor-Id": actor_id,
+            "X-Actor-Roles": "auditor",
+            "X-Service-Scope": service_id,
+        }
     )
 
 

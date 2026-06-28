@@ -76,5 +76,6 @@ def test_repository_exposes_security_lifecycle_methods() -> None:
         "list_runtime_logs_for_rewrap",
         "count_raw_text_key_ids",
         "list_audit_logs",
+        "redact_runtime_raw_query_trace_ids",
         "redact_runtime_raw_queries",
     }.issubset(dir(IntentRoutingRepository))

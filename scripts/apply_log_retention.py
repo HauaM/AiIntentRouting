@@ -79,8 +79,8 @@ def run_runtime_raw_query_retention(
     dry_run: bool,
     approval_id: str | None,
 ) -> RuntimeRawQueryRetentionResult:
-    if older_than_days < 1:
-        raise ValueError("older_than_days must be at least 1")
+    if older_than_days < 0:
+        raise ValueError("older_than_days must be non-negative")
     if limit < 1:
         raise ValueError("limit must be at least 1")
     if not dry_run and approval_id is None:
@@ -117,8 +117,8 @@ def run_runtime_raw_query_retention(
         started_at=started_at,
         completed_at=completed_at,
     )
-    json_report_path, markdown_report_path = _write_reports(report_dir, report)
     session.commit()
+    json_report_path, markdown_report_path = _write_reports(report_dir, report)
     return RuntimeRawQueryRetentionResult(
         report=report,
         json_report_path=json_report_path,
@@ -144,16 +144,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def _validate_args(args: argparse.Namespace, *, database_url: str | None) -> None:
-    if args.older_than_days < 1:
-        raise SystemExit("--older-than-days must be at least 1")
+    if args.older_than_days < 0:
+        raise SystemExit("--older-than-days must be non-negative")
     if args.limit < 1:
         raise SystemExit("--limit must be at least 1")
-    if not args.execute:
-        return
-    if not args.approval_id:
+    if args.execute and not args.approval_id:
         raise SystemExit("--execute requires --approval-id")
     if database_url is None:
-        raise SystemExit("--execute requires DATABASE_URL or TEST_DATABASE_URL")
+        raise SystemExit("retention requires DATABASE_URL or TEST_DATABASE_URL")
 
 
 def _database_url_from_env() -> str | None:

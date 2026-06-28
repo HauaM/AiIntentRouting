@@ -527,9 +527,27 @@ class IntentRoutingRepository:
         reason: str,
         deleted_at: datetime,
     ) -> int:
+        return len(
+            self.redact_runtime_raw_query_trace_ids(
+                service_id,
+                trace_ids=trace_ids,
+                actor_id=actor_id,
+                reason=reason,
+                deleted_at=deleted_at,
+            )
+        )
+
+    def redact_runtime_raw_query_trace_ids(
+        self,
+        service_id: str,
+        trace_ids: Iterable[str],
+        actor_id: str,
+        reason: str,
+        deleted_at: datetime,
+    ) -> list[str]:
         trace_id_values = tuple(trace_ids)
         if not trace_id_values:
-            return 0
+            return []
 
         redacted_trace_ids = self.session.scalars(
             update(models.RuntimeLog)
@@ -560,7 +578,7 @@ class IntentRoutingRepository:
             .returning(models.RuntimeLog.trace_id)
         )
         self.session.flush()
-        return len(redacted_trace_ids.all())
+        return list(redacted_trace_ids.all())
 
     def list_masked_runtime_logs(
         self,
