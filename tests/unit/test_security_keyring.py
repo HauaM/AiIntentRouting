@@ -3,7 +3,11 @@ import json
 
 import pytest
 
-from intent_routing.config import RawTextKeyringConfig, load_raw_text_keyring_config
+from intent_routing.config import (
+    MissingRawTextKekError,
+    RawTextKeyringConfig,
+    load_raw_text_keyring_config,
+)
 from intent_routing.security.encryption import EnvelopeEncryptor
 from intent_routing.security.keyring import RawTextKeyring
 
@@ -146,8 +150,20 @@ def test_load_raw_text_keyring_config_reads_legacy_json() -> None:
     assert config.legacy_keks == {"old-kek": _kek(b"1")}
 
 
+def test_load_raw_text_keyring_config_normalizes_whitespace_padded_legacy_key_id() -> None:
+    config = load_raw_text_keyring_config(
+        {
+            "RAW_TEXT_KEK_ID": "new-kek",
+            "RAW_TEXT_KEK_BASE64": _kek(b"2"),
+            "RAW_TEXT_LEGACY_KEKS_JSON": json.dumps({" old-kek ": _kek(b"1")}),
+        }
+    )
+
+    assert config.legacy_keks == {"old-kek": _kek(b"1")}
+
+
 def test_load_raw_text_keyring_config_requires_active_kek() -> None:
-    with pytest.raises(ValueError, match="RAW_TEXT_KEK_BASE64"):
+    with pytest.raises(MissingRawTextKekError, match="RAW_TEXT_KEK_BASE64"):
         load_raw_text_keyring_config({})
 
 
@@ -172,6 +188,33 @@ def test_load_raw_text_keyring_config_rejects_invalid_legacy_json(
         )
 
 
+def test_load_raw_text_keyring_config_rejects_blank_legacy_key_id() -> None:
+    with pytest.raises(ValueError, match="legacy key_id"):
+        load_raw_text_keyring_config(
+            {
+                "RAW_TEXT_KEK_ID": "new-kek",
+                "RAW_TEXT_KEK_BASE64": _kek(b"2"),
+                "RAW_TEXT_LEGACY_KEKS_JSON": json.dumps({" ": _kek(b"1")}),
+            }
+        )
+
+
+def test_load_raw_text_keyring_config_rejects_normalized_duplicate_legacy_key_ids() -> None:
+    with pytest.raises(ValueError, match="duplicate legacy key_id"):
+        load_raw_text_keyring_config(
+            {
+                "RAW_TEXT_KEK_ID": "new-kek",
+                "RAW_TEXT_KEK_BASE64": _kek(b"2"),
+                "RAW_TEXT_LEGACY_KEKS_JSON": json.dumps(
+                    {
+                        "old-kek": _kek(b"1"),
+                        " old-kek ": _kek(b"2"),
+                    }
+                ),
+            }
+        )
+
+
 def test_load_raw_text_keyring_config_rejects_duplicate_active_legacy_key_id() -> None:
     with pytest.raises(ValueError, match="active key_id"):
         load_raw_text_keyring_config(
@@ -179,5 +222,16 @@ def test_load_raw_text_keyring_config_rejects_duplicate_active_legacy_key_id() -
                 "RAW_TEXT_KEK_ID": "same-kek",
                 "RAW_TEXT_KEK_BASE64": _kek(b"2"),
                 "RAW_TEXT_LEGACY_KEKS_JSON": json.dumps({"same-kek": _kek(b"1")}),
+            }
+        )
+
+
+def test_load_raw_text_keyring_config_rejects_active_legacy_duplicate_with_whitespace() -> None:
+    with pytest.raises(ValueError, match="active key_id"):
+        load_raw_text_keyring_config(
+            {
+                "RAW_TEXT_KEK_ID": " same-kek ",
+                "RAW_TEXT_KEK_BASE64": _kek(b"2"),
+                "RAW_TEXT_LEGACY_KEKS_JSON": json.dumps({" same-kek ": _kek(b"1")}),
             }
         )

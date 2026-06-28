@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
+from intent_routing.config import MissingRawTextKekError
 from intent_routing.db.models import (
     ApiKey,
     Intent,
@@ -689,14 +690,24 @@ def _runtime_log_response(runtime_log: Mapping[str, Any]) -> RuntimeLogResponse:
 def _raw_text_keyring() -> RawTextKeyring:
     try:
         return load_raw_text_keyring()
+    except MissingRawTextKekError:
+        _raise_internal_error("Raw text encryption key is not configured.")
     except ValueError as exc:
-        if _is_missing_raw_text_kek(exc):
-            _raise_internal_error("Raw text encryption key is not configured.")
-        _raise_internal_error("Raw text encryption key is invalid.")
+        raise _raw_text_keyring_invalid_error() from exc
 
 
-def _is_missing_raw_text_kek(exc: ValueError) -> bool:
-    return str(exc) == "RAW_TEXT_KEK_BASE64 is required"
+def _raw_text_keyring_invalid_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=ErrorEnvelope(
+            trace_id=_trace_id(),
+            error=ErrorInfo(
+                code=ErrorCode.INTERNAL_ERROR,
+                message="Raw text encryption key is invalid.",
+                retryable=False,
+            ),
+        ).model_dump(mode="json", exclude_none=True),
+    )
 
 
 def _encrypted_raw_text(example: IntentExample) -> EncryptedText:

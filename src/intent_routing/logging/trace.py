@@ -13,6 +13,7 @@ from uuid import uuid4
 from fastapi import Request
 from sqlalchemy.orm import Session
 
+from intent_routing.config import MissingRawTextKekError
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.db.session import session_scope
 from intent_routing.domain.enums import ErrorCode
@@ -277,16 +278,12 @@ class RuntimeTraceLogger:
 def _raw_text_keyring() -> RawTextKeyring:
     try:
         return load_raw_text_keyring()
+    except MissingRawTextKekError as exc:
+        raise RuntimeTraceConfigurationError(
+            "Raw text encryption key is not configured."
+        ) from exc
     except ValueError as exc:
-        if _is_missing_raw_text_kek(exc):
-            raise RuntimeTraceConfigurationError(
-                "Raw text encryption key is not configured."
-            ) from exc
         raise RuntimeTraceConfigurationError("Raw text encryption key is invalid.") from exc
-
-
-def _is_missing_raw_text_kek(exc: ValueError) -> bool:
-    return str(exc) == "RAW_TEXT_KEK_BASE64 is required"
 
 
 def _decimal_or_none(value: float | None) -> Decimal | None:
