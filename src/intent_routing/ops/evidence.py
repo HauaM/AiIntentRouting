@@ -298,7 +298,8 @@ def _looks_like_generated_urlsafe_token(token: str) -> bool:
     has_upper = any(character.isupper() for character in token)
     has_lower = any(character.islower() for character in token)
     has_digit = any(character.isdigit() for character in token)
-    if not (has_upper and has_lower and has_digit):
+    has_urlsafe_symbol = any(character in {"-", "_"} for character in token)
+    if not (has_upper and has_lower and (has_digit or has_urlsafe_symbol)):
         return False
     unique_ratio = len(set(token)) / len(token)
     return unique_ratio >= 0.45

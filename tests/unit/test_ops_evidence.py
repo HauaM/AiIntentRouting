@@ -159,7 +159,10 @@ def test_ops_evidence_redacts_sensitive_free_text_assignments() -> None:
 
 
 def test_ops_evidence_redacts_bare_urlsafe_generated_api_tokens() -> None:
-    generated_token = "AbCDefGhIjKlMnOpQrStUvWxYz0123456789aBcDeFg"
+    generated_tokens = (
+        "AbCDefGhIjKlMnOpQrStUvWxYz0123456789aBcDeFg",
+        "AbCdEfGhIjKlMnOpQrStUvWxYz_AbCdEfGhIjKlMnOpQr",
+    )
     payload = _payload()
     payload["audit_evidence"] = {
         "count": 1,
@@ -170,7 +173,8 @@ def test_ops_evidence_redacts_bare_urlsafe_generated_api_tokens() -> None:
                 "target_id": "trace-token-review",
                 "view_reason": (
                     "approval=SEC-20260628-RAW; "
-                    f"operator pasted token {generated_token} into notes"
+                    "operator pasted tokens "
+                    f"{' and '.join(generated_tokens)} into notes"
                 ),
                 "created_at": "2026-06-29T00:00:00Z",
             }
@@ -181,7 +185,8 @@ def test_ops_evidence_redacts_bare_urlsafe_generated_api_tokens() -> None:
     markdown = render_ops_evidence_markdown(payload)
 
     for rendered in (json_text, markdown):
-        assert generated_token not in rendered
+        for generated_token in generated_tokens:
+            assert generated_token not in rendered
         assert "REDACTED" in rendered
         assert "rel-task7-001" in rendered
         assert "rtr-20260628-002" in rendered
