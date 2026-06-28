@@ -275,11 +275,11 @@ def _database_url_from_env() -> str | None:
 
 def _raw_query_retention(metrics: Any) -> Mapping[str, Any]:
     if not isinstance(metrics, Mapping):
-        return {"encrypted_count": 0, "redacted_count": 0}
+        return {"encrypted_count": 0, "incomplete_count": 0, "redacted_count": 0}
     retention = metrics.get("raw_query_retention")
     if isinstance(retention, Mapping):
         return retention
-    return {"encrypted_count": 0, "redacted_count": 0}
+    return {"encrypted_count": 0, "incomplete_count": 0, "redacted_count": 0}
 
 
 def _isoformat(value: datetime | None) -> str | None:

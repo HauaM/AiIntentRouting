@@ -790,6 +790,7 @@ Metric response shape:
   ],
   "raw_query_retention": {
     "encrypted_count": 100,
+    "incomplete_count": 0,
     "redacted_count": 20
   }
 }
@@ -798,6 +799,7 @@ Metric response shape:
 Implementation notes:
 
 - use PostgreSQL aggregate SQL for counts and percentiles,
+- count any remaining `query_raw_*` material in `encrypted_count` and expose partial envelopes through `incomplete_count`,
 - return zero counts and `null` latency percentiles when there are no rows,
 - filter by `service_id` and `created_at >= now() - window_hours`.
 

@@ -24,7 +24,11 @@ def empty_runtime_metrics(service_id: str, window_hours: int) -> dict[str, Any]:
         "error_counts": {},
         "latency_ms": {"p50": None, "p95": None, "max": None},
         "top_route_keys": [],
-        "raw_query_retention": {"encrypted_count": 0, "redacted_count": 0},
+        "raw_query_retention": {
+            "encrypted_count": 0,
+            "incomplete_count": 0,
+            "redacted_count": 0,
+        },
     }
 
 
@@ -46,15 +50,40 @@ def runtime_metrics_for_service(
                    max(latency_ms) AS max_latency_ms,
                    count(*) FILTER (
                        WHERE raw_query_deleted_at IS NULL
-                         AND query_raw_ciphertext IS NOT NULL
-                         AND query_raw_encrypted_dek IS NOT NULL
-                         AND query_raw_encrypted_dek_iv IS NOT NULL
-                         AND query_raw_encrypted_dek_auth_tag IS NOT NULL
-                         AND query_raw_key_id IS NOT NULL
-                         AND query_raw_iv IS NOT NULL
-                         AND query_raw_auth_tag IS NOT NULL
-                         AND query_raw_algorithm IS NOT NULL
+                         AND (
+                             query_raw_ciphertext IS NOT NULL
+                             OR query_raw_encrypted_dek IS NOT NULL
+                             OR query_raw_encrypted_dek_iv IS NOT NULL
+                             OR query_raw_encrypted_dek_auth_tag IS NOT NULL
+                             OR query_raw_key_id IS NOT NULL
+                             OR query_raw_iv IS NOT NULL
+                             OR query_raw_auth_tag IS NOT NULL
+                             OR query_raw_algorithm IS NOT NULL
+                         )
                    ) AS encrypted_count,
+                   count(*) FILTER (
+                       WHERE raw_query_deleted_at IS NULL
+                         AND (
+                             query_raw_ciphertext IS NOT NULL
+                             OR query_raw_encrypted_dek IS NOT NULL
+                             OR query_raw_encrypted_dek_iv IS NOT NULL
+                             OR query_raw_encrypted_dek_auth_tag IS NOT NULL
+                             OR query_raw_key_id IS NOT NULL
+                             OR query_raw_iv IS NOT NULL
+                             OR query_raw_auth_tag IS NOT NULL
+                             OR query_raw_algorithm IS NOT NULL
+                         )
+                         AND NOT (
+                             query_raw_ciphertext IS NOT NULL
+                             AND query_raw_encrypted_dek IS NOT NULL
+                             AND query_raw_encrypted_dek_iv IS NOT NULL
+                             AND query_raw_encrypted_dek_auth_tag IS NOT NULL
+                             AND query_raw_key_id IS NOT NULL
+                             AND query_raw_iv IS NOT NULL
+                             AND query_raw_auth_tag IS NOT NULL
+                             AND query_raw_algorithm IS NOT NULL
+                         )
+                   ) AS incomplete_count,
                    count(*) FILTER (
                        WHERE raw_query_deleted_at IS NOT NULL
                    ) AS redacted_count
@@ -73,6 +102,7 @@ def runtime_metrics_for_service(
     }
     metrics["raw_query_retention"] = {
         "encrypted_count": int(summary["encrypted_count"] or 0),
+        "incomplete_count": int(summary["incomplete_count"] or 0),
         "redacted_count": int(summary["redacted_count"] or 0),
     }
     metrics["decision_counts"] = _decision_counts(session, params)
@@ -111,12 +141,21 @@ def raw_text_key_summary_from_counts(
         ).items()
     ]
     redacted_count = int(cast("int | None", counts.get("runtime_logs_redacted")) or 0)
+    incomplete_count = int(cast("int | None", counts.get("runtime_logs_incomplete")) or 0)
     if redacted_count:
         runtime_logs.append(
             {
                 "key_id": None,
                 "count": redacted_count,
                 "state": "raw_query_redacted",
+            }
+        )
+    if incomplete_count:
+        runtime_logs.append(
+            {
+                "key_id": None,
+                "count": incomplete_count,
+                "state": "raw_query_incomplete",
             }
         )
     return {

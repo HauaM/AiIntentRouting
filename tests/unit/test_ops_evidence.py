@@ -34,6 +34,7 @@ def test_ops_evidence_json_and_markdown_include_required_evidence() -> None:
     assert parsed["readyz"]["status_code"] == 200
     assert parsed["runtime_metrics"]["request_count"] == 12
     assert parsed["runtime_metrics"]["raw_query_retention"]["redacted_count"] == 5
+    assert parsed["runtime_metrics"]["raw_query_retention"]["incomplete_count"] == 1
     assert parsed["raw_text_key_summary"]["active_key_id"] == "pilot-kek-20260628-002"
     assert parsed["latest_rewrap_runs"][0]["rewrap_run_id"] == "rtr-20260628-002"
     assert parsed["audit_evidence"]["count"] == 2
@@ -58,6 +59,8 @@ def test_ops_evidence_json_and_markdown_include_required_evidence() -> None:
         "Active raw text key: `pilot-kek-20260628-002`",
         "rtr-20260628-002",
         "Raw query redacted count: `5`",
+        "Raw query incomplete count: `1`",
+        "| none | raw_query_incomplete | 1 |",
         "Audit event count: `2`",
         "Sensitive fields and secret-looking substrings were redacted recursively.",
     ):
@@ -203,7 +206,11 @@ def test_ops_evidence_markdown_escapes_table_cells() -> None:
         "error_counts": {"ERR|PIPE\nNEXT": 1},
         "latency_ms": {"p50": 10, "p95": 20, "max": 30},
         "top_route_keys": [{"route_key": "it.pipe|newline\nroute", "count": 1}],
-        "raw_query_retention": {"encrypted_count": 0, "redacted_count": 0},
+        "raw_query_retention": {
+            "encrypted_count": 0,
+            "incomplete_count": 0,
+            "redacted_count": 0,
+        },
     }
     payload["audit_evidence"] = {
         "count": 1,
@@ -257,7 +264,11 @@ def _payload() -> dict[str, object]:
             "error_counts": {"AUTHENTICATION_FAILED": 1},
             "latency_ms": {"p50": 21, "p95": 87, "max": 120},
             "top_route_keys": [{"route_key": "it.api_timeout.manual_lookup", "count": 7}],
-            "raw_query_retention": {"encrypted_count": 8, "redacted_count": 5},
+            "raw_query_retention": {
+                "encrypted_count": 8,
+                "incomplete_count": 1,
+                "redacted_count": 5,
+            },
         },
         "raw_text_key_summary": {
             "service_id": "svc-task7",
@@ -269,6 +280,7 @@ def _payload() -> dict[str, object]:
             "runtime_logs": [
                 {"key_id": "pilot-kek-20260628-002", "count": 8},
                 {"key_id": None, "count": 5, "state": "raw_query_redacted"},
+                {"key_id": None, "count": 1, "state": "raw_query_incomplete"},
             ],
         },
         "latest_rewrap_runs": [
@@ -293,7 +305,11 @@ def _payload() -> dict[str, object]:
                 },
             }
         ],
-        "runtime_raw_query_retention": {"encrypted_count": 8, "redacted_count": 5},
+        "runtime_raw_query_retention": {
+            "encrypted_count": 8,
+            "incomplete_count": 1,
+            "redacted_count": 5,
+        },
         "audit_evidence": {
             "count": 2,
             "events": [

@@ -29,7 +29,11 @@ def test_empty_runtime_metrics_includes_zero_decision_counts_and_null_latency() 
         "error_counts": {},
         "latency_ms": {"p50": None, "p95": None, "max": None},
         "top_route_keys": [],
-        "raw_query_retention": {"encrypted_count": 0, "redacted_count": 0},
+        "raw_query_retention": {
+            "encrypted_count": 0,
+            "incomplete_count": 0,
+            "redacted_count": 0,
+        },
     }
 
 

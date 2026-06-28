@@ -488,7 +488,6 @@ class IntentRoutingRepository:
             .where(models.RuntimeLog.service_id == service_id)
             .where(models.RuntimeLog.raw_query_deleted_at.is_not(None))
         )
-
         return {
             "intent_examples": {
                 key_id: int(count)
@@ -524,6 +523,23 @@ class IntentRoutingRepository:
             .where(models.RuntimeLog.service_id == service_id)
             .where(models.RuntimeLog.raw_query_deleted_at.is_not(None))
         )
+        incomplete_without_key_count = self.session.scalar(
+            select(func.count(models.RuntimeLog.trace_id))
+            .where(models.RuntimeLog.service_id == service_id)
+            .where(models.RuntimeLog.raw_query_deleted_at.is_(None))
+            .where(models.RuntimeLog.query_raw_key_id.is_(None))
+            .where(
+                or_(
+                    models.RuntimeLog.query_raw_ciphertext.is_not(None),
+                    models.RuntimeLog.query_raw_encrypted_dek.is_not(None),
+                    models.RuntimeLog.query_raw_encrypted_dek_iv.is_not(None),
+                    models.RuntimeLog.query_raw_encrypted_dek_auth_tag.is_not(None),
+                    models.RuntimeLog.query_raw_iv.is_not(None),
+                    models.RuntimeLog.query_raw_auth_tag.is_not(None),
+                    models.RuntimeLog.query_raw_algorithm.is_not(None),
+                )
+            )
+        )
 
         return {
             "intent_examples": {
@@ -535,6 +551,7 @@ class IntentRoutingRepository:
                 for key_id, count in runtime_log_rows
             },
             "runtime_logs_redacted": int(redacted_count or 0),
+            "runtime_logs_incomplete": int(incomplete_without_key_count or 0),
         }
 
     def list_audit_logs(

@@ -210,6 +210,7 @@ def render_ops_evidence_markdown(payload: Mapping[str, Any]) -> str:
             "## Runtime Raw-Query Retention",
             "",
             f"- Raw query encrypted count: `{retention.get('encrypted_count', 0)}`",
+            f"- Raw query incomplete count: `{retention.get('incomplete_count', 0)}`",
             f"- Raw query redacted count: `{retention.get('redacted_count', 0)}`",
             "",
             "## Audit Evidence",
@@ -406,6 +407,8 @@ def _audit_rows(value: Any) -> list[str]:
 
 
 def _markdown_cell(value: Any) -> str:
+    if value is None:
+        return "none"
     text = str(value)
     text = re.sub(r"[\r\n]+", " ", text)
     return text.replace("|", r"\|")

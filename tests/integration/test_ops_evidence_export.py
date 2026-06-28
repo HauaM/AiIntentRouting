@@ -99,7 +99,11 @@ def test_export_ops_evidence_writes_redacted_json_and_markdown(
                     "top_route_keys": [
                         {"route_key": "it.api_timeout.manual_lookup", "count": 2}
                     ],
-                    "raw_query_retention": {"encrypted_count": 1, "redacted_count": 2},
+                    "raw_query_retention": {
+                        "encrypted_count": 1,
+                        "incomplete_count": 0,
+                        "redacted_count": 2,
+                    },
                 },
             )
         if (
@@ -311,7 +315,11 @@ def test_export_ops_evidence_reports_rewrap_collection_status_without_database_u
                     "error_counts": {},
                     "latency_ms": {"p50": None, "p95": None, "max": None},
                     "top_route_keys": [],
-                    "raw_query_retention": {"encrypted_count": 0, "redacted_count": 0},
+                    "raw_query_retention": {
+                        "encrypted_count": 0,
+                        "incomplete_count": 0,
+                        "redacted_count": 0,
+                    },
                 },
             )
         if (

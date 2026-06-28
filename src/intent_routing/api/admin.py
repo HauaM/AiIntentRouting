@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
-from intent_routing.config import MissingRawTextKekError
+from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekError
 from intent_routing.db.models import (
     ApiKey,
     Intent,
@@ -399,6 +399,7 @@ class LatencyMetricsResponse(BaseModel):
 
 class RawQueryRetentionMetricsResponse(BaseModel):
     encrypted_count: int
+    incomplete_count: int
     redacted_count: int
 
 
@@ -442,11 +443,21 @@ class RawTextRedactedCountResponse(BaseModel):
     state: Literal["raw_query_redacted"]
 
 
+class RawTextIncompleteCountResponse(BaseModel):
+    key_id: None
+    count: int
+    state: Literal["raw_query_incomplete"]
+
+
 class RawTextKeySummaryResponse(BaseModel):
     service_id: str
     active_key_id: str | None
     intent_examples: list[RawTextStoredKeyCountResponse]
-    runtime_logs: list[RawTextStoredKeyCountResponse | RawTextRedactedCountResponse]
+    runtime_logs: list[
+        RawTextStoredKeyCountResponse
+        | RawTextRedactedCountResponse
+        | RawTextIncompleteCountResponse
+    ]
 
 
 class RawQueryDecryptRequest(BaseModel):
@@ -1153,7 +1164,7 @@ def get_raw_text_key_summary(
     _require_security_lifecycle_read_access(context, service_id)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
-    active_key_id = (environ.get("RAW_TEXT_KEK_ID") or "").strip() or None
+    active_key_id = (environ.get("RAW_TEXT_KEK_ID", DEFAULT_RAW_TEXT_KEK_ID)).strip() or None
     return RawTextKeySummaryResponse.model_validate(
         raw_text_key_summary_from_counts(
             service_id=service_id,
@@ -1189,7 +1200,10 @@ def decrypt_raw_runtime_query(
     ):
         _raise_raw_query_unavailable()
 
-    query_raw = decrypt_runtime_raw_query(runtime_log, _raw_text_keyring())
+    try:
+        query_raw = decrypt_runtime_raw_query(runtime_log, _raw_text_keyring())
+    except ValueError:
+        _raise_raw_query_unavailable()
     if query_raw is None:
         _raise_raw_query_unavailable()
 

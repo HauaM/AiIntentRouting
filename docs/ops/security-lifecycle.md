@@ -134,7 +134,7 @@ Expected outputs:
 - `ops-evidence.json`
 - `ops-evidence.md`
 
-The export includes readiness, active release, runtime metrics, raw-text key summary, latest KEK rewrap run IDs, runtime raw-query retention counts, and audit event counts.
+The export includes readiness, active release, runtime metrics, raw-text key summary, latest KEK rewrap run IDs, runtime raw-query retention counts, and audit event counts. `raw_query_retention.incomplete_count` and `raw_query_incomplete` key-summary rows indicate partial raw-query material that must be removed by the retention workflow.
 
 ## Rollback before rewrap
 

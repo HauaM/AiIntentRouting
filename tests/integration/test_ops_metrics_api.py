@@ -134,8 +134,74 @@ def test_scoped_service_operator_can_read_runtime_metrics(
             {"route_key": "it.api_timeout.manual_lookup", "count": 2},
             {"route_key": "it.password_reset.manual_lookup", "count": 1},
         ],
-        "raw_query_retention": {"encrypted_count": 3, "redacted_count": 1},
+        "raw_query_retention": {
+            "encrypted_count": 3,
+            "incomplete_count": 0,
+            "redacted_count": 1,
+        },
     }
+
+
+def test_runtime_metrics_and_key_summary_count_partial_material_without_key_id(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_ops_state(db_session)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(db_session)
+    repository.insert_runtime_log(
+        trace_id="irt-ops-metrics-partial-no-key",
+        request_id="req-irt-ops-metrics-partial-no-key",
+        app_id="ops-metrics-app",
+        service_id=SERVICE_ID,
+        release_version="rel-ops-metrics-001",
+        policy_version="pol-ops-metrics-001",
+        intent_catalog_version="cat-ops-metrics-001",
+        decision="fallback",
+        latency_ms=31,
+        query_masked="partial no-key runtime query",
+        query_raw_ciphertext=b"partial no-key ciphertext",
+        created_at=now - timedelta(hours=1),
+    )
+    db_session.commit()
+    client = _client(db_session, monkeypatch)
+
+    metrics_response = client.get(
+        f"/admin/v1/services/{SERVICE_ID}/runtime-metrics",
+        headers=_operator_headers(SERVICE_ID),
+        params={"window_hours": 24},
+    )
+    summary_response = client.get(
+        f"/admin/v1/services/{SERVICE_ID}/security/raw-text-key-summary",
+        headers=_auditor_headers(SERVICE_ID),
+    )
+
+    assert metrics_response.status_code == 200
+    assert metrics_response.json()["raw_query_retention"] == {
+        "encrypted_count": 4,
+        "incomplete_count": 1,
+        "redacted_count": 1,
+    }
+    assert summary_response.status_code == 200
+    assert {"key_id": None, "count": 1, "state": "raw_query_incomplete"} in (
+        summary_response.json()["runtime_logs"]
+    )
+
+
+def test_raw_text_key_summary_uses_default_active_key_id_when_env_is_omitted(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_ops_state(db_session)
+    client = _client(db_session, monkeypatch, raw_text_kek_id=None)
+
+    response = client.get(
+        f"/admin/v1/services/{SERVICE_ID}/security/raw-text-key-summary",
+        headers=_auditor_headers(SERVICE_ID),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["active_key_id"] == "local-kek-001"
 
 
 def test_service_developer_cannot_read_key_summary_or_audit_logs(
@@ -293,10 +359,14 @@ def _client(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
     *,
+    raw_text_kek_id: str | None = ACTIVE_KEY_ID,
     raw_text_kek_base64: str | None = KEK_BASE64,
 ) -> TestClient:
     monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
-    monkeypatch.setenv("RAW_TEXT_KEK_ID", ACTIVE_KEY_ID)
+    if raw_text_kek_id is None:
+        monkeypatch.delenv("RAW_TEXT_KEK_ID", raising=False)
+    else:
+        monkeypatch.setenv("RAW_TEXT_KEK_ID", raw_text_kek_id)
     if raw_text_kek_base64 is None:
         monkeypatch.delenv("RAW_TEXT_KEK_BASE64", raising=False)
     else:
