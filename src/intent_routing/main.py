@@ -10,6 +10,7 @@ from intent_routing.api.runtime import router as runtime_router
 from intent_routing.db.session import session_scope
 from intent_routing.domain.enums import ErrorCode
 from intent_routing.domain.schemas import ErrorEnvelope, ErrorInfo, FallbackPolicy
+from intent_routing.health import build_readiness_payload
 from intent_routing.logging.trace import (
     RUNTIME_ERROR_LOGGED_HEADER,
     RuntimeErrorLog,
@@ -24,6 +25,7 @@ from intent_routing.logging.trace import (
 def create_app() -> FastAPI:
     app = FastAPI(title="Intent Routing Service")
     app.state.runtime_log_session_factory = session_scope
+    app.state.readiness_session_factory = session_scope
     app.include_router(admin_router)
     app.include_router(runtime_router)
 
@@ -115,6 +117,12 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/readyz")
+    def readyz(request: Request) -> JSONResponse:
+        payload = build_readiness_payload(request.app.state.readiness_session_factory)
+        status_code = 200 if payload["status"] == "ready" else 503
+        return JSONResponse(status_code=status_code, content=payload)
 
     def custom_openapi() -> dict[str, Any]:
         if app.openapi_schema:
