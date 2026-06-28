@@ -1,0 +1,113 @@
+{
+  "node_type": "http_request",
+  "method": "POST",
+  "url": "http://intent-routing.internal/v1/intent-route",
+  "timeout_seconds": 8,
+  "headers": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{intent_routing_api_key}}"
+    },
+    {
+      "name": "X-Key-Id",
+      "value": "{{intent_routing_key_id}}"
+    },
+    {
+      "name": "X-App-Id",
+      "value": "dify-platform"
+    },
+    {
+      "name": "X-Service-Id",
+      "value": "{{service_id}}"
+    },
+    {
+      "name": "X-Request-Id",
+      "value": "{{workflow_run_id}}"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/json"
+    }
+  ],
+  "body": {
+    "query": "{{user_query}}",
+    "channel": "chat",
+    "user_context": {
+      "workflow_run_id": "{{workflow_run_id}}"
+    }
+  },
+  "branches": [
+    {
+      "name": "confident",
+      "condition": "http_status == 200 && body.decision == 'confident'",
+      "action": "route by body.route_key",
+      "carry": ["trace_id", "request_id", "route_key", "release_version"]
+    },
+    {
+      "name": "clarify",
+      "condition": "http_status == 200 && body.decision == 'clarify'",
+      "action": "answer with body.clarify_question and body.clarify.candidates",
+      "carry": ["trace_id", "request_id", "clarify", "release_version"]
+    },
+    {
+      "name": "fallback",
+      "condition": "http_status == 200 && body.decision == 'fallback'",
+      "action": "fixed fallback message or human handoff",
+      "carry": ["trace_id", "request_id", "fallback_policy", "release_version"]
+    },
+    {
+      "name": "off_topic",
+      "condition": "http_status == 200 && body.decision == 'off_topic'",
+      "action": "service-scope fixed message",
+      "carry": ["trace_id", "request_id", "fallback_policy", "release_version"]
+    },
+    {
+      "name": "risk",
+      "condition": "http_status == 200 && body.decision == 'risk'",
+      "action": "block message and security trace handoff",
+      "carry": ["trace_id", "request_id", "risk", "release_version"]
+    },
+    {
+      "name": "unauthorized",
+      "condition": "http_status == 200 && body.decision == 'unauthorized'",
+      "action": "do not execute route; operator triage",
+      "carry": ["trace_id", "request_id", "fallback_policy", "release_version"]
+    },
+    {
+      "name": "401",
+      "condition": "http_status == 401",
+      "action": "configuration error triage",
+      "carry": ["trace_id", "request_id", "error"]
+    },
+    {
+      "name": "403",
+      "condition": "http_status == 403",
+      "action": "configuration error triage",
+      "carry": ["trace_id", "request_id", "error"]
+    },
+    {
+      "name": "422",
+      "condition": "http_status == 422",
+      "action": "request mapping triage",
+      "carry": ["trace_id", "request_id", "error"]
+    },
+    {
+      "name": "408",
+      "condition": "http_status == 408",
+      "action": "client fallback or human handoff",
+      "carry": ["trace_id", "request_id", "error"]
+    },
+    {
+      "name": "5xx",
+      "condition": "http_status >= 500",
+      "action": "client fallback or human handoff",
+      "carry": ["trace_id", "request_id", "error"]
+    },
+    {
+      "name": "timeout",
+      "condition": "client_timeout == true",
+      "action": "client fallback or human handoff",
+      "carry": ["trace_id", "request_id", "workflow_run_id"]
+    }
+  ]
+}

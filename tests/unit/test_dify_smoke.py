@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 import httpx
@@ -23,6 +24,8 @@ def test_run_runtime_smoke_posts_expected_headers_and_payload() -> None:
         state=_state(),
         query="API timeout 500 에러가 납니다",
         expected_decision="confident",
+        request_id="dify-smoke-local-001",
+        timeout_seconds=8.0,
         http_client=client,
     )
 
@@ -71,6 +74,42 @@ def test_run_runtime_smoke_raises_on_decision_mismatch_without_secret() -> None:
         ).value
     )
     assert "irt_secret_value" not in message
+
+
+def test_run_runtime_smoke_checks_route_key_and_writes_output(
+    tmp_path: Any,
+) -> None:
+    output_path = tmp_path / "smoke.json"
+    client = _FakeHttpClient(
+        response=httpx.Response(
+            200,
+            json={
+                "trace_id": "trace-123",
+                "decision": "confident",
+                "intent_id": "it_api_timeout",
+                "route_key": "it.api_timeout.manual_lookup",
+            },
+        )
+    )
+
+    result = run_runtime_smoke(
+        base_url="http://example.test",
+        state=_state(),
+        query="API timeout 500 에러가 납니다",
+        expected_decision="confident",
+        expected_route_key="it.api_timeout.manual_lookup",
+        request_id="request-123",
+        timeout_seconds=3.5,
+        output_path=output_path,
+        http_client=client,
+    )
+
+    assert result["trace_id"] == "trace-123"
+    assert json.loads(output_path.read_text(encoding="utf-8"))["route_key"] == (
+        "it.api_timeout.manual_lookup"
+    )
+    assert client.calls[0]["headers"]["X-Request-Id"] == "request-123"
+    assert client.calls[0]["json"]["user_context"]["workflow_run_id"] == "request-123"
 
 
 def test_run_runtime_smoke_raises_clear_error_for_non_json_failure_response() -> None:

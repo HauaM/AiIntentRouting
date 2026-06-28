@@ -3,6 +3,9 @@
 이 문서는 Dify Workflow의 HTTP Request 노드에서 Intent Routing Service를 호출하고,
 응답 `decision`에 따라 다음 노드로 분기하는 최소 운영 계약을 설명한다.
 
+Checked template: `docs/integrations/dify-http-request-node-template.json`
+Branch playbook: `docs/integrations/dify-branching-playbook.md`
+
 ## HTTP Request 노드 설정
 
 - Method: `POST`
@@ -73,7 +76,11 @@ uv run python scripts/smoke_runtime_dify.py \
   --base-url http://127.0.0.1:8000 \
   --state "${STATE_PATH}" \
   --query "API timeout 500 에러가 납니다" \
-  --expect-decision confident
+  --expect-decision confident \
+  --expect-route-key it.api_timeout.manual_lookup \
+  --request-id dify-smoke-local-001 \
+  --timeout-seconds 8 \
+  --output var/evidence/${SERVICE_ID}/dify-smoke-confident.json
 ```
 
 ## Dify Variable Mapping

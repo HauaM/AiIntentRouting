@@ -15,6 +15,10 @@ def run_runtime_smoke(
     state: dict[str, Any],
     query: str,
     expected_decision: str,
+    expected_route_key: str | None = None,
+    request_id: str = "dify-smoke-local-001",
+    timeout_seconds: float = 8.0,
+    output_path: Path | None = None,
     http_client: Any | None = None,
 ) -> dict[str, Any]:
     request_url = f"{base_url.rstrip('/')}/v1/intent-route"
@@ -23,13 +27,13 @@ def run_runtime_smoke(
         "X-Key-Id": state["key_id"],
         "X-App-Id": state["app_id"],
         "X-Service-Id": state["service_id"],
-        "X-Request-Id": "dify-smoke-local-001",
+        "X-Request-Id": request_id,
         "Content-Type": "application/json",
     }
     payload = {
         "query": query,
         "channel": "chat",
-        "user_context": {"workflow_run_id": "dify-smoke-local-001"},
+        "user_context": {"workflow_run_id": request_id},
     }
     if http_client is not None:
         response = http_client.post("/v1/intent-route", headers=headers, json=payload)
@@ -39,7 +43,7 @@ def run_runtime_smoke(
                 request_url,
                 headers=headers,
                 json=payload,
-                timeout=8.0,
+                timeout=timeout_seconds,
             )
         except httpx.RequestError as exc:
             raise RuntimeError(
@@ -52,6 +56,16 @@ def run_runtime_smoke(
     if body.get("decision") != expected_decision:
         raise RuntimeError(
             f"expected decision {expected_decision}, got {body.get('decision')}: {body}"
+        )
+    if expected_route_key is not None and body.get("route_key") != expected_route_key:
+        raise RuntimeError(
+            f"expected route_key {expected_route_key}, got {body.get('route_key')}: {body}"
+        )
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(body, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
         )
     return body
 
@@ -78,6 +92,10 @@ def main() -> None:
         state=state,
         query=args.query,
         expected_decision=args.expect_decision,
+        expected_route_key=args.expect_route_key,
+        request_id=args.request_id,
+        timeout_seconds=args.timeout_seconds,
+        output_path=args.output,
     )
     print(json.dumps(body, ensure_ascii=False, indent=2))
 
@@ -88,6 +106,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--state", required=True)
     parser.add_argument("--query", required=True)
     parser.add_argument("--expect-decision", required=True)
+    parser.add_argument("--expect-route-key")
+    parser.add_argument("--request-id", default="dify-smoke-local-001")
+    parser.add_argument("--timeout-seconds", type=float, default=8.0)
+    parser.add_argument("--output", type=Path)
     return parser.parse_args()
 
 
