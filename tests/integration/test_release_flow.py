@@ -1161,6 +1161,7 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
 ) -> None:
     now = datetime.now(UTC)
     later = now + timedelta(seconds=1)
+    already_deleted_at = now - timedelta(hours=1)
     service_id = f"svc-lifecycle-{uuid4().hex}"
     other_service_id = f"svc-lifecycle-other-{uuid4().hex}"
     repository = IntentRoutingRepository(db_session)
@@ -1313,14 +1314,21 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
             query_masked="masked query 2",
             created_at=later,
         )
-        repository.insert_runtime_log(
+        already_redacted_log = repository.insert_runtime_log(
             trace_id=f"trace-lifecycle-redacted-{uuid4().hex}",
             service_id=service_id,
             latency_ms=12,
             query_masked="masked redacted query",
-            raw_query_deleted_at=now,
+            raw_query_deleted_at=already_deleted_at,
             raw_query_deleted_by="retention-job",
             raw_query_delete_reason="expired",
+            created_at=now,
+        )
+        rawless_log = repository.insert_runtime_log(
+            trace_id=f"trace-lifecycle-rawless-{uuid4().hex}",
+            service_id=service_id,
+            latency_ms=12,
+            query_masked="masked rawless query",
             created_at=now,
         )
         other_log = repository.insert_runtime_log(
@@ -1362,7 +1370,7 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
             source_ip="127.0.0.1",
             before_state=None,
             after_state={"redacted": True},
-            created_at=now,
+            created_at=later,
         )
 
         examples = repository.list_intent_examples_for_rewrap(
@@ -1380,10 +1388,27 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
         )
         redacted_count = repository.redact_runtime_raw_queries(
             service_id,
-            trace_ids=[first_log.trace_id, other_log.trace_id],
+            trace_ids=[
+                first_log.trace_id,
+                already_redacted_log.trace_id,
+                rawless_log.trace_id,
+                other_log.trace_id,
+            ],
             actor_id="security-admin",
             reason="retention expired",
             deleted_at=now,
+        )
+        second_redacted_count = repository.redact_runtime_raw_queries(
+            service_id,
+            trace_ids=[
+                first_log.trace_id,
+                already_redacted_log.trace_id,
+                rawless_log.trace_id,
+                other_log.trace_id,
+            ],
+            actor_id="second-admin",
+            reason="second pass",
+            deleted_at=later,
         )
 
         assert completed.status == "completed"
@@ -1402,7 +1427,9 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
         }
         assert audit_logs == [audit_old]
         assert audit_new not in audit_logs
+        assert repository.list_audit_logs(service_id, limit=1) == [audit_new]
         assert redacted_count == 1
+        assert second_redacted_count == 0
         assert first_log.query_raw_ciphertext is None
         assert first_log.query_raw_encrypted_dek is None
         assert first_log.query_raw_encrypted_dek_iv is None
@@ -1414,7 +1441,14 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
         assert first_log.raw_query_deleted_at == now
         assert first_log.raw_query_deleted_by == "security-admin"
         assert first_log.raw_query_delete_reason == "retention expired"
+        assert already_redacted_log.raw_query_deleted_at == already_deleted_at
+        assert already_redacted_log.raw_query_deleted_by == "retention-job"
+        assert already_redacted_log.raw_query_delete_reason == "expired"
+        assert rawless_log.raw_query_deleted_at is None
+        assert rawless_log.raw_query_deleted_by is None
+        assert rawless_log.raw_query_delete_reason is None
         assert other_log.query_raw_key_id == "key-old"
+        assert other_log.raw_query_deleted_at is None
     finally:
         db_session.rollback()
         _purge_service_rows(db_session, service_id)

@@ -5,7 +5,7 @@ from typing import Any, TypeVar, cast
 from uuid import UUID
 
 from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
-from sqlalchemy import bindparam, func, select, text, update
+from sqlalchemy import bindparam, func, or_, select, text, update
 from sqlalchemy.orm import Session
 
 from intent_routing.db import models
@@ -527,6 +527,21 @@ class IntentRoutingRepository:
             update(models.RuntimeLog)
             .where(models.RuntimeLog.service_id == service_id)
             .where(models.RuntimeLog.trace_id.in_(trace_id_values))
+            .where(models.RuntimeLog.raw_query_deleted_at.is_(None))
+            .where(models.RuntimeLog.raw_query_deleted_by.is_(None))
+            .where(models.RuntimeLog.raw_query_delete_reason.is_(None))
+            .where(
+                or_(
+                    models.RuntimeLog.query_raw_ciphertext.is_not(None),
+                    models.RuntimeLog.query_raw_encrypted_dek.is_not(None),
+                    models.RuntimeLog.query_raw_encrypted_dek_iv.is_not(None),
+                    models.RuntimeLog.query_raw_encrypted_dek_auth_tag.is_not(None),
+                    models.RuntimeLog.query_raw_key_id.is_not(None),
+                    models.RuntimeLog.query_raw_iv.is_not(None),
+                    models.RuntimeLog.query_raw_auth_tag.is_not(None),
+                    models.RuntimeLog.query_raw_algorithm.is_not(None),
+                )
+            )
             .values(
                 query_raw_ciphertext=None,
                 query_raw_encrypted_dek=None,
