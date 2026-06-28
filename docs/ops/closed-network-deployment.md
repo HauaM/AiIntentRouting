@@ -41,6 +41,7 @@ Mount the approved local BGE-M3 model at:
 
 The Compose runtime profile mounts `/models/bge-m3:/models/bge-m3:ro`.
 The application must use `BGE_M3_MODEL_PATH=/models/bge-m3` and CPU-only inference.
+Use `docs/ops/bge-m3-closed-network.md` for model package import, checksum evidence, and benchmark interpretation.
 
 ## 4. Environment File
 
