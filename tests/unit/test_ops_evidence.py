@@ -77,6 +77,39 @@ def test_ops_evidence_redacts_sensitive_keys_and_substrings_recursively() -> Non
     assert "masked summary is safe" in json_text
 
 
+def test_ops_evidence_redacts_legacy_kek_json_key_and_arbitrary_kek_value() -> None:
+    legacy_kek_value = "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI="
+    payload = {
+        "service_id": "svc-task7",
+        "environment": "dev",
+        "RAW_TEXT_LEGACY_KEKS_JSON": f'{{"old-kek":"{legacy_kek_value}"}}',
+        "rotation": {
+            "legacyKekBase64": legacy_kek_value,
+            "legacy_keks_json": {"old-kek": legacy_kek_value},
+            "operator_note": (
+                "operator set "
+                f'RAW_TEXT_LEGACY_KEKS_JSON={{"old-kek":"{legacy_kek_value}"}}'
+            ),
+            "safe_note": "visible summary",
+        },
+        "metadata": {
+            "RAW_TEXT_LEGACY_KEKS_JSON": f'{{"old-kek":"{legacy_kek_value}"}}',
+        },
+    }
+
+    json_text = render_ops_evidence_json(payload)
+    markdown = render_ops_evidence_markdown(payload)
+
+    for rendered in (json_text, markdown):
+        assert "RAW_TEXT_LEGACY_KEKS_JSON" not in rendered
+        assert "legacy_keks_json" not in rendered
+        assert "legacyKekBase64" not in rendered
+        assert "old-kek" not in rendered
+        assert legacy_kek_value not in rendered
+        assert "REDACTED" in rendered
+    assert "visible summary" in json_text
+
+
 def _payload() -> dict[str, object]:
     return {
         "service_id": "svc-task7",

@@ -11,6 +11,7 @@ SENSITIVE_KEY_NAMES = {
     "authorization",
     "kek_base64",
     "legacy_kek_base64",
+    "legacy_keks_json",
     "password",
     "query_raw",
     "query_raw_auth_tag",
@@ -20,6 +21,7 @@ SENSITIVE_KEY_NAMES = {
     "query_raw_encrypted_dek_iv",
     "query_raw_iv",
     "raw_text_kek_base64",
+    "raw_text_legacy_keks_json",
     "secret",
     "state_path",
     "text_raw",
@@ -38,6 +40,12 @@ SENSITIVE_KEY_FRAGMENTS = (
     "password",
     "secret",
     "kek_base64",
+    "kekbase64",
+    "keks_json",
+    "legacy_kek",
+    "legacy_keks",
+    "legacykek",
+    "legacykeks",
     "query_raw",
     "text_raw",
     "ciphertext",
@@ -51,11 +59,14 @@ KNOWN_SECRET_VALUES = (
 SENSITIVE_TEXT_PATTERNS = (
     re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE),
     re.compile(r"irt_secret[A-Za-z0-9._:-]*", re.IGNORECASE),
+    re.compile(r"RAW_TEXT_LEGACY_KEKS_JSON\s*[:=]\s*\{[^}]*\}", re.IGNORECASE),
     re.compile(r"RAW_TEXT_KEK_BASE64", re.IGNORECASE),
+    re.compile(r"RAW_TEXT_LEGACY_KEKS_JSON", re.IGNORECASE),
     re.compile(r"Authorization", re.IGNORECASE),
     re.compile(r"\bquery_raw\b", re.IGNORECASE),
     re.compile(r"\btext_raw\b", re.IGNORECASE),
     re.compile(r"\b[A-Za-z0-9_]*kek_base64\b", re.IGNORECASE),
+    re.compile(r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{40,}={0,2}(?![A-Za-z0-9+/=])"),
     *[re.compile(re.escape(value)) for value in KNOWN_SECRET_VALUES],
 )
 REDACTED = "REDACTED"
@@ -233,7 +244,8 @@ def _is_sensitive_key(key: str) -> bool:
 
 
 def _normalize_key(key: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", key.lower()).strip("_")
+    underscored = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", key)
+    return re.sub(r"[^a-z0-9]+", "_", underscored.lower()).strip("_")
 
 
 def _redact_text(value: str) -> str:

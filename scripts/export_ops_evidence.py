@@ -22,6 +22,12 @@ from intent_routing.ops.evidence import (
 
 DEFAULT_AUDIT_LIMIT = 50
 DEFAULT_REWRAP_LIMIT = 5
+SECURITY_LIFECYCLE_AUDIT_EVENT_TYPES = (
+    "raw_text.rewrap.executed",
+    "runtime_log.raw_query_redacted",
+    "raw_query.viewed",
+    "api_key.revoked",
+)
 
 
 def run_ops_evidence_export(
@@ -59,9 +65,10 @@ def run_ops_evidence_export(
         raw_text_key_summary = client.get(
             f"/admin/v1/services/{service_id}/security/raw-text-key-summary"
         )
-        audit_logs = client.get(
-            f"/admin/v1/services/{service_id}/audit-logs",
-            params={"limit": DEFAULT_AUDIT_LIMIT},
+        audit_logs = _security_lifecycle_audit_logs(
+            client,
+            service_id=service_id,
+            limit=DEFAULT_AUDIT_LIMIT,
         )
 
     payload = {
@@ -190,6 +197,36 @@ def _latest_rewrap_run_summaries(
         engine.dispose()
 
 
+def _security_lifecycle_audit_logs(
+    client: AdminApiClient,
+    *,
+    service_id: str,
+    limit: int,
+) -> list[Mapping[str, Any]]:
+    event_types = set(SECURITY_LIFECYCLE_AUDIT_EVENT_TYPES)
+    by_audit_id: dict[str, Mapping[str, Any]] = {}
+    for event_type in SECURITY_LIFECYCLE_AUDIT_EVENT_TYPES:
+        response = client.get(
+            f"/admin/v1/services/{service_id}/audit-logs",
+            params={"limit": limit, "event_type": event_type},
+        )
+        if not isinstance(response, list):
+            continue
+        for item in response:
+            if not isinstance(item, Mapping):
+                continue
+            if item.get("event_type") not in event_types:
+                continue
+            audit_id = str(item.get("audit_id") or _audit_event_fingerprint(item))
+            by_audit_id.setdefault(audit_id, item)
+
+    return sorted(
+        by_audit_id.values(),
+        key=lambda item: str(item.get("created_at") or ""),
+        reverse=True,
+    )
+
+
 def _rewrap_run_summary(run: models.RawTextRewrapRun) -> dict[str, Any]:
     return {
         "rewrap_run_id": run.rewrap_run_id,
@@ -208,6 +245,21 @@ def _rewrap_run_summary(run: models.RawTextRewrapRun) -> dict[str, Any]:
         "started_at": _isoformat(run.started_at),
         "completed_at": _isoformat(run.completed_at),
     }
+
+
+def _audit_event_fingerprint(item: Mapping[str, Any]) -> str:
+    return "|".join(
+        str(item.get(field) or "")
+        for field in (
+            "event_type",
+            "actor_id",
+            "service_id",
+            "trace_id",
+            "target_type",
+            "target_id",
+            "created_at",
+        )
+    )
 
 
 def _database_url_from_env() -> str | None:

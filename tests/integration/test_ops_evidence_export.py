@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import httpx
 import pytest
 from sqlalchemy import delete
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from intent_routing.db import models
@@ -34,10 +36,11 @@ def test_export_ops_evidence_writes_redacted_json_and_markdown(
 ) -> None:
     service_id = f"svc-task7-export-{uuid4().hex}"
     latest_rewrap_run_id = _seed_rewrap_runs(db_session, service_id)
-    assert db_session.bind is not None
+    bind = db_session.get_bind()
+    assert isinstance(bind, Engine)
     monkeypatch.setenv(
         "TEST_DATABASE_URL",
-        db_session.bind.url.render_as_string(hide_password=False),
+        bind.url.render_as_string(hide_password=False),
     )
     requests: list[httpx.Request] = []
 
@@ -119,9 +122,21 @@ def test_export_ops_evidence_writes_redacted_json_and_markdown(
             )
         if request.url.path == f"/admin/v1/services/{service_id}/audit-logs":
             assert request.url.params["limit"] == "50"
-            return httpx.Response(
-                200,
-                json=[
+            event_type = request.url.params["event_type"]
+            unrelated_event: dict[str, Any] = {
+                "audit_id": str(uuid4()),
+                "event_type": "release.activated",
+                "actor_id": "release-operator",
+                "service_id": service_id,
+                "trace_id": None,
+                "target_type": "release",
+                "target_id": "rel-unrelated",
+                "view_reason": "approval=REL-UNRELATED",
+                "source_ip": "127.0.0.1",
+                "created_at": "2026-06-29T00:00:01Z",
+            }
+            lifecycle_events: dict[str, list[dict[str, Any]]] = {
+                "raw_text.rewrap.executed": [
                     {
                         "audit_id": str(uuid4()),
                         "event_type": "raw_text.rewrap.executed",
@@ -133,7 +148,23 @@ def test_export_ops_evidence_writes_redacted_json_and_markdown(
                         "view_reason": "approval=SEC-EXPORT-REWRAP",
                         "source_ip": "127.0.0.1",
                         "created_at": "2026-06-29T00:00:02Z",
-                    },
+                    }
+                ],
+                "runtime_log.raw_query_redacted": [
+                    {
+                        "audit_id": str(uuid4()),
+                        "event_type": "runtime_log.raw_query_redacted",
+                        "actor_id": "retention-operator",
+                        "service_id": service_id,
+                        "trace_id": "trace-redacted",
+                        "target_type": "runtime_log",
+                        "target_id": "trace-redacted",
+                        "view_reason": "approval=SEC-EXPORT-RETENTION",
+                        "source_ip": "127.0.0.1",
+                        "created_at": "2026-06-29T00:00:04Z",
+                    }
+                ],
+                "raw_query.viewed": [
                     {
                         "audit_id": str(uuid4()),
                         "event_type": "raw_query.viewed",
@@ -150,8 +181,26 @@ def test_export_ops_evidence_writes_redacted_json_and_markdown(
                         ),
                         "source_ip": "127.0.0.1",
                         "created_at": "2026-06-29T00:00:03Z",
-                    },
+                    }
                 ],
+                "api_key.revoked": [
+                    {
+                        "audit_id": str(uuid4()),
+                        "event_type": "api_key.revoked",
+                        "actor_id": "security-operator",
+                        "service_id": service_id,
+                        "trace_id": None,
+                        "target_type": "api_key",
+                        "target_id": "key-rotated",
+                        "view_reason": None,
+                        "source_ip": "127.0.0.1",
+                        "created_at": "2026-06-29T00:00:05Z",
+                    }
+                ],
+            }
+            return httpx.Response(
+                200,
+                json=[unrelated_event, *lifecycle_events.get(event_type, [])],
             )
         return httpx.Response(404, json={"error": "unexpected path"})
 
@@ -179,8 +228,16 @@ def test_export_ops_evidence_writes_redacted_json_and_markdown(
     assert parsed["runtime_metrics"]["raw_query_retention"]["redacted_count"] == 2
     assert parsed["raw_text_key_summary"]["runtime_logs"][-1]["count"] == 2
     assert parsed["latest_rewrap_runs"][0]["rewrap_run_id"] == latest_rewrap_run_id
-    assert parsed["audit_evidence"]["count"] == 2
-    assert "Audit event count: `2`" in markdown
+    assert parsed["audit_evidence"]["count"] == 4
+    assert [event["event_type"] for event in parsed["audit_evidence"]["events"]] == [
+        "api_key.revoked",
+        "runtime_log.raw_query_redacted",
+        "raw_query.viewed",
+        "raw_text.rewrap.executed",
+    ]
+    assert "release.activated" not in json_text
+    assert "rel-unrelated" not in json_text
+    assert "Audit event count: `4`" in markdown
     assert latest_rewrap_run_id in markdown
 
     for rendered in (json_text, markdown):
@@ -194,6 +251,20 @@ def test_export_ops_evidence_writes_redacted_json_and_markdown(
         f"/admin/v1/services/{service_id}/runtime-metrics",
         f"/admin/v1/services/{service_id}/security/raw-text-key-summary",
         f"/admin/v1/services/{service_id}/audit-logs",
+        f"/admin/v1/services/{service_id}/audit-logs",
+        f"/admin/v1/services/{service_id}/audit-logs",
+        f"/admin/v1/services/{service_id}/audit-logs",
+    ]
+    requested_event_types = [
+        request.url.params["event_type"]
+        for request in requests
+        if request.url.path == f"/admin/v1/services/{service_id}/audit-logs"
+    ]
+    assert requested_event_types == [
+        "raw_text.rewrap.executed",
+        "runtime_log.raw_query_redacted",
+        "raw_query.viewed",
+        "api_key.revoked",
     ]
 
 
