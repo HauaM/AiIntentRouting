@@ -4,11 +4,16 @@ import argparse
 import json
 import os
 from collections.abc import Sequence
+from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from intent_routing.ops.admin_client import AdminApiClient
 from intent_routing.ops.reports import PRESET_ORDER, render_threshold_report
+
+
+class _AdminApi(Protocol):
+    def post(self, path: str, *, json: dict[str, Any] | None = None) -> Any: ...
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -17,9 +22,30 @@ def main(argv: Sequence[str] | None = None) -> None:
     if not admin_token:
         raise SystemExit("--admin-token or ADMIN_BOOTSTRAP_TOKEN is required")
 
-    state_path = Path(args.state)
-    csv_path = Path(args.csv)
-    out_dir = Path(args.out_dir)
+    result = run_threshold_comparison(
+        base_url=args.base_url,
+        admin_token=admin_token,
+        state_path=Path(args.state),
+        csv_path=Path(args.csv),
+        out_dir=Path(args.out_dir),
+    )
+
+    print(result["markdown_path"])
+    runs = result["runs"]
+    for preset in PRESET_ORDER:
+        gate_state = "PASS" if runs[preset]["gate_passed"] else "FAIL"
+        print(f"{preset}: {gate_state}")
+
+
+def run_threshold_comparison(
+    *,
+    base_url: str,
+    admin_token: str,
+    state_path: Path,
+    csv_path: Path,
+    out_dir: Path,
+    http_client: Any | None = None,
+) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -28,12 +54,23 @@ def main(argv: Sequence[str] | None = None) -> None:
     csv_text = csv_path.read_text(encoding="utf-8")
 
     runs: dict[str, dict[str, Any]] = {}
-    with AdminApiClient(
-        base_url=args.base_url,
-        admin_token=admin_token,
-        actor_id="csv-gate",
-        actor_roles="system_admin",
-    ) as api:
+    api_context: AbstractContextManager[_AdminApi]
+    if http_client is None:
+        api_context = AdminApiClient(
+            base_url=base_url,
+            admin_token=admin_token,
+            actor_id="csv-gate",
+            actor_roles="system_admin",
+        )
+    else:
+        api_context = _TestClientAdminApi(
+            http_client=http_client,
+            admin_token=admin_token,
+            actor_id="csv-gate",
+            actor_roles="system_admin",
+        )
+
+    with api_context as api:
         for preset in PRESET_ORDER:
             runs[preset] = api.post(
                 f"/admin/v1/services/{service_id}/test-runs",
@@ -62,11 +99,48 @@ def main(argv: Sequence[str] | None = None) -> None:
         render_threshold_report(service_id=service_id, runs=runs),
         encoding="utf-8",
     )
+    return {
+        "service_id": service_id,
+        "policy_version": state["policy_version"],
+        "intent_catalog_version": state["intent_catalog_version"],
+        "runs": runs,
+        "json_path": str(json_path),
+        "markdown_path": str(markdown_path),
+    }
 
-    print(markdown_path)
-    for preset in PRESET_ORDER:
-        gate_state = "PASS" if runs[preset]["gate_passed"] else "FAIL"
-        print(f"{preset}: {gate_state}")
+
+class _TestClientAdminApi:
+    def __init__(
+        self,
+        *,
+        http_client: Any,
+        admin_token: str,
+        actor_id: str,
+        actor_roles: str,
+    ) -> None:
+        self._http_client = http_client
+        self._headers = {
+            "X-Admin-Token": admin_token,
+            "X-Actor-Id": actor_id,
+            "X-Actor-Roles": actor_roles,
+        }
+
+    def __enter__(self) -> _TestClientAdminApi:
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: type[BaseException] | None,
+        _exc: BaseException | None,
+        _traceback: object,
+    ) -> None:
+        return None
+
+    def post(self, path: str, *, json: dict[str, Any] | None = None) -> Any:
+        response = self._http_client.post(path, headers=self._headers, json=json)
+        if response.status_code >= 400:
+            raise RuntimeError(f"{response.status_code} {response.json()}")
+        return response.json()
 
 
 def _validate_service_id_for_output(service_id: str) -> None:

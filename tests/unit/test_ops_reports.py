@@ -350,4 +350,74 @@ def test_run_csv_gate_uses_admin_token_from_environment(
             "--out-dir",
             str(out_dir),
         ]
+        )
+
+
+def test_run_threshold_comparison_returns_report_paths_and_runs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.run_csv_gate as run_csv_gate
+
+    state_path = tmp_path / "seed-state.json"
+    csv_path = tmp_path / "cases.csv"
+    out_dir = tmp_path / "reports"
+    state_path.write_text(
+        json.dumps(
+            {
+                "service_id": "it-helpdesk-pilot",
+                "policy_version": 3,
+                "intent_catalog_version": 7,
+            }
+        ),
+        encoding="utf-8",
     )
+    csv_path.write_text(
+        "case_id,query,expected_intent,case_type,memo\n"
+        "C001,hello,it_api_timeout,positive,sample\n",
+        encoding="utf-8",
+    )
+
+    class FakeAdminApiClient:
+        def __init__(self, **_kwargs: object) -> None:
+            return None
+
+        def __enter__(self) -> FakeAdminApiClient:
+            return self
+
+        def __exit__(
+            self,
+            _exc_type: type[BaseException] | None,
+            _exc: BaseException | None,
+            _traceback: TracebackType | None,
+        ) -> None:
+            return None
+
+        def post(self, _path: str, *, json: dict[str, object] | None = None) -> dict[str, object]:
+            assert json is not None
+            preset = str(json["threshold_preset"])
+            return {
+                "test_run_id": f"tr-{preset}",
+                "threshold_value": {"strict": 1.0, "balanced": 0.8, "exploratory": 0.6}[preset],
+                "pass_rate": 0.8,
+                "review_rate": 0.1,
+                "risk_pass_rate": 1.0,
+                "gate_passed": True,
+                "block_reasons": [],
+                "recommendations": [],
+            }
+
+    monkeypatch.setattr(run_csv_gate, "AdminApiClient", FakeAdminApiClient)
+
+    result = run_csv_gate.run_threshold_comparison(
+        base_url="http://testserver",
+        admin_token="bootstrap-token",
+        state_path=state_path,
+        csv_path=csv_path,
+        out_dir=out_dir,
+    )
+
+    assert result["service_id"] == "it-helpdesk-pilot"
+    assert result["runs"]["balanced"]["test_run_id"] == "tr-balanced"
+    assert Path(result["json_path"]).exists()
+    assert Path(result["markdown_path"]).exists()

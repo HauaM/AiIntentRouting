@@ -125,3 +125,4 @@ Run these manually before Dify handoff:
 ## Closed-Network Deployment
 
 For the Compose-based closed-network pilot path, use `docs/ops/closed-network-deployment.md`.
+For automated fresh-DB evidence generation, use `docs/ops/pilot-readiness-evidence.md`.
