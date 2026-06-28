@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
@@ -37,7 +37,7 @@ def plan_runtime_raw_query_redaction(
             .where(models.RuntimeLog.service_id == service_id)
             .where(models.RuntimeLog.created_at < cutoff)
             .where(models.RuntimeLog.raw_query_deleted_at.is_(None))
-            .where(*_complete_raw_query_envelope_filters())
+            .where(_any_raw_query_material_filter())
             .order_by(models.RuntimeLog.created_at, models.RuntimeLog.trace_id)
             .limit(limit)
         )
@@ -97,8 +97,8 @@ def apply_runtime_raw_query_redaction(
     return len(redacted_trace_ids)
 
 
-def _complete_raw_query_envelope_filters() -> tuple[Any, ...]:
-    return (
+def _any_raw_query_material_filter() -> Any:
+    return or_(
         models.RuntimeLog.query_raw_ciphertext.is_not(None),
         models.RuntimeLog.query_raw_encrypted_dek.is_not(None),
         models.RuntimeLog.query_raw_encrypted_dek_iv.is_not(None),

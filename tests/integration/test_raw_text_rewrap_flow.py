@@ -72,22 +72,22 @@ def test_dry_run_reports_legacy_counts_and_writes_no_data_changes(
     assert run.dry_run is True
     assert run.status == "completed"
     assert run.rewrapped_count == 0
-    assert run.scanned_count == 6
-    assert run.skipped_count == 2
+    assert run.scanned_count == 4
+    assert run.skipped_count == 0
     assert run.source_key_ids == [LEGACY_KEY_ID]
     assert report["dry_run"] is True
     assert report["source_key_ids"] == [LEGACY_KEY_ID]
     assert report["included_tables"] == ["intent_examples", "runtime_logs"]
-    assert report["scanned_count"] == 6
+    assert report["scanned_count"] == 4
     assert report["rewrapped_count"] == 0
-    assert report["skipped_count"] == 2
+    assert report["skipped_count"] == 0
     assert report["plaintext_exported"] is False
     assert report["status"] == "completed"
     assert report["limit"] == 20
     assert report["batch_size"] == 2
     assert report["scanned_by_table"] == {
-        "intent_examples": 3,
-        "runtime_logs": 3,
+        "intent_examples": 2,
+        "runtime_logs": 2,
     }
     assert report["key_counts"] == {
         "intent_examples": {
@@ -237,9 +237,9 @@ def test_execute_reencrypts_legacy_records_to_active_key_and_skips_active_record
     run = _latest_run(db_session, service_id)
     assert run.dry_run is False
     assert run.approval_id == APPROVAL_ID
-    assert run.scanned_count == 6
+    assert run.scanned_count == 4
     assert run.rewrapped_count == 4
-    assert run.skipped_count == 2
+    assert run.skipped_count == 0
     report, markdown_report = _read_reports(tmp_path)
     assert report["status"] == "completed"
     assert report["before_key_counts"] == {
@@ -269,8 +269,8 @@ def test_execute_reencrypts_legacy_records_to_active_key_and_skips_active_record
     assert report["key_counts"] == report["before_key_counts"]
     assert report["failure_counts"] == {}
     assert report["scanned_by_table"] == {
-        "intent_examples": 3,
-        "runtime_logs": 3,
+        "intent_examples": 2,
+        "runtime_logs": 2,
     }
     assert f"| Before | intent_examples | legacy | {LEGACY_KEY_ID} | 2 |" in markdown_report
     assert f"| After | intent_examples | active | {ACTIVE_KEY_ID} | 3 |" in markdown_report
@@ -287,8 +287,8 @@ def test_execute_reencrypts_legacy_records_to_active_key_and_skips_active_record
         "approval_id": APPROVAL_ID,
         "rewrap_run_id": run.rewrap_run_id,
         "rewrapped_count": 4,
-        "scanned_count": 6,
-        "skipped_count": 2,
+        "scanned_count": 4,
+        "skipped_count": 0,
         "failed_count": 0,
         "target_key_id": ACTIVE_KEY_ID,
     }
@@ -334,7 +334,7 @@ def test_execute_reports_secret_safe_failures_when_legacy_key_material_is_missin
     assert run.status == "completed_with_failures"
     assert run.failed_count == 4
     assert run.rewrapped_count == 0
-    assert run.skipped_count == 2
+    assert run.skipped_count == 0
     assert report["status"] == "completed_with_failures"
     assert report["failed_count"] == 4
     assert report["failure_counts"] == {
@@ -360,6 +360,65 @@ def test_execute_reports_secret_safe_failures_when_legacy_key_material_is_missin
     for marker in (*LEAK_MARKERS, legacy_kek, active_kek, "query_raw", "text_raw"):
         assert marker not in serialized_report
         assert marker not in markdown_report
+
+
+def test_limited_execute_reports_partial_remaining_when_legacy_keys_remain(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    legacy_kek = _kek(b"d")
+    active_kek = _kek(b"e")
+    service_id = _seed_rewrap_fixture(
+        db_session,
+        legacy_kek=legacy_kek,
+        active_kek=active_kek,
+    )
+    _configure_keyring(monkeypatch, legacy_kek=legacy_kek, active_kek=active_kek)
+
+    rewrap_raw_text.main(
+        [
+            "--service-id",
+            service_id,
+            "--actor-id",
+            ACTOR_ID,
+            "--report-dir",
+            str(tmp_path),
+            "--include",
+            "both",
+            "--execute",
+            "--approval-id",
+            APPROVAL_ID,
+            "--confirm-active-key-id",
+            ACTIVE_KEY_ID,
+            "--limit",
+            "1",
+        ]
+    )
+
+    db_session.expire_all()
+    run = _latest_run(db_session, service_id)
+    report, _markdown_report = _read_reports(tmp_path)
+    assert run.status == "partial_remaining"
+    assert report["status"] == "partial_remaining"
+    assert report["scanned_by_table"] == {
+        "intent_examples": 1,
+        "runtime_logs": 1,
+    }
+    assert report["rewrapped_count"] == 2
+    assert report["skipped_count"] == 0
+    assert report["after_key_counts"] == {
+        "intent_examples": {
+            "legacy": {LEGACY_KEY_ID: 1},
+            "active": {ACTIVE_KEY_ID: 2},
+            "total": 3,
+        },
+        "runtime_logs": {
+            "legacy": {LEGACY_KEY_ID: 1},
+            "active": {ACTIVE_KEY_ID: 2},
+            "total": 3,
+        },
+    }
 
 
 def test_execute_requires_explicit_database_url_before_creating_run(

@@ -1420,6 +1420,7 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
             reason="second pass",
             deleted_at=later,
         )
+        db_session.expire_all()
 
         assert completed.status == "completed"
         assert completed.rewrapped_count == 3
@@ -1438,7 +1439,7 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
         assert audit_logs == [audit_old]
         assert audit_new not in audit_logs
         assert repository.list_audit_logs(service_id, limit=1) == [audit_new]
-        assert redacted_count == 1
+        assert redacted_count == 2
         assert second_redacted_count == 0
         assert first_log.query_raw_ciphertext is None
         assert first_log.query_raw_encrypted_dek is None
@@ -1457,10 +1458,10 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
         assert rawless_log.raw_query_deleted_at is None
         assert rawless_log.raw_query_deleted_by is None
         assert rawless_log.raw_query_delete_reason is None
-        assert partial_envelope_log.query_raw_key_id == "key-old"
-        assert partial_envelope_log.raw_query_deleted_at is None
-        assert partial_envelope_log.raw_query_deleted_by is None
-        assert partial_envelope_log.raw_query_delete_reason is None
+        assert partial_envelope_log.query_raw_key_id is None
+        assert partial_envelope_log.raw_query_deleted_at == now
+        assert partial_envelope_log.raw_query_deleted_by == "security-admin"
+        assert partial_envelope_log.raw_query_delete_reason == "retention expired"
         assert other_log.query_raw_key_id == "key-old"
         assert other_log.raw_query_deleted_at is None
     finally:

@@ -291,6 +291,120 @@ def test_zero_day_retention_includes_logs_created_before_current_instant(
     _assert_no_sensitive_material(execute_stdout, execute_report, execute_markdown)
 
 
+def test_retention_redacts_expired_partial_raw_query_material(
+    db_session: Session,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    service_id = f"it-helpdesk-pilot-{uuid4().hex}"
+    trace_id = f"trace-retention-partial-{uuid4().hex}"
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(db_session)
+    repository.create_service(
+        service_id=service_id,
+        display_name="IT Helpdesk Pilot",
+        environment="prod",
+        default_threshold_preset="balanced",
+        max_input_tokens=256,
+        status="active",
+        created_by="retention-test",
+        created_at=now,
+        updated_at=now,
+    )
+    repository.insert_runtime_log(
+        trace_id=trace_id,
+        service_id=service_id,
+        latency_ms=10,
+        query_raw_ciphertext=b"partial runtime query ciphertext",
+        query_raw_key_id="retention-kek-001",
+        query_masked="partial runtime query [REDACTED]",
+        created_at=now - timedelta(days=31),
+    )
+    db_session.commit()
+
+    apply_log_retention.main(
+        [
+            "--service-id",
+            service_id,
+            "--older-than-days",
+            "30",
+            "--limit",
+            "500",
+            "--actor-id",
+            ACTOR_ID,
+            "--reason",
+            "raw query retention policy 30 days",
+            "--report-dir",
+            str(tmp_path),
+            "--execute",
+            "--approval-id",
+            APPROVAL_ID,
+        ]
+    )
+
+    execute_stdout = capsys.readouterr().out
+    db_session.expire_all()
+    report, markdown_report = _latest_reports(tmp_path)
+    runtime_log = _runtime_log(db_session, trace_id)
+    assert runtime_log is not None
+    assert report["eligible_trace_ids"] == [trace_id]
+    assert report["redacted_count"] == 1
+    assert runtime_log.query_raw_ciphertext is None
+    assert runtime_log.query_raw_key_id is None
+    assert runtime_log.raw_query_deleted_at is not None
+    assert runtime_log.raw_query_deleted_by == ACTOR_ID
+    assert runtime_log.raw_query_delete_reason == "raw query retention policy 30 days"
+    _assert_no_sensitive_material(execute_stdout, report, markdown_report)
+
+
+def test_retention_report_redacts_operator_reason_secret_material(
+    db_session: Session,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    service_id = f"it-helpdesk-pilot-{uuid4().hex}"
+    _seed_retention_fixture(
+        db_session,
+        service_id=service_id,
+        other_service_id=f"{service_id}-other",
+        eligible_trace_id=f"trace-retention-eligible-{uuid4().hex}",
+        already_redacted_trace_id=f"trace-retention-redacted-{uuid4().hex}",
+        recent_trace_id=f"trace-retention-recent-{uuid4().hex}",
+        other_trace_id=f"trace-retention-other-{uuid4().hex}",
+        now=datetime.now(UTC),
+    )
+    secret_reason = (
+        "ticket SEC-20260628-RETENTION-001 raw query "
+        "Bearer live-runtime-token api_key=irt_live_secret_api_key_value "
+        "query_raw_ciphertext=abc RAW_TEXT_KEK_BASE64"
+    )
+
+    apply_log_retention.main(
+        [
+            "--service-id",
+            service_id,
+            "--older-than-days",
+            "30",
+            "--limit",
+            "500",
+            "--actor-id",
+            ACTOR_ID,
+            "--reason",
+            secret_reason,
+            "--report-dir",
+            str(tmp_path),
+            "--dry-run",
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    report, markdown_report = _latest_reports(tmp_path)
+    assert report["reason"] != secret_reason
+    assert "SEC-20260628-RETENTION-001" in str(report["reason"])
+    assert "REDACTED" in str(report["reason"])
+    _assert_no_sensitive_material(stdout, report, markdown_report)
+
+
 def test_redaction_audit_uses_actual_updated_trace_ids_when_plan_turns_stale(
     db_session: Session,
 ) -> None:

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.db.session import create_db_engine
+from intent_routing.ops.evidence import redact_ops_evidence
 from intent_routing.ops.retention import (
     RuntimeRawQueryRetentionPlan,
     apply_runtime_raw_query_redaction,
@@ -184,7 +185,7 @@ def _build_report(
         "redacted_count": redacted_count,
         "actor_id": actor_id,
         "approval_id": approval_id,
-        "reason": reason,
+        "reason": _safe_report_reason(reason),
         "started_at": started_at.isoformat(),
         "completed_at": completed_at.isoformat(),
         "plaintext_exported": False,
@@ -202,6 +203,11 @@ def _write_reports(report_dir: Path, report: dict[str, object]) -> tuple[Path, P
     )
     markdown_path.write_text(_render_markdown(report), encoding="utf-8")
     return json_path, markdown_path
+
+
+def _safe_report_reason(reason: str) -> str:
+    redacted = redact_ops_evidence(reason)
+    return redacted if isinstance(redacted, str) else "REDACTED"
 
 
 def _render_markdown(report: dict[str, object]) -> str:

@@ -8,6 +8,7 @@ from intent_routing.security.rewrap import (
     apply_runtime_log_encrypted_query,
     intent_example_encrypted_text,
     reencrypt_envelope,
+    render_raw_text_rewrap_markdown,
     runtime_log_encrypted_query,
 )
 
@@ -101,6 +102,64 @@ def test_runtime_log_adapter_reads_and_applies_complete_envelope() -> None:
     assert runtime_log.query_raw_iv == migrated.iv
     assert runtime_log.query_raw_auth_tag == migrated.auth_tag
     assert runtime_log.query_raw_algorithm == migrated.algorithm
+
+
+def test_render_raw_text_rewrap_markdown_escapes_table_cells() -> None:
+    markdown = render_raw_text_rewrap_markdown(
+        {
+            "rewrap_run_id": "rtr-20260628-001",
+            "service_id": "svc|alpha\nnext",
+            "dry_run": False,
+            "status": "partial|remaining",
+            "target_key_id": "active|key",
+            "source_key_ids": ["legacy|key"],
+            "included_tables": ["runtime|logs"],
+            "limit": 1,
+            "batch_size": 100,
+            "scanned_by_table": {"runtime|logs": 1},
+            "scanned_count": 1,
+            "rewrapped_count": 1,
+            "skipped_count": 0,
+            "failed_count": 0,
+            "plaintext_exported": False,
+            "key_counts": {
+                "runtime|logs": {
+                    "legacy": {"legacy|key": 1},
+                    "active": {"active|key": 0},
+                    "total": 1,
+                },
+            },
+            "before_key_counts": {
+                "runtime|logs": {
+                    "legacy": {"legacy|key": 1},
+                    "active": {"active|key": 0},
+                    "total": 1,
+                },
+            },
+            "after_key_counts": {
+                "runtime|logs": {
+                    "legacy": {"legacy|key": 0},
+                    "active": {"active|key": 1},
+                    "total": 1,
+                },
+            },
+            "failure_counts": {
+                "runtime|logs": {
+                    "legacy|key": {
+                        "missing|material": 1,
+                    },
+                },
+            },
+        }
+    )
+
+    assert "| Service ID | svc\\|alpha next |" in markdown
+    assert "| Status | partial\\|remaining |" in markdown
+    assert "| Source key IDs | legacy\\|key |" in markdown
+    assert "| Scanned by table | runtime\\|logs=1 |" in markdown
+    assert "| runtime\\|logs | legacy | legacy\\|key | 1 |" in markdown
+    assert "| After | runtime\\|logs | active | active\\|key | 1 |" in markdown
+    assert "| runtime\\|logs | legacy\\|key | missing\\|material | 1 |" in markdown
 
 
 def _intent_example(encrypted: EncryptedText) -> IntentExample:

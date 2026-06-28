@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from typing import TypedDict
 
@@ -239,7 +240,9 @@ def render_raw_text_rewrap_markdown(report: Mapping[str, object]) -> str:
         "| Field | Value |",
         "| --- | --- |",
     ]
-    lines.extend(f"| {field} | {value} |" for field, value in rows)
+    lines.extend(
+        f"| {_markdown_cell(field)} | {_markdown_cell(value)} |" for field, value in rows
+    )
     lines.extend(_markdown_key_count_lines(report.get("key_counts", {})))
     lines.extend(
         _markdown_snapshot_key_count_lines(
@@ -311,7 +314,13 @@ def _markdown_key_count_lines(raw_key_counts: object) -> list[str]:
             for key_id, count in raw_counts.items():
                 if not isinstance(key_id, str) or not isinstance(count, int):
                     continue
-                lines.append(f"| {table_name} | {key_role} | {key_id} | {count} |")
+                table_cell = _markdown_cell(table_name)
+                role_cell = _markdown_cell(key_role)
+                key_cell = _markdown_cell(key_id)
+                count_cell = _markdown_cell(count)
+                lines.append(
+                    f"| {table_cell} | {role_cell} | {key_cell} | {count_cell} |"
+                )
     return lines
 
 
@@ -351,8 +360,14 @@ def _markdown_snapshot_key_count_lines(
             for key_id in key_ids:
                 count = raw_counts.get(key_id, 0)
                 if isinstance(count, int):
+                    label_cell = _markdown_cell(label)
+                    table_cell = _markdown_cell(table_name)
+                    role_cell = _markdown_cell(key_role)
+                    key_cell = _markdown_cell(key_id)
+                    count_cell = _markdown_cell(count)
                     lines.append(
-                        f"| {label} | {table_name} | {key_role} | {key_id} | {count} |"
+                        f"| {label_cell} | {table_cell} | {role_cell} | "
+                        f"{key_cell} | {count_cell} |"
                     )
     return lines
 
@@ -375,8 +390,20 @@ def _markdown_failure_count_lines(raw_failure_counts: object) -> list[str]:
                 continue
             for reason, count in raw_reason_counts.items():
                 if isinstance(reason, str) and isinstance(count, int):
-                    lines.append(f"| {table_name} | {key_id} | {reason} | {count} |")
+                    table_cell = _markdown_cell(table_name)
+                    key_cell = _markdown_cell(key_id)
+                    reason_cell = _markdown_cell(reason)
+                    count_cell = _markdown_cell(count)
+                    lines.append(
+                        f"| {table_cell} | {key_cell} | {reason_cell} | {count_cell} |"
+                    )
     return lines
+
+
+def _markdown_cell(value: object) -> str:
+    text = str(value)
+    text = re.sub(r"[\r\n]+", " ", text)
+    return text.replace("|", r"\|")
 
 
 def _report_string_list(value: object) -> list[str]:

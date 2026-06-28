@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -167,6 +167,7 @@ def run_raw_text_rewrap(
         repository,
         service_id=service_id,
         included_tables=included_tables,
+        source_key_ids=source_key_ids,
         limit=limit,
     )
     counts = _process_candidates(
@@ -182,7 +183,11 @@ def run_raw_text_rewrap(
         included_tables=included_tables,
         active_key_id=keyring.active_key_id,
     )
-    status = "completed" if counts.failed == 0 else "completed_with_failures"
+    status = _raw_text_rewrap_status(
+        dry_run=dry_run,
+        failed_count=counts.failed,
+        after_key_counts=after_key_counts,
+    )
     report = build_raw_text_rewrap_report(
         rewrap_run_id=rewrap_run_id,
         service_id=service_id,
@@ -311,24 +316,27 @@ def _list_candidates(
     *,
     service_id: str,
     included_tables: Sequence[str],
+    source_key_ids: Sequence[str],
     limit: int,
 ) -> list[_RewrapCandidate]:
     candidates: list[_RewrapCandidate] = []
-    remaining = limit
-    if "intent_examples" in included_tables and remaining > 0:
+    if not source_key_ids:
+        return candidates
+    if "intent_examples" in included_tables:
         examples = repository.list_intent_examples_for_rewrap(
             service_id,
-            limit=remaining,
+            key_ids=source_key_ids,
+            limit=limit,
         )
         candidates.extend(
             _RewrapCandidate(table_name="intent_examples", record=example)
             for example in examples
         )
-        remaining -= len(examples)
-    if "runtime_logs" in included_tables and remaining > 0:
+    if "runtime_logs" in included_tables:
         runtime_logs = repository.list_runtime_logs_for_rewrap(
             service_id,
-            limit=remaining,
+            key_ids=source_key_ids,
+            limit=limit,
         )
         candidates.extend(
             _RewrapCandidate(table_name="runtime_logs", record=runtime_log)
@@ -427,6 +435,32 @@ def _record_failure(
     table_counts = failure_counts.setdefault(table_name, {})
     key_counts = table_counts.setdefault(key_id, {})
     key_counts[reason] = key_counts.get(reason, 0) + 1
+
+
+def _raw_text_rewrap_status(
+    *,
+    dry_run: bool,
+    failed_count: int,
+    after_key_counts: Mapping[str, object],
+) -> str:
+    if failed_count:
+        return "completed_with_failures"
+    if not dry_run and _has_remaining_legacy_key_counts(after_key_counts):
+        return "partial_remaining"
+    return "completed"
+
+
+def _has_remaining_legacy_key_counts(raw_key_counts: Mapping[str, object]) -> bool:
+    for raw_detail in raw_key_counts.values():
+        if not isinstance(raw_detail, Mapping):
+            continue
+        legacy_counts = raw_detail.get("legacy")
+        if not isinstance(legacy_counts, Mapping):
+            continue
+        for count in legacy_counts.values():
+            if isinstance(count, int) and count > 0:
+                return True
+    return False
 
 
 def _write_reports(report_dir: Path, report: dict[str, object]) -> tuple[Path, Path]:
