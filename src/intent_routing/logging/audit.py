@@ -5,30 +5,11 @@ from fastapi import Request
 from intent_routing.db.models import RuntimeLog
 from intent_routing.security.encryption import EncryptedText
 from intent_routing.security.keyring import RawTextKeyring
+from intent_routing.security.rewrap import runtime_log_encrypted_query
 
 
 def runtime_log_encrypted_raw_query(runtime_log: RuntimeLog) -> EncryptedText | None:
-    if (
-        runtime_log.query_raw_ciphertext is None
-        or runtime_log.query_raw_encrypted_dek is None
-        or runtime_log.query_raw_encrypted_dek_iv is None
-        or runtime_log.query_raw_encrypted_dek_auth_tag is None
-        or runtime_log.query_raw_key_id is None
-        or runtime_log.query_raw_iv is None
-        or runtime_log.query_raw_auth_tag is None
-        or runtime_log.query_raw_algorithm is None
-    ):
-        return None
-    return EncryptedText(
-        ciphertext=runtime_log.query_raw_ciphertext,
-        encrypted_dek=runtime_log.query_raw_encrypted_dek,
-        encrypted_dek_iv=runtime_log.query_raw_encrypted_dek_iv,
-        encrypted_dek_auth_tag=runtime_log.query_raw_encrypted_dek_auth_tag,
-        key_id=runtime_log.query_raw_key_id,
-        iv=runtime_log.query_raw_iv,
-        auth_tag=runtime_log.query_raw_auth_tag,
-        algorithm=runtime_log.query_raw_algorithm,
-    )
+    return runtime_log_encrypted_query(runtime_log)
 
 
 def decrypt_runtime_raw_query(
