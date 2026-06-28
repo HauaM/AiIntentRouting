@@ -88,8 +88,11 @@ uv run python scripts/trace_audit_drill.py \
   --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
   --state ${STATE_PATH} \
   --trace-id <trace_id> \
+  --approval-id SEC-20260628-001 \
   --view-reason "장애 분석 ticket INC-20260626-001"
 ```
+
+For API key rotation, admin token handling, KEK handling, and raw query approval policy, use `docs/ops/security-operations.md`.
 
 ## 6. Failure Drills
 

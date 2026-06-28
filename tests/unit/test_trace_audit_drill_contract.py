@@ -12,6 +12,7 @@ def test_trace_audit_drill_script_documents_masked_and_decrypt_paths() -> None:
 
     assert "/runtime-logs" in text
     assert ":decrypt-raw-query" in text
+    assert "--approval-id" in text
     assert "--view-reason" in text
     assert "query_raw" not in _stdout_safe_strings(text)
 
@@ -50,6 +51,8 @@ def test_main_decrypt_mode_prints_redacted_metadata_only(
             str(state_path),
             "--trace-id",
             "trace-123",
+            "--approval-id",
+            "SEC-20260628-001",
             "--view-reason",
             "장애 분석 ticket INC-20260626-001",
         ]
@@ -59,7 +62,12 @@ def test_main_decrypt_mode_prints_redacted_metadata_only(
     assert fake_client.calls == [
         {
             "path": "/admin/v1/services/svc-test/runtime-logs/trace-123:decrypt-raw-query",
-            "json": {"view_reason": "장애 분석 ticket INC-20260626-001"},
+            "json": {
+                "view_reason": (
+                    "approval=SEC-20260628-001; "
+                    "reason=장애 분석 ticket INC-20260626-001"
+                )
+            },
         }
     ]
     assert fake_client.entered is True
@@ -137,6 +145,24 @@ def test_parse_args_rejects_view_reason_without_trace_id() -> None:
                 "var/pilot/example.state.secret.json",
                 "--view-reason",
                 "ticket INC-20260626-001",
+            ]
+        )
+
+
+def test_parse_args_rejects_approval_id_without_view_reason() -> None:
+    trace_audit_drill = importlib.import_module("scripts.trace_audit_drill")
+
+    with pytest.raises(SystemExit, match="--approval-id requires --trace-id and --view-reason"):
+        trace_audit_drill._parse_args(
+            [
+                "--base-url",
+                "http://admin.test",
+                "--state",
+                "var/pilot/example.state.secret.json",
+                "--trace-id",
+                "trace-123",
+                "--approval-id",
+                "SEC-20260628-001",
             ]
         )
 

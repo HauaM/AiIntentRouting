@@ -31,6 +31,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             service_id=service_id,
             trace_id=args.trace_id,
             view_reason=args.view_reason,
+            approval_id=args.approval_id,
         )
 
     print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -42,6 +43,7 @@ def _run_drill(
     service_id: str,
     trace_id: str | None,
     view_reason: str | None,
+    approval_id: str | None,
 ) -> Any:
     if trace_id is None:
         return client.get(
@@ -53,7 +55,7 @@ def _run_drill(
 
     response = client.post(
         f"/admin/v1/services/{service_id}/runtime-logs/{trace_id}:decrypt-raw-query",
-        json={"view_reason": view_reason},
+        json={"view_reason": _compose_view_reason(view_reason, approval_id)},
     )
     return {
         "trace_id": response["trace_id"],
@@ -72,11 +74,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--admin-token")
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--trace-id")
+    parser.add_argument("--approval-id")
     parser.add_argument("--view-reason")
     args = parser.parse_args(argv)
     if args.view_reason and not args.trace_id:
         raise SystemExit("--view-reason requires --trace-id")
+    if args.approval_id and (not args.trace_id or not args.view_reason):
+        raise SystemExit("--approval-id requires --trace-id and --view-reason")
     return args
+
+
+def _compose_view_reason(view_reason: str | None, approval_id: str | None) -> str:
+    if view_reason is None:
+        raise ValueError("view_reason is required for raw query decrypt")
+    if approval_id is None:
+        return view_reason
+    return f"approval={approval_id}; reason={view_reason}"
 
 
 if __name__ == "__main__":
