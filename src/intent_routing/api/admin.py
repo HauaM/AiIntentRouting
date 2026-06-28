@@ -7,6 +7,7 @@ from os import environ
 from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID, uuid4
 
+from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy.exc import IntegrityError
@@ -1202,7 +1203,7 @@ def decrypt_raw_runtime_query(
 
     try:
         query_raw = decrypt_runtime_raw_query(runtime_log, _raw_text_keyring())
-    except ValueError:
+    except (InvalidTag, ValueError):
         _raise_raw_query_unavailable()
     if query_raw is None:
         _raise_raw_query_unavailable()

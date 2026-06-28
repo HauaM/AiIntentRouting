@@ -362,6 +362,64 @@ def test_execute_reports_secret_safe_failures_when_legacy_key_material_is_missin
         assert marker not in markdown_report
 
 
+def test_dry_run_reports_missing_legacy_key_material_before_execute(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    legacy_kek = _kek(b"f")
+    active_kek = _kek(b"g")
+    service_id = _seed_rewrap_fixture(
+        db_session,
+        legacy_kek=legacy_kek,
+        active_kek=active_kek,
+    )
+    before_examples = _example_envelopes(db_session, service_id)
+    before_logs = _runtime_log_envelopes(db_session, service_id)
+    _configure_active_keyring_only(monkeypatch, active_kek=active_kek)
+
+    rewrap_raw_text.main(
+        [
+            "--service-id",
+            service_id,
+            "--actor-id",
+            ACTOR_ID,
+            "--report-dir",
+            str(tmp_path),
+            "--include",
+            "both",
+            "--dry-run",
+        ]
+    )
+
+    db_session.expire_all()
+    run = _latest_run(db_session, service_id)
+    report, markdown_report = _read_reports(tmp_path)
+    assert run.dry_run is True
+    assert run.status == "completed_with_failures"
+    assert run.failed_count == 4
+    assert run.rewrapped_count == 0
+    assert report["status"] == "completed_with_failures"
+    assert report["failure_counts"] == {
+        "intent_examples": {
+            LEGACY_KEY_ID: {
+                "missing_key_material": 2,
+            },
+        },
+        "runtime_logs": {
+            LEGACY_KEY_ID: {
+                "missing_key_material": 2,
+            },
+        },
+    }
+    assert _example_envelopes(db_session, service_id) == before_examples
+    assert _runtime_log_envelopes(db_session, service_id) == before_logs
+    serialized_report = json.dumps(report, ensure_ascii=False, sort_keys=True)
+    for marker in (*LEAK_MARKERS, legacy_kek, active_kek):
+        assert marker not in serialized_report
+        assert marker not in markdown_report
+
+
 def test_limited_execute_reports_partial_remaining_when_legacy_keys_remain(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,

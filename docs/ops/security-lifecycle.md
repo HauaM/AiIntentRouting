@@ -114,6 +114,8 @@ uv run python scripts/apply_log_retention.py \
 
 The retention reports record eligible, already redacted, and redacted counts without printing raw queries.
 
+If an execute command commits database changes but fails while writing the local report files, do not rerun the mutation blindly. First export consolidated operations evidence, then query the relevant `raw_text_rewrap_runs`, runtime raw-query retention counts, and audit logs for the same `approval_id`. Store the regenerated evidence with an operator note that the original report write failed after execution.
+
 ## Metrics and evidence export commands
 
 Export the consolidated operations evidence package after rewrap or retention work:

@@ -376,8 +376,6 @@ def _process_candidates(
             if encrypted.key_id == keyring.active_key_id:
                 counts.skipped += 1
                 continue
-            if dry_run:
-                continue
             if encrypted.key_id not in configured_key_ids:
                 counts.failed += 1
                 _record_failure(
@@ -386,6 +384,8 @@ def _process_candidates(
                     key_id=encrypted.key_id,
                     reason="missing_key_material",
                 )
+                continue
+            if dry_run:
                 continue
             try:
                 rewrapped = reencrypt_envelope(encrypted, keyring)
