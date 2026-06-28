@@ -4,7 +4,7 @@ import argparse
 import json
 import os
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -18,6 +18,7 @@ from intent_routing.db.session import create_db_engine
 from intent_routing.security.encryption import EncryptedText
 from intent_routing.security.keyring import load_raw_text_keyring
 from intent_routing.security.rewrap import (
+    RawTextFailureCounts,
     apply_intent_example_encrypted_text,
     apply_runtime_log_encrypted_query,
     build_raw_text_rewrap_report,
@@ -54,16 +55,23 @@ class _RewrapCounts:
     rewrapped: int = 0
     skipped: int = 0
     failed: int = 0
+    scanned_by_table: dict[str, int] = field(default_factory=dict)
+    failure_counts: RawTextFailureCounts = field(default_factory=dict)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
     keyring = load_raw_text_keyring()
-    _validate_args(args, active_key_id=keyring.active_key_id)
+    database_url = _database_url_from_env()
+    _validate_args(
+        args,
+        active_key_id=keyring.active_key_id,
+        database_url=database_url,
+    )
     included_tables = normalize_raw_text_rewrap_includes(args.include)
     dry_run = not args.execute
 
-    engine = create_db_engine(_database_url_from_env())
+    engine = create_db_engine(database_url)
     try:
         with Session(engine) as session:
             result = run_raw_text_rewrap(
@@ -125,14 +133,14 @@ def run_raw_text_rewrap(
     repository = IntentRoutingRepository(session)
     started_at = datetime.now(UTC)
     rewrap_run_id = _next_rewrap_run_id(session, started_at)
-    key_counts = repository.count_raw_text_key_ids(service_id)
+    before_raw_key_counts = repository.count_raw_text_key_ids(service_id)
     source_key_ids = source_key_ids_from_counts(
-        key_counts,
+        before_raw_key_counts,
         included_tables=included_tables,
         active_key_id=keyring.active_key_id,
     )
-    report_key_counts = raw_text_key_counts_by_table(
-        key_counts,
+    before_key_counts = raw_text_key_counts_by_table(
+        before_raw_key_counts,
         included_tables=included_tables,
         active_key_id=keyring.active_key_id,
     )
@@ -163,18 +171,33 @@ def run_raw_text_rewrap(
     )
     counts = _process_candidates(
         candidates,
+        included_tables=included_tables,
         keyring=keyring,
         dry_run=dry_run,
         batch_size=batch_size,
     )
+    session.flush()
+    after_key_counts = raw_text_key_counts_by_table(
+        repository.count_raw_text_key_ids(service_id),
+        included_tables=included_tables,
+        active_key_id=keyring.active_key_id,
+    )
+    status = "completed" if counts.failed == 0 else "completed_with_failures"
     report = build_raw_text_rewrap_report(
         rewrap_run_id=rewrap_run_id,
         service_id=service_id,
         dry_run=dry_run,
+        status=status,
         target_key_id=keyring.active_key_id,
         source_key_ids=source_key_ids,
         included_tables=included_tables,
-        key_counts=report_key_counts,
+        key_counts=before_key_counts,
+        before_key_counts=before_key_counts,
+        after_key_counts=after_key_counts,
+        failure_counts=counts.failure_counts,
+        scanned_by_table=counts.scanned_by_table,
+        limit=limit,
+        batch_size=batch_size,
         scanned_count=counts.scanned,
         rewrapped_count=counts.rewrapped,
         skipped_count=counts.skipped,
@@ -183,7 +206,7 @@ def run_raw_text_rewrap(
     completed_at = datetime.now(UTC)
     repository.complete_raw_text_rewrap_run(
         run,
-        status="completed" if counts.failed == 0 else "completed_with_failures",
+        status=status,
         scanned_count=counts.scanned,
         rewrapped_count=counts.rewrapped,
         skipped_count=counts.skipped,
@@ -242,7 +265,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _validate_args(args: argparse.Namespace, *, active_key_id: str) -> None:
+def _validate_args(
+    args: argparse.Namespace,
+    *,
+    active_key_id: str,
+    database_url: str | None,
+) -> None:
     if args.batch_size < 1:
         raise SystemExit("--batch-size must be at least 1")
     if args.limit < 1:
@@ -255,6 +283,8 @@ def _validate_args(args: argparse.Namespace, *, active_key_id: str) -> None:
         raise SystemExit("--execute requires --confirm-active-key-id")
     if args.confirm_active_key_id != active_key_id:
         raise SystemExit("--confirm-active-key-id must match active raw text key ID")
+    if database_url is None:
+        raise SystemExit("--execute requires DATABASE_URL or TEST_DATABASE_URL")
 
 
 def _database_url_from_env() -> str | None:
@@ -310,26 +340,55 @@ def _list_candidates(
 def _process_candidates(
     candidates: Sequence[_RewrapCandidate],
     *,
+    included_tables: Sequence[str],
     keyring: Any,
     dry_run: bool,
     batch_size: int,
 ) -> _RewrapCounts:
-    counts = _RewrapCounts(scanned=len(candidates))
+    counts = _RewrapCounts(
+        scanned_by_table={table_name: 0 for table_name in included_tables}
+    )
+    configured_key_ids = set(keyring.key_ids())
     for batch_start in range(0, len(candidates), batch_size):
         for candidate in candidates[batch_start : batch_start + batch_size]:
+            counts.scanned += 1
+            counts.scanned_by_table[candidate.table_name] = (
+                counts.scanned_by_table.get(candidate.table_name, 0) + 1
+            )
             encrypted = _candidate_encrypted_text(candidate)
             if encrypted is None:
                 counts.failed += 1
+                _record_failure(
+                    counts.failure_counts,
+                    table_name=candidate.table_name,
+                    key_id=_candidate_key_id(candidate),
+                    reason="incomplete_envelope",
+                )
                 continue
             if encrypted.key_id == keyring.active_key_id:
                 counts.skipped += 1
                 continue
             if dry_run:
                 continue
+            if encrypted.key_id not in configured_key_ids:
+                counts.failed += 1
+                _record_failure(
+                    counts.failure_counts,
+                    table_name=candidate.table_name,
+                    key_id=encrypted.key_id,
+                    reason="missing_key_material",
+                )
+                continue
             try:
                 rewrapped = reencrypt_envelope(encrypted, keyring)
             except Exception:
                 counts.failed += 1
+                _record_failure(
+                    counts.failure_counts,
+                    table_name=candidate.table_name,
+                    key_id=encrypted.key_id,
+                    reason="reencrypt_failed",
+                )
                 continue
             _apply_candidate_encrypted_text(candidate, rewrapped)
             counts.rewrapped += 1
@@ -350,6 +409,24 @@ def _apply_candidate_encrypted_text(
         apply_intent_example_encrypted_text(candidate.record, encrypted)
         return
     apply_runtime_log_encrypted_query(candidate.record, encrypted)
+
+
+def _candidate_key_id(candidate: _RewrapCandidate) -> str:
+    if isinstance(candidate.record, models.IntentExample):
+        return candidate.record.text_raw_key_id
+    return candidate.record.query_raw_key_id or "unknown"
+
+
+def _record_failure(
+    failure_counts: RawTextFailureCounts,
+    *,
+    table_name: str,
+    key_id: str,
+    reason: str,
+) -> None:
+    table_counts = failure_counts.setdefault(table_name, {})
+    key_counts = table_counts.setdefault(key_id, {})
+    key_counts[reason] = key_counts.get(reason, 0) + 1
 
 
 def _write_reports(report_dir: Path, report: dict[str, object]) -> tuple[Path, Path]:

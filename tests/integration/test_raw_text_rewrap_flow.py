@@ -82,6 +82,13 @@ def test_dry_run_reports_legacy_counts_and_writes_no_data_changes(
     assert report["rewrapped_count"] == 0
     assert report["skipped_count"] == 2
     assert report["plaintext_exported"] is False
+    assert report["status"] == "completed"
+    assert report["limit"] == 20
+    assert report["batch_size"] == 2
+    assert report["scanned_by_table"] == {
+        "intent_examples": 3,
+        "runtime_logs": 3,
+    }
     assert report["key_counts"] == {
         "intent_examples": {
             "legacy": {LEGACY_KEY_ID: 2},
@@ -94,6 +101,9 @@ def test_dry_run_reports_legacy_counts_and_writes_no_data_changes(
             "total": 3,
         },
     }
+    assert report["before_key_counts"] == report["key_counts"]
+    assert report["after_key_counts"] == report["before_key_counts"]
+    assert report["failure_counts"] == {}
     assert f"| intent_examples | legacy | {LEGACY_KEY_ID} | 2 |" in markdown_report
     assert f"| intent_examples | active | {ACTIVE_KEY_ID} | 1 |" in markdown_report
     assert f"| runtime_logs | legacy | {LEGACY_KEY_ID} | 2 |" in markdown_report
@@ -230,6 +240,41 @@ def test_execute_reencrypts_legacy_records_to_active_key_and_skips_active_record
     assert run.scanned_count == 6
     assert run.rewrapped_count == 4
     assert run.skipped_count == 2
+    report, markdown_report = _read_reports(tmp_path)
+    assert report["status"] == "completed"
+    assert report["before_key_counts"] == {
+        "intent_examples": {
+            "legacy": {LEGACY_KEY_ID: 2},
+            "active": {ACTIVE_KEY_ID: 1},
+            "total": 3,
+        },
+        "runtime_logs": {
+            "legacy": {LEGACY_KEY_ID: 2},
+            "active": {ACTIVE_KEY_ID: 1},
+            "total": 3,
+        },
+    }
+    assert report["after_key_counts"] == {
+        "intent_examples": {
+            "legacy": {},
+            "active": {ACTIVE_KEY_ID: 3},
+            "total": 3,
+        },
+        "runtime_logs": {
+            "legacy": {},
+            "active": {ACTIVE_KEY_ID: 3},
+            "total": 3,
+        },
+    }
+    assert report["key_counts"] == report["before_key_counts"]
+    assert report["failure_counts"] == {}
+    assert report["scanned_by_table"] == {
+        "intent_examples": 3,
+        "runtime_logs": 3,
+    }
+    assert f"| Before | intent_examples | legacy | {LEGACY_KEY_ID} | 2 |" in markdown_report
+    assert f"| After | intent_examples | active | {ACTIVE_KEY_ID} | 3 |" in markdown_report
+    assert f"| After | runtime_logs | legacy | {LEGACY_KEY_ID} | 0 |" in markdown_report
     audit_log = db_session.scalar(
         select(models.AuditLog)
         .where(models.AuditLog.service_id == service_id)
@@ -247,6 +292,112 @@ def test_execute_reencrypts_legacy_records_to_active_key_and_skips_active_record
         "failed_count": 0,
         "target_key_id": ACTIVE_KEY_ID,
     }
+
+
+def test_execute_reports_secret_safe_failures_when_legacy_key_material_is_missing(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    legacy_kek = _kek(b"9")
+    active_kek = _kek(b"a")
+    service_id = _seed_rewrap_fixture(
+        db_session,
+        legacy_kek=legacy_kek,
+        active_kek=active_kek,
+    )
+    before_examples = _example_envelopes(db_session, service_id)
+    before_logs = _runtime_log_envelopes(db_session, service_id)
+    _configure_active_keyring_only(monkeypatch, active_kek=active_kek)
+
+    rewrap_raw_text.main(
+        [
+            "--service-id",
+            service_id,
+            "--actor-id",
+            ACTOR_ID,
+            "--report-dir",
+            str(tmp_path),
+            "--include",
+            "both",
+            "--execute",
+            "--approval-id",
+            APPROVAL_ID,
+            "--confirm-active-key-id",
+            ACTIVE_KEY_ID,
+        ]
+    )
+
+    db_session.expire_all()
+    run = _latest_run(db_session, service_id)
+    report, markdown_report = _read_reports(tmp_path)
+    assert run.status == "completed_with_failures"
+    assert run.failed_count == 4
+    assert run.rewrapped_count == 0
+    assert run.skipped_count == 2
+    assert report["status"] == "completed_with_failures"
+    assert report["failed_count"] == 4
+    assert report["failure_counts"] == {
+        "intent_examples": {
+            LEGACY_KEY_ID: {
+                "missing_key_material": 2,
+            },
+        },
+        "runtime_logs": {
+            LEGACY_KEY_ID: {
+                "missing_key_material": 2,
+            },
+        },
+    }
+    assert report["before_key_counts"] == report["after_key_counts"]
+    assert _example_envelopes(db_session, service_id) == before_examples
+    assert _runtime_log_envelopes(db_session, service_id) == before_logs
+    assert (
+        f"| intent_examples | {LEGACY_KEY_ID} | missing_key_material | 2 |"
+        in markdown_report
+    )
+    serialized_report = json.dumps(report, ensure_ascii=False, sort_keys=True)
+    for marker in (*LEAK_MARKERS, legacy_kek, active_kek, "query_raw", "text_raw"):
+        assert marker not in serialized_report
+        assert marker not in markdown_report
+
+
+def test_execute_requires_explicit_database_url_before_creating_run(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    legacy_kek = _kek(b"b")
+    active_kek = _kek(b"c")
+    service_id = _seed_rewrap_fixture(
+        db_session,
+        legacy_kek=legacy_kek,
+        active_kek=active_kek,
+    )
+    _configure_keyring(monkeypatch, legacy_kek=legacy_kek, active_kek=active_kek)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+
+    with pytest.raises(SystemExit, match="--execute requires DATABASE_URL"):
+        rewrap_raw_text.main(
+            [
+                "--service-id",
+                service_id,
+                "--actor-id",
+                ACTOR_ID,
+                "--report-dir",
+                str(tmp_path),
+                "--include",
+                "both",
+                "--execute",
+                "--approval-id",
+                APPROVAL_ID,
+                "--confirm-active-key-id",
+                ACTIVE_KEY_ID,
+            ]
+        )
+
+    assert _run_count(db_session, service_id) == 0
 
 
 def test_reports_run_records_and_audit_records_contain_no_sensitive_material(
@@ -468,6 +619,16 @@ def _configure_keyring(
         "RAW_TEXT_LEGACY_KEKS_JSON",
         json.dumps({LEGACY_KEY_ID: legacy_kek}, sort_keys=True),
     )
+
+
+def _configure_active_keyring_only(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    active_kek: str,
+) -> None:
+    monkeypatch.setenv("RAW_TEXT_KEK_ID", ACTIVE_KEY_ID)
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", active_kek)
+    monkeypatch.setenv("RAW_TEXT_LEGACY_KEKS_JSON", "{}")
 
 
 def _kek(byte: bytes) -> str:

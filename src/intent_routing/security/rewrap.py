@@ -15,6 +15,7 @@ class RawTextKeyCountDetail(TypedDict):
 
 
 RawTextKeyCountsByTable = dict[str, RawTextKeyCountDetail]
+RawTextFailureCounts = dict[str, dict[str, dict[str, int]]]
 
 
 RAW_TEXT_REWRAP_TABLES = ("intent_examples", "runtime_logs")
@@ -173,10 +174,17 @@ def build_raw_text_rewrap_report(
     rewrap_run_id: str,
     service_id: str,
     dry_run: bool,
+    status: str,
     target_key_id: str,
     source_key_ids: Sequence[str],
     included_tables: Sequence[str],
     key_counts: RawTextKeyCountsByTable,
+    before_key_counts: RawTextKeyCountsByTable,
+    after_key_counts: RawTextKeyCountsByTable,
+    failure_counts: RawTextFailureCounts,
+    scanned_by_table: Mapping[str, int],
+    limit: int,
+    batch_size: int,
     scanned_count: int,
     rewrapped_count: int,
     skipped_count: int,
@@ -186,10 +194,17 @@ def build_raw_text_rewrap_report(
         "rewrap_run_id": rewrap_run_id,
         "service_id": service_id,
         "dry_run": dry_run,
+        "status": status,
         "target_key_id": target_key_id,
         "source_key_ids": list(source_key_ids),
         "included_tables": list(included_tables),
         "key_counts": key_counts,
+        "before_key_counts": before_key_counts,
+        "after_key_counts": after_key_counts,
+        "failure_counts": failure_counts,
+        "scanned_by_table": dict(scanned_by_table),
+        "limit": limit,
+        "batch_size": batch_size,
         "scanned_count": scanned_count,
         "rewrapped_count": rewrapped_count,
         "skipped_count": skipped_count,
@@ -203,9 +218,13 @@ def render_raw_text_rewrap_markdown(report: Mapping[str, object]) -> str:
         ("Rewrap run ID", report["rewrap_run_id"]),
         ("Service ID", report["service_id"]),
         ("Dry run", report["dry_run"]),
+        ("Status", report["status"]),
         ("Target key ID", report["target_key_id"]),
         ("Source key IDs", _markdown_list_value(report["source_key_ids"])),
         ("Included tables", _markdown_list_value(report["included_tables"])),
+        ("Limit", report["limit"]),
+        ("Batch size", report["batch_size"]),
+        ("Scanned by table", _markdown_count_mapping(report["scanned_by_table"])),
         ("Scanned count", report["scanned_count"]),
         ("Rewrapped count", report["rewrapped_count"]),
         ("Skipped count", report["skipped_count"]),
@@ -222,6 +241,21 @@ def render_raw_text_rewrap_markdown(report: Mapping[str, object]) -> str:
     ]
     lines.extend(f"| {field} | {value} |" for field, value in rows)
     lines.extend(_markdown_key_count_lines(report.get("key_counts", {})))
+    lines.extend(
+        _markdown_snapshot_key_count_lines(
+            label="Before",
+            raw_key_counts=report.get("before_key_counts", {}),
+            report=report,
+        )
+    )
+    lines.extend(
+        _markdown_snapshot_key_count_lines(
+            label="After",
+            raw_key_counts=report.get("after_key_counts", {}),
+            report=report,
+        )
+    )
+    lines.extend(_markdown_failure_count_lines(report.get("failure_counts", {})))
     return "\n".join(lines) + "\n"
 
 
@@ -247,6 +281,16 @@ def _markdown_list_value(value: object) -> str:
     return str(value)
 
 
+def _markdown_count_mapping(value: object) -> str:
+    if not isinstance(value, Mapping):
+        return str(value)
+    return ", ".join(
+        f"{key}={count}"
+        for key, count in value.items()
+        if isinstance(key, str) and isinstance(count, int)
+    ) or "(none)"
+
+
 def _markdown_key_count_lines(raw_key_counts: object) -> list[str]:
     lines = [
         "",
@@ -269,3 +313,73 @@ def _markdown_key_count_lines(raw_key_counts: object) -> list[str]:
                     continue
                 lines.append(f"| {table_name} | {key_role} | {key_id} | {count} |")
     return lines
+
+
+def _markdown_snapshot_key_count_lines(
+    *,
+    label: str,
+    raw_key_counts: object,
+    report: Mapping[str, object],
+) -> list[str]:
+    lines = [
+        "",
+        f"## {label} Key Counts",
+        "",
+        "| Snapshot | Table | Key role | Key ID | Count |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    if not isinstance(raw_key_counts, Mapping):
+        return lines
+    source_key_ids = _report_string_list(report.get("source_key_ids", []))
+    target_key_id = report.get("target_key_id")
+    active_key_ids = [target_key_id] if isinstance(target_key_id, str) else []
+    for table_name, raw_detail in raw_key_counts.items():
+        if not isinstance(table_name, str) or not isinstance(raw_detail, Mapping):
+            continue
+        for key_role, expected_key_ids in (
+            ("legacy", source_key_ids),
+            ("active", active_key_ids),
+        ):
+            raw_counts = raw_detail.get(key_role, {})
+            if not isinstance(raw_counts, Mapping):
+                continue
+            key_ids = sorted(
+                set(expected_key_ids).union(
+                    key_id for key_id in raw_counts if isinstance(key_id, str)
+                )
+            )
+            for key_id in key_ids:
+                count = raw_counts.get(key_id, 0)
+                if isinstance(count, int):
+                    lines.append(
+                        f"| {label} | {table_name} | {key_role} | {key_id} | {count} |"
+                    )
+    return lines
+
+
+def _markdown_failure_count_lines(raw_failure_counts: object) -> list[str]:
+    lines = [
+        "",
+        "## Failure Counts",
+        "",
+        "| Table | Key ID | Reason | Count |",
+        "| --- | --- | --- | --- |",
+    ]
+    if not isinstance(raw_failure_counts, Mapping):
+        return lines
+    for table_name, raw_key_counts in raw_failure_counts.items():
+        if not isinstance(table_name, str) or not isinstance(raw_key_counts, Mapping):
+            continue
+        for key_id, raw_reason_counts in raw_key_counts.items():
+            if not isinstance(key_id, str) or not isinstance(raw_reason_counts, Mapping):
+                continue
+            for reason, count in raw_reason_counts.items():
+                if isinstance(reason, str) and isinstance(count, int):
+                    lines.append(f"| {table_name} | {key_id} | {reason} | {count} |")
+    return lines
+
+
+def _report_string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
