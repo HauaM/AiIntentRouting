@@ -5,12 +5,13 @@ from typing import Any, TypeVar, cast
 from uuid import UUID
 
 from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
-from sqlalchemy import bindparam, select, text, update
+from sqlalchemy import bindparam, func, select, text, update
 from sqlalchemy.orm import Session
 
 from intent_routing.db import models
 
 ModelT = TypeVar("ModelT")
+RawTextKeyIdCounts = dict[str, dict[str, int] | int]
 
 MASKED_RUNTIME_LOG_FIELD_NAMES = (
     "trace_id",
@@ -389,6 +390,160 @@ class IntentRoutingRepository:
 
     def insert_runtime_log(self, **values: Any) -> models.RuntimeLog:
         return self._add_and_flush(models.RuntimeLog(**values))
+
+    def create_raw_text_rewrap_run(self, **values: Any) -> models.RawTextRewrapRun:
+        return self._add_and_flush(models.RawTextRewrapRun(**values))
+
+    def complete_raw_text_rewrap_run(
+        self,
+        run: models.RawTextRewrapRun,
+        **values: Any,
+    ) -> models.RawTextRewrapRun:
+        for key, value in values.items():
+            setattr(run, key, value)
+        self.session.flush()
+        return run
+
+    def list_intent_examples_for_rewrap(
+        self,
+        service_id: str,
+        key_ids: Iterable[str] | None = None,
+        limit: int | None = None,
+    ) -> list[models.IntentExample]:
+        statement = select(models.IntentExample).where(
+            models.IntentExample.service_id == service_id
+        )
+        if key_ids is not None:
+            key_id_values = tuple(key_ids)
+            if not key_id_values:
+                return []
+            statement = statement.where(models.IntentExample.text_raw_key_id.in_(key_id_values))
+        statement = statement.order_by(
+            models.IntentExample.created_at,
+            models.IntentExample.example_id,
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
+        return list(self.session.scalars(statement))
+
+    def list_runtime_logs_for_rewrap(
+        self,
+        service_id: str,
+        key_ids: Iterable[str] | None = None,
+        limit: int | None = None,
+    ) -> list[models.RuntimeLog]:
+        statement = (
+            select(models.RuntimeLog)
+            .where(models.RuntimeLog.service_id == service_id)
+            .where(models.RuntimeLog.query_raw_ciphertext.is_not(None))
+            .where(models.RuntimeLog.query_raw_encrypted_dek.is_not(None))
+            .where(models.RuntimeLog.query_raw_encrypted_dek_iv.is_not(None))
+            .where(models.RuntimeLog.query_raw_encrypted_dek_auth_tag.is_not(None))
+            .where(models.RuntimeLog.query_raw_key_id.is_not(None))
+            .where(models.RuntimeLog.query_raw_iv.is_not(None))
+            .where(models.RuntimeLog.query_raw_auth_tag.is_not(None))
+            .where(models.RuntimeLog.query_raw_algorithm.is_not(None))
+        )
+        if key_ids is not None:
+            key_id_values = tuple(key_ids)
+            if not key_id_values:
+                return []
+            statement = statement.where(models.RuntimeLog.query_raw_key_id.in_(key_id_values))
+        statement = statement.order_by(
+            models.RuntimeLog.created_at,
+            models.RuntimeLog.trace_id,
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
+        return list(self.session.scalars(statement))
+
+    def count_raw_text_key_ids(self, service_id: str) -> RawTextKeyIdCounts:
+        example_rows = self.session.execute(
+            select(
+                models.IntentExample.text_raw_key_id,
+                func.count(models.IntentExample.example_id),
+            )
+            .where(models.IntentExample.service_id == service_id)
+            .group_by(models.IntentExample.text_raw_key_id)
+        )
+        runtime_log_rows = self.session.execute(
+            select(
+                models.RuntimeLog.query_raw_key_id,
+                func.count(models.RuntimeLog.trace_id),
+            )
+            .where(models.RuntimeLog.service_id == service_id)
+            .where(models.RuntimeLog.query_raw_key_id.is_not(None))
+            .group_by(models.RuntimeLog.query_raw_key_id)
+        )
+        redacted_count = self.session.scalar(
+            select(func.count(models.RuntimeLog.trace_id))
+            .where(models.RuntimeLog.service_id == service_id)
+            .where(models.RuntimeLog.raw_query_deleted_at.is_not(None))
+        )
+
+        return {
+            "intent_examples": {
+                key_id: int(count)
+                for key_id, count in example_rows
+            },
+            "runtime_logs": {
+                key_id: int(count)
+                for key_id, count in runtime_log_rows
+            },
+            "runtime_logs_redacted": int(redacted_count or 0),
+        }
+
+    def list_audit_logs(
+        self,
+        service_id: str,
+        limit: int,
+        event_type: str | None = None,
+        trace_id: str | None = None,
+    ) -> list[models.AuditLog]:
+        statement = select(models.AuditLog).where(models.AuditLog.service_id == service_id)
+        if event_type is not None:
+            statement = statement.where(models.AuditLog.event_type == event_type)
+        if trace_id is not None:
+            statement = statement.where(models.AuditLog.trace_id == trace_id)
+        statement = statement.order_by(
+            models.AuditLog.created_at.desc(),
+            models.AuditLog.audit_id,
+        ).limit(limit)
+        return list(self.session.scalars(statement))
+
+    def redact_runtime_raw_queries(
+        self,
+        service_id: str,
+        trace_ids: Iterable[str],
+        actor_id: str,
+        reason: str,
+        deleted_at: datetime,
+    ) -> int:
+        trace_id_values = tuple(trace_ids)
+        if not trace_id_values:
+            return 0
+
+        redacted_trace_ids = self.session.scalars(
+            update(models.RuntimeLog)
+            .where(models.RuntimeLog.service_id == service_id)
+            .where(models.RuntimeLog.trace_id.in_(trace_id_values))
+            .values(
+                query_raw_ciphertext=None,
+                query_raw_encrypted_dek=None,
+                query_raw_encrypted_dek_iv=None,
+                query_raw_encrypted_dek_auth_tag=None,
+                query_raw_key_id=None,
+                query_raw_iv=None,
+                query_raw_auth_tag=None,
+                query_raw_algorithm=None,
+                raw_query_deleted_at=deleted_at,
+                raw_query_deleted_by=actor_id,
+                raw_query_delete_reason=reason,
+            )
+            .returning(models.RuntimeLog.trace_id)
+        )
+        self.session.flush()
+        return len(redacted_trace_ids.all())
 
     def list_masked_runtime_logs(
         self,

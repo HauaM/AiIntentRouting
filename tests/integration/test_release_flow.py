@@ -4,7 +4,7 @@ import base64
 import json
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
@@ -49,6 +49,7 @@ def test_pgvector_extension_and_core_tables_exist(db_session: Session) -> None:
     assert "releases" in tables
     assert "runtime_logs" in tables
     assert "audit_logs" in tables
+    assert "raw_text_rewrap_runs" in tables
 
     extension_count = db_session.execute(
         text("select count(*) from pg_extension where extname = 'vector'")
@@ -159,6 +160,150 @@ def test_raw_text_envelope_metadata_columns_exist(db_session: Session) -> None:
         ("runtime_logs", "query_raw_auth_tag"): "bytea",
         ("runtime_logs", "query_raw_algorithm"): "text",
     }
+
+
+def test_security_lifecycle_schema_columns_and_indexes_exist(
+    db_session: Session,
+) -> None:
+    columns = {
+        (row.table_name, row.column_name): {
+            "data_type": row.data_type,
+            "nullable": row.is_nullable,
+        }
+        for row in db_session.execute(
+            text(
+                "select table_name, column_name, data_type, is_nullable "
+                "from information_schema.columns "
+                "where table_schema = 'public' "
+                "and (table_name, column_name) in ("
+                "('raw_text_rewrap_runs', 'rewrap_run_id'), "
+                "('raw_text_rewrap_runs', 'service_id'), "
+                "('raw_text_rewrap_runs', 'target_key_id'), "
+                "('raw_text_rewrap_runs', 'source_key_ids'), "
+                "('raw_text_rewrap_runs', 'included_tables'), "
+                "('raw_text_rewrap_runs', 'dry_run'), "
+                "('raw_text_rewrap_runs', 'approval_id'), "
+                "('raw_text_rewrap_runs', 'actor_id'), "
+                "('raw_text_rewrap_runs', 'status'), "
+                "('raw_text_rewrap_runs', 'scanned_count'), "
+                "('raw_text_rewrap_runs', 'rewrapped_count'), "
+                "('raw_text_rewrap_runs', 'skipped_count'), "
+                "('raw_text_rewrap_runs', 'failed_count'), "
+                "('raw_text_rewrap_runs', 'report'), "
+                "('raw_text_rewrap_runs', 'started_at'), "
+                "('raw_text_rewrap_runs', 'completed_at'), "
+                "('runtime_logs', 'raw_query_deleted_at'), "
+                "('runtime_logs', 'raw_query_deleted_by'), "
+                "('runtime_logs', 'raw_query_delete_reason')"
+                ")"
+            )
+        )
+    }
+
+    assert columns == {
+        ("raw_text_rewrap_runs", "rewrap_run_id"): {
+            "data_type": "text",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "service_id"): {
+            "data_type": "text",
+            "nullable": "YES",
+        },
+        ("raw_text_rewrap_runs", "target_key_id"): {
+            "data_type": "text",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "source_key_ids"): {
+            "data_type": "jsonb",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "included_tables"): {
+            "data_type": "jsonb",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "dry_run"): {
+            "data_type": "boolean",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "approval_id"): {
+            "data_type": "text",
+            "nullable": "YES",
+        },
+        ("raw_text_rewrap_runs", "actor_id"): {
+            "data_type": "text",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "status"): {
+            "data_type": "text",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "scanned_count"): {
+            "data_type": "integer",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "rewrapped_count"): {
+            "data_type": "integer",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "skipped_count"): {
+            "data_type": "integer",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "failed_count"): {
+            "data_type": "integer",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "report"): {
+            "data_type": "jsonb",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "started_at"): {
+            "data_type": "timestamp with time zone",
+            "nullable": "NO",
+        },
+        ("raw_text_rewrap_runs", "completed_at"): {
+            "data_type": "timestamp with time zone",
+            "nullable": "YES",
+        },
+        ("runtime_logs", "raw_query_deleted_at"): {
+            "data_type": "timestamp with time zone",
+            "nullable": "YES",
+        },
+        ("runtime_logs", "raw_query_deleted_by"): {
+            "data_type": "text",
+            "nullable": "YES",
+        },
+        ("runtime_logs", "raw_query_delete_reason"): {
+            "data_type": "text",
+            "nullable": "YES",
+        },
+    }
+
+    index_definitions = {
+        row.indexname: row.indexdef
+        for row in db_session.execute(
+            text(
+                """
+                select indexname, indexdef
+                from pg_indexes
+                where schemaname = current_schema()
+                  and indexname in (
+                    'ix_raw_text_rewrap_runs_service_started',
+                    'ix_audit_logs_service_created_at'
+                  )
+                """
+            )
+        )
+    }
+
+    assert "service_id" in index_definitions[
+        "ix_raw_text_rewrap_runs_service_started"
+    ]
+    assert "started_at DESC" in index_definitions[
+        "ix_raw_text_rewrap_runs_service_started"
+    ]
+    assert "service_id" in index_definitions["ix_audit_logs_service_created_at"]
+    assert "created_at DESC" in index_definitions["ix_audit_logs_service_created_at"]
 
 
 def test_representative_foreign_key_and_vector_type_exist(db_session: Session) -> None:
@@ -1011,6 +1156,271 @@ def test_release_list_and_audit_logs_cover_catalog_release_activation_and_rollba
         assert "rollback_target" in after_state
 
 
+def test_security_lifecycle_repository_methods_filter_count_and_redact(
+    db_session: Session,
+) -> None:
+    now = datetime.now(UTC)
+    later = now + timedelta(seconds=1)
+    service_id = f"svc-lifecycle-{uuid4().hex}"
+    other_service_id = f"svc-lifecycle-other-{uuid4().hex}"
+    repository = IntentRoutingRepository(db_session)
+    try:
+        for candidate_service_id in (service_id, other_service_id):
+            repository.create_service(
+                service_id=candidate_service_id,
+                display_name="Lifecycle repository service",
+                environment="prod",
+                default_threshold_preset="balanced",
+                max_input_tokens=256,
+                status="active",
+                created_by="lifecycle-test",
+                created_at=now,
+                updated_at=now,
+            )
+            repository.create_intent(
+                service_id=candidate_service_id,
+                intent_id="intent-lifecycle",
+                domain="it",
+                display_name="Lifecycle intent",
+                description="Exercise security lifecycle repositories.",
+                route_key=f"it.lifecycle.{candidate_service_id[-8:]}",
+                status="active",
+                include_keywords=[],
+                exclude_keywords=[],
+                created_by="lifecycle-test",
+                updated_by="lifecycle-test",
+                created_at=now,
+                updated_at=now,
+            )
+
+        run = repository.create_raw_text_rewrap_run(
+            rewrap_run_id=f"rewrap-{uuid4().hex}",
+            service_id=service_id,
+            target_key_id="key-new",
+            source_key_ids=["key-old"],
+            included_tables=["intent_examples", "runtime_logs"],
+            dry_run=False,
+            approval_id="approval-123",
+            actor_id="security-admin",
+            status="running",
+            scanned_count=0,
+            rewrapped_count=0,
+            skipped_count=0,
+            failed_count=0,
+            report={},
+            started_at=now,
+            completed_at=None,
+        )
+        completed = repository.complete_raw_text_rewrap_run(
+            run,
+            status="completed",
+            scanned_count=4,
+            rewrapped_count=3,
+            skipped_count=1,
+            failed_count=0,
+            report={"dry_run": False},
+            completed_at=now,
+        )
+
+        first_example = repository.create_example(
+            service_id=service_id,
+            intent_id="intent-lifecycle",
+            example_type="positive",
+            text_raw_ciphertext=b"example-ciphertext-1",
+            text_raw_encrypted_dek=b"example-dek-1",
+            text_raw_encrypted_dek_iv=b"example-dek-iv-1",
+            text_raw_encrypted_dek_auth_tag=b"example-dek-auth-tag-1",
+            text_raw_key_id="key-old",
+            text_raw_iv=b"example-iv-1",
+            text_raw_auth_tag=b"example-auth-tag-1",
+            text_raw_algorithm="AES-GCM",
+            text_masked="masked example 1",
+            embedding=None,
+            source="lifecycle-test",
+            test_case_id=None,
+            approved=True,
+            created_by="lifecycle-test",
+            created_at=now,
+        )
+        repository.create_example(
+            service_id=service_id,
+            intent_id="intent-lifecycle",
+            example_type="positive",
+            text_raw_ciphertext=b"example-ciphertext-2",
+            text_raw_encrypted_dek=b"example-dek-2",
+            text_raw_encrypted_dek_iv=b"example-dek-iv-2",
+            text_raw_encrypted_dek_auth_tag=b"example-dek-auth-tag-2",
+            text_raw_key_id="key-new",
+            text_raw_iv=b"example-iv-2",
+            text_raw_auth_tag=b"example-auth-tag-2",
+            text_raw_algorithm="AES-GCM",
+            text_masked="masked example 2",
+            embedding=None,
+            source="lifecycle-test",
+            test_case_id=None,
+            approved=True,
+            created_by="lifecycle-test",
+            created_at=later,
+        )
+        repository.create_example(
+            service_id=other_service_id,
+            intent_id="intent-lifecycle",
+            example_type="positive",
+            text_raw_ciphertext=b"other-example-ciphertext",
+            text_raw_encrypted_dek=b"other-example-dek",
+            text_raw_encrypted_dek_iv=b"other-example-dek-iv",
+            text_raw_encrypted_dek_auth_tag=b"other-example-dek-auth-tag",
+            text_raw_key_id="key-old",
+            text_raw_iv=b"other-example-iv",
+            text_raw_auth_tag=b"other-example-auth-tag",
+            text_raw_algorithm="AES-GCM",
+            text_masked="masked other example",
+            embedding=None,
+            source="lifecycle-test",
+            test_case_id=None,
+            approved=True,
+            created_by="lifecycle-test",
+            created_at=now,
+        )
+
+        first_log = repository.insert_runtime_log(
+            trace_id=f"trace-lifecycle-{uuid4().hex}",
+            service_id=service_id,
+            latency_ms=10,
+            query_raw_ciphertext=b"query-ciphertext-1",
+            query_raw_encrypted_dek=b"query-dek-1",
+            query_raw_encrypted_dek_iv=b"query-dek-iv-1",
+            query_raw_encrypted_dek_auth_tag=b"query-dek-auth-tag-1",
+            query_raw_key_id="key-old",
+            query_raw_iv=b"query-iv-1",
+            query_raw_auth_tag=b"query-auth-tag-1",
+            query_raw_algorithm="AES-GCM",
+            query_masked="masked query 1",
+            created_at=now,
+        )
+        second_log = repository.insert_runtime_log(
+            trace_id=f"trace-lifecycle-{uuid4().hex}",
+            service_id=service_id,
+            latency_ms=11,
+            query_raw_ciphertext=b"query-ciphertext-2",
+            query_raw_encrypted_dek=b"query-dek-2",
+            query_raw_encrypted_dek_iv=b"query-dek-iv-2",
+            query_raw_encrypted_dek_auth_tag=b"query-dek-auth-tag-2",
+            query_raw_key_id="key-new",
+            query_raw_iv=b"query-iv-2",
+            query_raw_auth_tag=b"query-auth-tag-2",
+            query_raw_algorithm="AES-GCM",
+            query_masked="masked query 2",
+            created_at=later,
+        )
+        repository.insert_runtime_log(
+            trace_id=f"trace-lifecycle-redacted-{uuid4().hex}",
+            service_id=service_id,
+            latency_ms=12,
+            query_masked="masked redacted query",
+            raw_query_deleted_at=now,
+            raw_query_deleted_by="retention-job",
+            raw_query_delete_reason="expired",
+            created_at=now,
+        )
+        other_log = repository.insert_runtime_log(
+            trace_id=f"trace-lifecycle-other-{uuid4().hex}",
+            service_id=other_service_id,
+            latency_ms=13,
+            query_raw_ciphertext=b"other-query-ciphertext",
+            query_raw_encrypted_dek=b"other-query-dek",
+            query_raw_encrypted_dek_iv=b"other-query-dek-iv",
+            query_raw_encrypted_dek_auth_tag=b"other-query-dek-auth-tag",
+            query_raw_key_id="key-old",
+            query_raw_iv=b"other-query-iv",
+            query_raw_auth_tag=b"other-query-auth-tag",
+            query_raw_algorithm="AES-GCM",
+            query_masked="masked other query",
+            created_at=now,
+        )
+        audit_old = repository.insert_audit_log(
+            event_type="raw_query.viewed",
+            actor_id="auditor",
+            service_id=service_id,
+            trace_id=first_log.trace_id,
+            target_type="runtime_log",
+            target_id=first_log.trace_id,
+            view_reason="incident review",
+            source_ip="127.0.0.1",
+            before_state=None,
+            after_state={"viewed": True},
+            created_at=now,
+        )
+        audit_new = repository.insert_audit_log(
+            event_type="raw_query.redacted",
+            actor_id="security-admin",
+            service_id=service_id,
+            trace_id=second_log.trace_id,
+            target_type="runtime_log",
+            target_id=second_log.trace_id,
+            view_reason=None,
+            source_ip="127.0.0.1",
+            before_state=None,
+            after_state={"redacted": True},
+            created_at=now,
+        )
+
+        examples = repository.list_intent_examples_for_rewrap(
+            service_id,
+            key_ids=["key-old"],
+        )
+        logs = repository.list_runtime_logs_for_rewrap(service_id, key_ids=["key-old"])
+        limited_logs = repository.list_runtime_logs_for_rewrap(service_id, limit=1)
+        counts = repository.count_raw_text_key_ids(service_id)
+        audit_logs = repository.list_audit_logs(
+            service_id,
+            limit=10,
+            event_type="raw_query.viewed",
+            trace_id=first_log.trace_id,
+        )
+        redacted_count = repository.redact_runtime_raw_queries(
+            service_id,
+            trace_ids=[first_log.trace_id, other_log.trace_id],
+            actor_id="security-admin",
+            reason="retention expired",
+            deleted_at=now,
+        )
+
+        assert completed.status == "completed"
+        assert completed.rewrapped_count == 3
+        assert completed.report == {"dry_run": False}
+        assert examples == [first_example]
+        assert repository.list_intent_examples_for_rewrap(service_id, limit=1) == [
+            first_example
+        ]
+        assert logs == [first_log]
+        assert limited_logs == [first_log]
+        assert counts == {
+            "intent_examples": {"key-new": 1, "key-old": 1},
+            "runtime_logs": {"key-new": 1, "key-old": 1},
+            "runtime_logs_redacted": 1,
+        }
+        assert audit_logs == [audit_old]
+        assert audit_new not in audit_logs
+        assert redacted_count == 1
+        assert first_log.query_raw_ciphertext is None
+        assert first_log.query_raw_encrypted_dek is None
+        assert first_log.query_raw_encrypted_dek_iv is None
+        assert first_log.query_raw_encrypted_dek_auth_tag is None
+        assert first_log.query_raw_key_id is None
+        assert first_log.query_raw_iv is None
+        assert first_log.query_raw_auth_tag is None
+        assert first_log.query_raw_algorithm is None
+        assert first_log.raw_query_deleted_at == now
+        assert first_log.raw_query_deleted_by == "security-admin"
+        assert first_log.raw_query_delete_reason == "retention expired"
+        assert other_log.query_raw_key_id == "key-old"
+    finally:
+        db_session.rollback()
+        _purge_service_rows(db_session, service_id)
+        _purge_service_rows(db_session, other_service_id)
+
+
 def _client(db_session: Session) -> TestClient:
     clear_embedding_provider_cache()
     app = create_app()
@@ -1344,6 +1754,10 @@ def _release_sprint_zero_lock(connection: Connection) -> None:
 
 
 def _purge_service_rows(db_session: Session, service_id: str) -> None:
+    db_session.execute(
+        text("delete from raw_text_rewrap_runs where service_id = :service_id"),
+        {"service_id": service_id},
+    )
     db_session.execute(
         text(
             """

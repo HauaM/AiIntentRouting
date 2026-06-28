@@ -285,7 +285,33 @@ class RuntimeLog(Base):
     query_raw_auth_tag: Mapped[bytes | None] = mapped_column(LargeBinary)
     query_raw_algorithm: Mapped[str | None] = mapped_column(Text)
     query_masked: Mapped[str | None] = mapped_column(Text)
+    raw_query_deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    raw_query_deleted_by: Mapped[str | None] = mapped_column(Text)
+    raw_query_delete_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class RawTextRewrapRun(Base):
+    __tablename__ = "raw_text_rewrap_runs"
+
+    rewrap_run_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    service_id: Mapped[str | None] = mapped_column(Text)
+    target_key_id: Mapped[str] = mapped_column(Text)
+    source_key_ids: Mapped[list[str]] = mapped_column(JSONB)
+    included_tables: Mapped[list[str]] = mapped_column(JSONB)
+    dry_run: Mapped[bool]
+    approval_id: Mapped[str | None] = mapped_column(Text)
+    actor_id: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    scanned_count: Mapped[int]
+    rewrapped_count: Mapped[int]
+    skipped_count: Mapped[int]
+    failed_count: Mapped[int]
+    report: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AuditLog(Base):
