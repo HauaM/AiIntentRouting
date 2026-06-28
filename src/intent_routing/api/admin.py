@@ -46,6 +46,7 @@ from intent_routing.embedding.provider import get_embedding_provider
 from intent_routing.logging.audit import (
     decrypt_runtime_raw_query,
     raw_query_view_after_state,
+    runtime_log_encrypted_raw_query,
     source_ip_from_request,
 )
 from intent_routing.security.admin_auth import (
@@ -431,6 +432,20 @@ def _raise_not_found(message: str) -> NoReturn:
             error=ErrorInfo(
                 code=ErrorCode.INVALID_REQUEST,
                 message=message,
+                retryable=False,
+            ),
+        ).model_dump(mode="json", exclude_none=True),
+    )
+
+
+def _raise_raw_query_unavailable() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail=ErrorEnvelope(
+            trace_id=_trace_id(),
+            error=ErrorInfo(
+                code=ErrorCode.RAW_QUERY_UNAVAILABLE,
+                message="Runtime log raw query is unavailable.",
                 retryable=False,
             ),
         ).model_dump(mode="json", exclude_none=True),
@@ -1021,9 +1036,15 @@ def decrypt_raw_runtime_query(
     if runtime_log is None:
         _raise_not_found("Runtime log does not exist.")
 
+    if (
+        runtime_log.raw_query_deleted_at is not None
+        or runtime_log_encrypted_raw_query(runtime_log) is None
+    ):
+        _raise_raw_query_unavailable()
+
     query_raw = decrypt_runtime_raw_query(runtime_log, _raw_text_keyring())
     if query_raw is None:
-        _raise_not_found("Runtime log raw query does not exist.")
+        _raise_raw_query_unavailable()
 
     repository.insert_audit_log(
         event_type="raw_query.viewed",

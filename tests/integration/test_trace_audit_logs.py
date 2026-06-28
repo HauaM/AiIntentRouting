@@ -291,6 +291,81 @@ def test_raw_decrypt_returns_plaintext_to_auditor_or_system_admin_and_writes_aud
     }
 
 
+def test_raw_decrypt_returns_gone_for_redacted_raw_query_without_view_audit_log(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trace_id = _create_runtime_trace(db_session, monkeypatch)
+    repository = IntentRoutingRepository(db_session)
+    redacted_count = repository.redact_runtime_raw_queries(
+        SERVICE_ID,
+        trace_ids=[trace_id],
+        actor_id="retention-job",
+        reason="raw query retention policy 30 days",
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.commit()
+    client = _client(db_session, monkeypatch)
+
+    response = client.post(
+        f"/admin/v1/services/{SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
+        headers=_auditor_headers(SERVICE_ID),
+        json={"view_reason": VIEW_REASON},
+    )
+
+    body = response.json()
+    viewed_audit_log = db_session.scalar(
+        select(models.AuditLog)
+        .where(models.AuditLog.event_type == "raw_query.viewed")
+        .where(models.AuditLog.trace_id == trace_id)
+    )
+    assert redacted_count == 1
+    assert response.status_code == 410
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "RAW_QUERY_UNAVAILABLE"
+    assert "decision" not in body
+    assert "query_raw" not in response.text
+    assert RAW_QUERY not in response.text
+    assert viewed_audit_log is None
+
+
+def test_raw_decrypt_returns_gone_for_missing_raw_query_envelope_without_view_audit_log(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_runtime_state(db_session)
+    trace_id = f"trace-rawless-{uuid4().hex}"
+    repository = IntentRoutingRepository(db_session)
+    repository.insert_runtime_log(
+        trace_id=trace_id,
+        service_id=SERVICE_ID,
+        latency_ms=12,
+        query_masked="rawless masked query",
+        created_at=datetime.now(UTC),
+    )
+    db_session.commit()
+    client = _client(db_session, monkeypatch)
+
+    response = client.post(
+        f"/admin/v1/services/{SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
+        headers=_auditor_headers(SERVICE_ID),
+        json={"view_reason": VIEW_REASON},
+    )
+
+    body = response.json()
+    viewed_audit_log = db_session.scalar(
+        select(models.AuditLog)
+        .where(models.AuditLog.event_type == "raw_query.viewed")
+        .where(models.AuditLog.trace_id == trace_id)
+    )
+    assert response.status_code == 410
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "RAW_QUERY_UNAVAILABLE"
+    assert "decision" not in body
+    assert "query_raw" not in response.text
+    assert viewed_audit_log is None
+
+
 def test_raw_decrypt_unauthorized_role_returns_forbidden_error_envelope(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
