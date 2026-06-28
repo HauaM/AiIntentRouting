@@ -3,7 +3,8 @@ from __future__ import annotations
 from fastapi import Request
 
 from intent_routing.db.models import RuntimeLog
-from intent_routing.security.encryption import EncryptedText, EnvelopeEncryptor
+from intent_routing.security.encryption import EncryptedText
+from intent_routing.security.keyring import RawTextKeyring
 
 
 def runtime_log_encrypted_raw_query(runtime_log: RuntimeLog) -> EncryptedText | None:
@@ -32,12 +33,12 @@ def runtime_log_encrypted_raw_query(runtime_log: RuntimeLog) -> EncryptedText | 
 
 def decrypt_runtime_raw_query(
     runtime_log: RuntimeLog,
-    encryptor: EnvelopeEncryptor,
+    keyring: RawTextKeyring,
 ) -> str | None:
     encrypted = runtime_log_encrypted_raw_query(runtime_log)
     if encrypted is None:
         return None
-    return encryptor.decrypt_text(encrypted)
+    return keyring.decrypt_text(encrypted)
 
 
 def raw_query_view_after_state(runtime_log: RuntimeLog) -> dict[str, object]:

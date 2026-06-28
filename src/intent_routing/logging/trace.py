@@ -6,7 +6,6 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from os import environ
 from time import perf_counter
 from typing import cast
 from uuid import uuid4
@@ -19,7 +18,7 @@ from intent_routing.db.session import session_scope
 from intent_routing.domain.enums import ErrorCode
 from intent_routing.routing.engine import ActiveReleaseContext
 from intent_routing.routing.scoring import RoutingDecisionResult
-from intent_routing.security.encryption import EnvelopeEncryptor
+from intent_routing.security.keyring import RawTextKeyring, load_raw_text_keyring
 from intent_routing.security.pii import mask_pii
 
 RUNTIME_ERROR_LOGGED_HEADER = "X-Intent-Runtime-Logged"
@@ -163,7 +162,7 @@ class RuntimeTraceLogger:
         query_raw: str,
         latency_ms: int,
     ) -> None:
-        encrypted_query = _raw_text_encryptor().encrypt_text(query_raw)
+        encrypted_query = _raw_text_keyring().encrypt_text(query_raw)
         self._repository.insert_runtime_log(
             trace_id=trace_id,
             request_id=request_id,
@@ -218,7 +217,7 @@ class RuntimeTraceLogger:
     ) -> None:
         encrypted_query = None
         if encrypt_raw_query and query_raw is not None:
-            encrypted_query = _raw_text_encryptor().encrypt_text(query_raw)
+            encrypted_query = _raw_text_keyring().encrypt_text(query_raw)
         self._repository.insert_runtime_log(
             trace_id=trace_id,
             request_id=request_id,
@@ -275,17 +274,19 @@ class RuntimeTraceLogger:
         )
 
 
-def _raw_text_encryptor() -> EnvelopeEncryptor:
-    kek_base64 = environ.get("RAW_TEXT_KEK_BASE64")
-    if kek_base64 is None or not kek_base64.strip():
-        raise RuntimeTraceConfigurationError("Raw text encryption key is not configured.")
+def _raw_text_keyring() -> RawTextKeyring:
     try:
-        return EnvelopeEncryptor(
-            kek_id=environ.get("RAW_TEXT_KEK_ID", "local-kek-001"),
-            kek_base64=kek_base64,
-        )
+        return load_raw_text_keyring()
     except ValueError as exc:
+        if _is_missing_raw_text_kek(exc):
+            raise RuntimeTraceConfigurationError(
+                "Raw text encryption key is not configured."
+            ) from exc
         raise RuntimeTraceConfigurationError("Raw text encryption key is invalid.") from exc
+
+
+def _is_missing_raw_text_kek(exc: ValueError) -> bool:
+    return str(exc) == "RAW_TEXT_KEK_BASE64 is required"
 
 
 def _decimal_or_none(value: float | None) -> Decimal | None:

@@ -57,7 +57,8 @@ from intent_routing.security.api_keys import (
     generate_api_key_secret,
     hash_secret,
 )
-from intent_routing.security.encryption import EncryptedText, EnvelopeEncryptor
+from intent_routing.security.encryption import EncryptedText
+from intent_routing.security.keyring import RawTextKeyring, load_raw_text_keyring
 from intent_routing.security.pii import mask_pii
 from intent_routing.testing.csv_runner import (
     CsvTestRunSummary,
@@ -685,27 +686,17 @@ def _runtime_log_response(runtime_log: Mapping[str, Any]) -> RuntimeLogResponse:
     return RuntimeLogResponse.model_validate(values)
 
 
-def _raw_text_encryptor() -> EnvelopeEncryptor:
-    kek_base64 = environ.get("RAW_TEXT_KEK_BASE64")
-    if kek_base64 is None or not kek_base64.strip():
-        _raise_internal_error("Raw text encryption key is not configured.")
+def _raw_text_keyring() -> RawTextKeyring:
     try:
-        return EnvelopeEncryptor(
-            kek_id=environ.get("RAW_TEXT_KEK_ID", "local-kek-001"),
-            kek_base64=kek_base64,
-        )
+        return load_raw_text_keyring()
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=ErrorEnvelope(
-                trace_id=_trace_id(),
-                error=ErrorInfo(
-                    code=ErrorCode.INTERNAL_ERROR,
-                    message="Raw text encryption key is invalid.",
-                    retryable=False,
-                ),
-            ).model_dump(mode="json", exclude_none=True),
-        ) from exc
+        if _is_missing_raw_text_kek(exc):
+            _raise_internal_error("Raw text encryption key is not configured.")
+        _raise_internal_error("Raw text encryption key is invalid.")
+
+
+def _is_missing_raw_text_kek(exc: ValueError) -> bool:
+    return str(exc) == "RAW_TEXT_KEK_BASE64 is required"
 
 
 def _encrypted_raw_text(example: IntentExample) -> EncryptedText:
@@ -726,7 +717,7 @@ def _example_text_for_embedding(example: IntentExample) -> str:
     if embed_from == "masked":
         return example.text_masked
     if embed_from == "raw":
-        return _raw_text_encryptor().decrypt_text(_encrypted_raw_text(example))
+        return _raw_text_keyring().decrypt_text(_encrypted_raw_text(example))
     raise ValueError("EMBED_EXAMPLES_FROM must be one of: masked, raw.")
 
 
@@ -1019,7 +1010,7 @@ def decrypt_raw_runtime_query(
     if runtime_log is None:
         _raise_not_found("Runtime log does not exist.")
 
-    query_raw = decrypt_runtime_raw_query(runtime_log, _raw_text_encryptor())
+    query_raw = decrypt_runtime_raw_query(runtime_log, _raw_text_keyring())
     if query_raw is None:
         _raise_not_found("Runtime log raw query does not exist.")
 
@@ -1167,7 +1158,7 @@ def create_example(
     if repository.get_intent(service_id, intent_id) is None:
         _raise_not_found("Intent does not exist.")
 
-    encrypted_raw_text = _raw_text_encryptor().encrypt_text(request.text_raw)
+    encrypted_raw_text = _raw_text_keyring().encrypt_text(request.text_raw)
     example = repository.create_example(
         service_id=service_id,
         intent_id=intent_id,

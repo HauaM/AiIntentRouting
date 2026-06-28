@@ -13,6 +13,7 @@ EXPECTED_LOCAL_ENV = {
     "ADMIN_BOOTSTRAP_TOKEN": "local-admin-token",
     "RAW_TEXT_KEK_ID": "local-kek-001",
     "RAW_TEXT_KEK_BASE64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "RAW_TEXT_LEGACY_KEKS_JSON": "{}",
     "EMBEDDING_PROVIDER": "fake",
     "BGE_M3_MODEL_PATH": "/models/bge-m3",
     "BGE_M3_MODEL_SHA256": "",
@@ -24,6 +25,10 @@ EXPECTED_LOCAL_ENV = {
 
 def _parse_env_example() -> dict[str, str]:
     text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    return _parse_env_text(text)
+
+
+def _parse_env_text(text: str) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in text.splitlines():
         if not line or line.startswith("#"):
@@ -40,6 +45,18 @@ def test_env_example_uses_runtime_local_defaults() -> None:
     assert values == EXPECTED_LOCAL_ENV
     assert "RAW_KEK_ID=" not in text
     assert "RAW_KEK_BASE64=" not in text
+
+
+def test_closed_network_env_uses_secret_placeholders_without_live_key_material() -> None:
+    text = (ROOT / ".env.closed-network.example").read_text(encoding="utf-8")
+    values = _parse_env_text(text)
+
+    assert (
+        values["RAW_TEXT_KEK_BASE64"]
+        == "replace-with-32-byte-base64-kek-from-approved-secret-store"
+    )
+    assert values["RAW_TEXT_LEGACY_KEKS_JSON"] == "{}"
+    assert "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" not in text
 
 
 def test_gitignore_excludes_local_operator_outputs() -> None:
