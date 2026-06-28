@@ -47,3 +47,7 @@ uv run ruff check .
 uv run mypy src tests
 TEST_DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:5432/intent_routing uv run pytest -v
 ```
+
+## Closed-Network Deployment
+
+For the Compose-based closed-network pilot path, use `docs/ops/closed-network-deployment.md`.

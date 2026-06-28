@@ -118,3 +118,7 @@ Run these manually before Dify handoff:
 - [ ] Masked runtime log list does not expose raw query fields.
 - [ ] Raw query decrypt requires auditor or system admin role and writes `raw_query.viewed` audit log.
 - [ ] Dify HTTP Request node is configured with `Authorization`, `X-Key-Id`, `X-App-Id`, `X-Service-Id`, and `X-Request-Id`.
+
+## Closed-Network Deployment
+
+For the Compose-based closed-network pilot path, use `docs/ops/closed-network-deployment.md`.

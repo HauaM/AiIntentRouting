@@ -19,6 +19,17 @@ def test_readme_and_pilot_runbook_document_repeatable_local_environment() -> Non
         assert "--state ${STATE_PATH}" in text
 
 
+def test_operator_docs_link_closed_network_deployment_runbook() -> None:
+    texts = [
+        (ROOT / "README.md").read_text(encoding="utf-8"),
+        (ROOT / "docs/ops/intent-routing-local-runbook.md").read_text(encoding="utf-8"),
+        (ROOT / "docs/ops/intent-routing-pilot-runbook.md").read_text(encoding="utf-8"),
+    ]
+
+    for text in texts:
+        assert "docs/ops/closed-network-deployment.md" in text
+
+
 def test_dify_docs_use_actual_pilot_intent_and_route_keys() -> None:
     texts = [
         (ROOT / "docs/integrations/dify-http-request-node.md").read_text(
