@@ -8,6 +8,9 @@ bundle to the pilot approval record.
 Use `docs/ops/pilot-evidence-bundle-checklist.md` as the Sprint 6 review standard
 before attaching a local evidence bundle. Use the older runbooks for
 diagnostic commands when one rehearsal step fails.
+Use `docs/ops/bge-m3-evidence-template.md` as the closed-network BGE-M3 evidence
+record for package approval, preflight, benchmark, rehearsal, offline runtime,
+and pilot go/no-go.
 The wrapper calls the readiness and evidence tools, writes a manifest, and runs
 the evidence `secret scan`; no destructive security operation is executed by the wrapper.
 
@@ -104,6 +107,29 @@ Closed-network acceptance:
   batch size, token limit, latency, and memory measurements.
 - The remaining readiness, Dify matrix, baseline, ops evidence, and secret scan
   steps pass.
+
+Record closed-network BGE evidence status as `measured-pass`, `measured-fail`,
+or `pending-host-access` in `docs/ops/bge-m3-evidence-template.md`.
+`pending-host-access` can close a local documentation sprint only when the
+closed-network host is not yet available, but it is not acceptable for actual
+pilot go/no-go. Pilot handoff requires `measured-pass` for package preflight,
+benchmark, closed-network rehearsal, and secret scan.
+
+Expected closed-network measured results:
+
+- `bge-m3-package.json exists`
+- `bge-m3-package.md exists`
+- `bge-m3-benchmark.json exists`
+- `bge-m3-benchmark.md exists`
+- `pilot-rehearsal-manifest.json final_status is PASS`
+- `secret_scan.passed is true`
+- `dimension is 1024`
+- `batch_size is 16`
+- `max_tokens is 256`
+
+If the closed-network host is unavailable, fill the template status as
+`pending-host-access`, attach it to the release ticket, and keep pilot go/no-go
+blocked.
 
 ## Evidence Bundle Layout
 

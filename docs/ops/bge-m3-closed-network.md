@@ -6,6 +6,15 @@ to CPU-only BGE-M3 in a closed network.
 Use `docs/ops/pilot-rehearsal.md` as the top-level Sprint 5 execution path once
 the BGE-M3 model is mounted. The package preflight and benchmark commands below
 remain diagnostic commands and are also called by closed-network rehearsal mode.
+Use `docs/ops/bge-m3-evidence-template.md` as the release-ticket evidence record
+for package approval, package preflight, benchmark, closed-network rehearsal,
+offline runtime confirmation, and pilot go/no-go.
+
+Evidence status must be one of `measured-pass`, `measured-fail`, or
+`pending-host-access`. `pending-host-access` can close a local documentation
+sprint only when the closed-network host is not yet available, but it is not
+acceptable for actual pilot go/no-go. Pilot handoff requires `measured-pass` for
+package preflight, benchmark, closed-network rehearsal, and secret scan.
 
 ## Model Import Package
 
@@ -101,6 +110,8 @@ var/benchmarks/bge-m3-benchmark.md
 
 Attach both benchmark files and both package preflight files to the pilot handoff
 evidence package. The handoff is incomplete without package checksum evidence.
+Record the final package, benchmark, rehearsal, offline runtime, and go/no-go
+statuses in `docs/ops/bge-m3-evidence-template.md`.
 
 ## CI Boundary
 
@@ -123,6 +134,23 @@ The benchmark report must show:
 The benchmark is a readiness and sizing signal, not a formal production SLO. If p95
 latency or memory is unacceptable for the pilot host, reduce `BGE_M3_BATCH_SIZE`, rerun
 the benchmark, and attach the before/after reports.
+
+Closed-network measurement is documented here, not executed by the repository
+tests. Expected measured evidence includes:
+
+- `bge-m3-package.json exists`
+- `bge-m3-package.md exists`
+- `bge-m3-benchmark.json exists`
+- `bge-m3-benchmark.md exists`
+- `pilot-rehearsal-manifest.json final_status is PASS`
+- `secret_scan.passed is true`
+- `dimension is 1024`
+- `batch_size is 16`
+- `max_tokens is 256`
+
+If the closed-network host is unavailable, fill the evidence-template status as
+`pending-host-access`, attach it to the release ticket, and keep pilot go/no-go
+blocked until measured evidence passes.
 
 ## Failure Handling
 
