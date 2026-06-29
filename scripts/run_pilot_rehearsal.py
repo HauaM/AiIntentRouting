@@ -122,27 +122,85 @@ def run_pilot_rehearsal(
         ),
     )
     steps.append(e2e_step)
-
-    state = _load_state(state_path)
-    steps.append(
-        _run_step(
-            name="dify-smoke-matrix",
-            required=True,
-            summary="Dify smoke matrix completed.",
-            operation=lambda: run_dify_smoke_matrix(
-                base_url=base_url,
-                state=state,
-                out_dir=out_dir / "dify",
-                http_client=http_client,
-            ),
+    if e2e_step.status != "pass":
+        steps.extend(
+            [
+                _skip_step(
+                    name="dify-smoke-matrix",
+                    summary="Skipped because pilot e2e smoke did not complete.",
+                    required=True,
+                ),
+                _skip_step(
+                    name="csv-baseline",
+                    summary="Skipped until Task 3 adds CSV baseline regression integration.",
+                ),
+                _skip_step(
+                    name="ops-evidence-export",
+                    summary="Skipped because pilot e2e smoke did not complete.",
+                    required=True,
+                ),
+            ]
         )
-    )
+        return _finalize_rehearsal(
+            out_dir=out_dir,
+            service_id=service_id,
+            environment=environment,
+            mode=mode,
+            required_preset=required_preset,
+            started_at=started_at,
+            steps=steps,
+        )
+
+    try:
+        state = _load_state(state_path)
+    except Exception as exc:
+        steps.append(
+            RehearsalStep(
+                name="dify-smoke-matrix",
+                status="fail",
+                required=True,
+                summary="Dify smoke matrix could not load pilot state.",
+                evidence_files=[],
+                error_message=f"{type(exc).__name__}: {exc}",
+            )
+        )
+    else:
+        steps.append(
+            _run_step(
+                name="dify-smoke-matrix",
+                required=True,
+                summary="Dify smoke matrix completed.",
+                operation=lambda: run_dify_smoke_matrix(
+                    base_url=base_url,
+                    state=state,
+                    out_dir=out_dir / "dify",
+                    http_client=http_client,
+                ),
+            )
+        )
     steps.append(
         _skip_step(
             name="csv-baseline",
             summary="Skipped until Task 3 adds CSV baseline regression integration.",
         )
     )
+    if steps[-2].status != "pass":
+        steps.append(
+            _skip_step(
+                name="ops-evidence-export",
+                summary="Skipped because Dify smoke matrix did not complete.",
+                required=True,
+            )
+        )
+        return _finalize_rehearsal(
+            out_dir=out_dir,
+            service_id=service_id,
+            environment=environment,
+            mode=mode,
+            required_preset=required_preset,
+            started_at=started_at,
+            steps=steps,
+        )
     steps.append(
         _run_step(
             name="ops-evidence-export",
@@ -161,6 +219,27 @@ def run_pilot_rehearsal(
         )
     )
 
+    return _finalize_rehearsal(
+        out_dir=out_dir,
+        service_id=service_id,
+        environment=environment,
+        mode=mode,
+        required_preset=required_preset,
+        started_at=started_at,
+        steps=steps,
+    )
+
+
+def _finalize_rehearsal(
+    *,
+    out_dir: Path,
+    service_id: str,
+    environment: str,
+    mode: str,
+    required_preset: str,
+    started_at: datetime,
+    steps: list[RehearsalStep],
+) -> dict[str, Any]:
     _normalize_rehearsal_evidence_prose(out_dir)
     secret_scan = scan_evidence_directory(out_dir)
     completed_at = datetime.now(UTC)
@@ -251,11 +330,11 @@ def _run_step(
     )
 
 
-def _skip_step(*, name: str, summary: str) -> RehearsalStep:
+def _skip_step(*, name: str, summary: str, required: bool = False) -> RehearsalStep:
     return RehearsalStep(
         name=name,
         status="skip",
-        required=False,
+        required=required,
         summary=summary,
         evidence_files=[],
         error_message=None,

@@ -19,6 +19,7 @@ from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.embedding.provider import clear_embedding_provider_cache
 from intent_routing.main import create_app
 from intent_routing.security.api_keys import ApiKeyRecord
+from scripts import run_pilot_rehearsal as rehearsal_script
 from scripts.run_pilot_rehearsal import run_pilot_rehearsal
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -201,3 +202,42 @@ def test_local_pilot_rehearsal_runs_smokes_ops_export_and_secret_scan(
     )
     for fragment in forbidden_fragments:
         assert fragment not in evidence_text
+
+
+def test_pilot_rehearsal_writes_manifest_when_e2e_fails_before_state_exists(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "pilot.state.secret.json"
+    out_dir = tmp_path / "evidence"
+
+    def fail_before_state_file(**_: object) -> dict[str, object]:
+        raise RuntimeError("seed failed before state write")
+
+    def fail_if_called(**_: object) -> dict[str, object]:
+        raise AssertionError("dependent step should not run after e2e failure")
+
+    monkeypatch.setattr(rehearsal_script, "run_pilot_e2e_smoke", fail_before_state_file)
+    monkeypatch.setattr(rehearsal_script, "run_dify_smoke_matrix", fail_if_called)
+    monkeypatch.setattr(rehearsal_script, "run_ops_evidence_export", fail_if_called)
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_pilot_rehearsal(
+            mode="local",
+            base_url="http://testserver",
+            admin_token="local-admin-token",
+            service_id="svc-e2e-fails-before-state",
+            environment="dev",
+            state_path=state_path,
+            csv_tier="standard",
+            required_preset="balanced",
+            out_dir=out_dir,
+        )
+
+    assert exc_info.value.code == 1
+    manifest_path = out_dir / "pilot-rehearsal-manifest.json"
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    steps = {step["name"]: step for step in manifest["steps"]}
+    assert steps["pilot-e2e-smoke"]["status"] == "fail"
+    assert "FileNotFoundError" not in steps["pilot-e2e-smoke"]["error_message"]
