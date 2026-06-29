@@ -60,6 +60,36 @@ After applying the rule, verify the latest pull request run:
 4. Confirm artifact contents include runtime evidence and `api.log`.
 5. Confirm there is no .secret.json file in the artifact contents.
 
+Record the rule snapshot, required check verification, merge block verification,
+artifact review, rollback or bypass details, and final state in
+`docs/ops/branch-protection-evidence-template.md`.
+
+If the implementer does not have repository admin permission, create an evidence request using docs/ops/branch-protection-evidence-template.md and mark the rule snapshot as operator-not-permitted.
+operator-not-permitted does not satisfy pilot go/no-go until an authorized operator attaches the rule snapshot.
+
+Manual capture command, for an authorized operator only:
+
+```bash
+mkdir -p var/evidence/${SERVICE_ID}/branch-protection
+gh api repos/HauaM/AiIntentRouting/branches/main/protection \
+  > var/evidence/${SERVICE_ID}/branch-protection/main-protection.json
+```
+
+Verification command:
+
+```bash
+uv run python -m json.tool var/evidence/${SERVICE_ID}/branch-protection/main-protection.json
+rg -n '"CI / verify"|"strict": true|"enforce_admins": true' var/evidence/${SERVICE_ID}/branch-protection/main-protection.json
+```
+
+Expected:
+
+```text
+CI / verify appears as a required status check
+strict is true
+enforce_admins is true when repository policy requires admin enforcement
+```
+
 ## branch protection rollback
 
 Use rollback only for a CI infrastructure issue that blocks an urgent merge after
