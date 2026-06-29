@@ -3,28 +3,26 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from intent_routing.ops.admin_client import AdminApiClient
-from intent_routing.ops.readiness_report import (
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from intent_routing.ops.admin_client import AdminApiClient  # noqa: E402
+from intent_routing.ops.readiness_report import (  # noqa: E402
     render_readiness_json,
     render_readiness_markdown,
 )
+from scripts import seed_pilot as seed_module  # noqa: E402
+from scripts.run_csv_gate import run_threshold_comparison  # noqa: E402
+from scripts.smoke_runtime_dify import run_runtime_smoke  # noqa: E402
 
-try:
-    from scripts import seed_pilot as seed_module
-    from scripts.run_csv_gate import run_threshold_comparison
-    from scripts.smoke_runtime_dify import run_runtime_smoke
-except ModuleNotFoundError:  # pragma: no cover - exercised by direct script invocation
-    import seed_pilot as seed_module
-    from run_csv_gate import run_threshold_comparison
-    from smoke_runtime_dify import run_runtime_smoke
-
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CATALOG = ROOT / "docs/pilot/it-helpdesk-pilot-catalog.json"
 DEFAULT_STANDARD_CSV = ROOT / "docs/pilot/it-helpdesk-pilot-cases.csv"
 

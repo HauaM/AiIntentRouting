@@ -3,14 +3,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-try:
-    from scripts.run_pilot_readiness import run_pilot_readiness
-except ModuleNotFoundError:  # pragma: no cover - exercised by direct script invocation
-    from run_pilot_readiness import run_pilot_readiness
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.run_pilot_readiness import run_pilot_readiness  # noqa: E402
 
 
 def run_pilot_e2e_smoke(
