@@ -89,7 +89,7 @@ uv run python scripts/export_ops_evidence.py \
   --base-url http://127.0.0.1:8000 \
   --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
   --service-id ${SERVICE_ID} \
-  --out-dir var/evidence/${SERVICE_ID}/ops \
+  --out-dir var/evidence/${SERVICE_ID}/rehearsal/ops \
   --window-hours 24 \
   --actor-id ops-evidence \
   --environment ${INTENT_ROUTING_ENVIRONMENT}

@@ -36,12 +36,12 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
    `uv run python scripts/run_pilot_e2e_smoke.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --environment ${INTENT_ROUTING_ENVIRONMENT} --state-path ${STATE_PATH} --csv-tier standard --required-preset balanced --out-dir var/evidence/${SERVICE_ID}/rehearsal/e2e`
 
 7. Use the lower-level Dify handoff smoke matrix only for diagnosis:
-   `uv run python scripts/run_dify_smoke_matrix.py --base-url http://127.0.0.1:8000 --state ${STATE_PATH} --out-dir var/evidence/${SERVICE_ID}/dify`
+   `uv run python scripts/run_dify_smoke_matrix.py --base-url http://127.0.0.1:8000 --state ${STATE_PATH} --out-dir var/evidence/${SERVICE_ID}/rehearsal/dify`
 
    The matrix verifies decision branches and auth/config error branches before the Dify UI handoff.
 
 8. Export operations evidence directly only when you need a standalone diagnostics bundle:
-   `uv run python scripts/export_ops_evidence.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --out-dir var/evidence/${SERVICE_ID}/ops --window-hours 24 --actor-id ops-evidence --environment ${INTENT_ROUTING_ENVIRONMENT}`
+   `uv run python scripts/export_ops_evidence.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --out-dir var/evidence/${SERVICE_ID}/rehearsal/ops --window-hours 24 --actor-id ops-evidence --environment ${INTENT_ROUTING_ENVIRONMENT}`
 
    The evidence command writes `ops-evidence.json` and `ops-evidence.md`.
 

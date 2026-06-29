@@ -151,40 +151,38 @@ def run_pilot_rehearsal(
             steps=steps,
         )
 
+    dify_step: RehearsalStep
     try:
         state = _load_state(state_path)
     except Exception as exc:
-        steps.append(
-            RehearsalStep(
-                name="dify-smoke-matrix",
-                status="fail",
-                required=True,
-                summary="Dify smoke matrix could not load pilot state.",
-                evidence_files=[],
-                error_message=f"{type(exc).__name__}: {exc}",
-            )
+        dify_step = RehearsalStep(
+            name="dify-smoke-matrix",
+            status="fail",
+            required=True,
+            summary="Dify smoke matrix could not load pilot state.",
+            evidence_files=[],
+            error_message=f"{type(exc).__name__}: {exc}",
         )
     else:
-        steps.append(
-            _run_step(
-                name="dify-smoke-matrix",
-                required=True,
-                summary="Dify smoke matrix completed.",
-                operation=lambda: run_dify_smoke_matrix(
-                    base_url=base_url,
-                    state=state,
-                    out_dir=out_dir / "dify",
-                    http_client=http_client,
-                ),
-            )
+        dify_step = _run_step(
+            name="dify-smoke-matrix",
+            required=True,
+            summary="Dify smoke matrix completed.",
+            operation=lambda: run_dify_smoke_matrix(
+                base_url=base_url,
+                state=state,
+                out_dir=out_dir / "dify",
+                http_client=http_client,
+            ),
         )
+    steps.append(dify_step)
     steps.append(
         _skip_step(
             name="csv-baseline",
             summary="Skipped until Task 3 adds CSV baseline regression integration.",
         )
     )
-    if steps[-2].status != "pass":
+    if dify_step.status != "pass":
         steps.append(
             _skip_step(
                 name="ops-evidence-export",
@@ -349,11 +347,12 @@ def _verify_bge_package(
 ) -> dict[str, Any]:
     result = verify_bge_m3_package(model_path=model_path, out_dir=out_dir)
     if expected_sha256 and result["sha256"] != expected_sha256.strip().lower():
-        raise RuntimeError(
+        failure_message = (
             "BGE-M3 package SHA-256 mismatch: "
-            f"expected {expected_sha256}, actual {result['sha256']}"
+            f"expected {expected_sha256.strip().lower()}, actual {result['sha256']}"
         )
-    return result
+        return {**result, "passed": False, "failure_message": failure_message}
+    return {**result, "passed": True}
 
 
 def _result_passed(result: Mapping[str, Any]) -> bool:
@@ -366,6 +365,9 @@ def _result_passed(result: Mapping[str, Any]) -> bool:
 
 
 def _failure_message(result: Mapping[str, Any]) -> str:
+    failure_message = result.get("failure_message") or result.get("block_reason")
+    if isinstance(failure_message, str) and failure_message:
+        return failure_message
     if "passed" in result:
         return "step reported passed=false"
     quality_gate = result.get("quality_gate")

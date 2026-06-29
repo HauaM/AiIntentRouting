@@ -128,7 +128,7 @@ Diagnostic e2e-only outputs:
 ## Secret Scan
 
 ```bash
-grep -R -n -E 'Bearer[[:space:]]+|api_key|authorization|secret state|encrypted_dek|ciphertext|query_raw|query_masked' var/evidence/${SERVICE_ID}/e2e \
+grep -R -n -E 'Bearer[[:space:]]+|api_key|authorization|secret state|encrypted_dek|ciphertext|query_raw|query_masked' var/evidence/${SERVICE_ID}/rehearsal \
   | grep -v -E '"(api_key|authorization|state_path|query_raw|query_masked|[^"]*(encrypted_dek|ciphertext)[^"]*)"[[:space:]]*:[[:space:]]*"REDACTED"'
 ```
 

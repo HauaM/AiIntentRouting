@@ -241,3 +241,95 @@ def test_pilot_rehearsal_writes_manifest_when_e2e_fails_before_state_exists(
     steps = {step["name"]: step for step in manifest["steps"]}
     assert steps["pilot-e2e-smoke"]["status"] == "fail"
     assert "FileNotFoundError" not in steps["pilot-e2e-smoke"]["error_message"]
+
+
+def test_closed_network_bge_checksum_mismatch_keeps_package_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "pilot.state.secret.json"
+    out_dir = tmp_path / "evidence"
+    actual_sha = "1" * 64
+    expected_sha = "0" * 64
+
+    def package_mismatch(*, out_dir: Path, **_: object) -> dict[str, object]:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        json_path = out_dir / "bge-m3-package.json"
+        markdown_path = out_dir / "bge-m3-package.md"
+        json_path.write_text('{"sha256": "' + actual_sha + '"}\n', encoding="utf-8")
+        markdown_path.write_text("# BGE-M3 Package\n", encoding="utf-8")
+        return {
+            "json_path": str(json_path),
+            "markdown_path": str(markdown_path),
+            "sha256": actual_sha,
+        }
+
+    def benchmark_stub(*, out_dir: Path, **_: object) -> dict[str, object]:
+        return _write_stub_evidence(out_dir, "bge-m3-benchmark", passed=True)
+
+    def e2e_stub(*, state_path: Path, out_dir: Path, **_: object) -> dict[str, object]:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            json.dumps(
+                {
+                    "api_key": "redacted-test-key",
+                    "key_id": "key-id",
+                    "app_id": "app-id",
+                    "service_id": "svc-bge-mismatch",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return {
+            **_write_stub_evidence(out_dir, "pilot-e2e-smoke-index", passed=True),
+            "quality_gate": {"passed": True},
+        }
+
+    def dify_stub(*, out_dir: Path, **_: object) -> dict[str, object]:
+        return _write_stub_evidence(out_dir, "dify-smoke-matrix", passed=True)
+
+    def ops_stub(*, out_dir: Path, **_: object) -> dict[str, object]:
+        return {"payload": {}, **_write_stub_evidence(out_dir, "ops-evidence", passed=True)}
+
+    monkeypatch.setattr(rehearsal_script, "verify_bge_m3_package", package_mismatch)
+    monkeypatch.setattr(rehearsal_script, "benchmark_bge_m3", benchmark_stub)
+    monkeypatch.setattr(rehearsal_script, "run_pilot_e2e_smoke", e2e_stub)
+    monkeypatch.setattr(rehearsal_script, "run_dify_smoke_matrix", dify_stub)
+    monkeypatch.setattr(rehearsal_script, "run_ops_evidence_export", ops_stub)
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_pilot_rehearsal(
+            mode="closed-network",
+            base_url="http://testserver",
+            admin_token="local-admin-token",
+            service_id="svc-bge-mismatch",
+            environment="pilot",
+            state_path=state_path,
+            out_dir=out_dir,
+            required_preset="balanced",
+            bge_model_path=tmp_path / "models" / "bge-m3",
+            bge_expected_sha256=expected_sha,
+            run_bge_benchmark=True,
+        )
+
+    assert exc_info.value.code == 1
+    manifest_path = out_dir / "pilot-rehearsal-manifest.json"
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    bge_step = {step["name"]: step for step in manifest["steps"]}["bge-package"]
+    assert bge_step["status"] == "fail"
+    evidence_paths = {Path(item["path"]).name for item in bge_step["evidence_files"]}
+    assert evidence_paths == {"bge-m3-package.json", "bge-m3-package.md"}
+
+
+def _write_stub_evidence(out_dir: Path, stem: str, *, passed: bool) -> dict[str, object]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path = out_dir / f"{stem}.json"
+    markdown_path = out_dir / f"{stem}.md"
+    json_path.write_text(json.dumps({"passed": passed}) + "\n", encoding="utf-8")
+    markdown_path.write_text(f"# {stem}\n", encoding="utf-8")
+    return {
+        "passed": passed,
+        "json_path": str(json_path),
+        "markdown_path": str(markdown_path),
+    }
