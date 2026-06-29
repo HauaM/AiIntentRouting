@@ -5,16 +5,18 @@ the source of truth for approving CSV baseline refreshes.
 
 ## Current Baseline
 
-The current checked-in baseline is
-`docs/pilot/it-helpdesk-pilot-baseline.json`. It freezes the standard 50-row CSV
-for the `balanced` preset.
+The current checked-in baseline is docs/pilot/it-helpdesk-pilot-baseline.json.
+It freezes the standard 50-row CSV for the balanced preset.
 
 The baseline policy keeps the regression gate strict:
 
 - `allowed_new_failures: 0`
 - `allowed_new_reviews: 0`
 
-Baseline JSON must contain no raw query text or secret-bearing fields.
+allowed_new_failures remains 0.
+allowed_new_reviews remains 0.
+
+Baseline JSON must not contain raw query text or secret-bearing fields.
 
 ## When Refresh Is Allowed
 
