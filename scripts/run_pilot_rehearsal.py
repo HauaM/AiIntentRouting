@@ -32,6 +32,7 @@ from scripts.run_pilot_e2e_smoke import run_pilot_e2e_smoke  # noqa: E402
 from scripts.verify_bge_m3_package import verify_bge_m3_package  # noqa: E402
 
 DEFAULT_BGE_BENCHMARK_CSV = ROOT / "docs/pilot/it-helpdesk-pilot-cases.csv"
+DEFAULT_STANDARD_CSV = ROOT / "docs/pilot/it-helpdesk-pilot-cases.csv"
 
 
 def run_pilot_rehearsal(
@@ -50,6 +51,8 @@ def run_pilot_rehearsal(
     bge_model_path: Path | None = None,
     bge_expected_sha256: str | None = None,
     run_bge_benchmark: bool = False,
+    dify_workflow_version: str | None = None,
+    dify_ui_evidence_path: Path | None = None,
     http_client: Any | None = None,
     ops_transport: httpx.BaseTransport | None = None,
 ) -> dict[str, Any]:
@@ -58,6 +61,8 @@ def run_pilot_rehearsal(
     if mode == "closed-network" and bge_model_path is None:
         raise SystemExit(2)
     if mode == "closed-network" and not run_bge_benchmark:
+        raise SystemExit(2)
+    if dify_ui_evidence_path is not None and not dify_ui_evidence_path.is_file():
         raise SystemExit(2)
 
     started_at = datetime.now(UTC)
@@ -152,6 +157,8 @@ def run_pilot_rehearsal(
             required_preset=required_preset,
             started_at=started_at,
             steps=steps,
+            dify_workflow_version=dify_workflow_version,
+            dify_ui_evidence_path=dify_ui_evidence_path,
         )
 
     dify_step: RehearsalStep
@@ -190,6 +197,7 @@ def run_pilot_rehearsal(
         steps.append(
             _run_csv_baseline_step(
                 baseline_path=baseline_path,
+                current_csv_path=_resolve_csv_path(csv_tier=csv_tier, csv_path=csv_path),
                 e2e_result=e2e_step,
                 out_dir=out_dir,
             )
@@ -210,6 +218,8 @@ def run_pilot_rehearsal(
             required_preset=required_preset,
             started_at=started_at,
             steps=steps,
+            dify_workflow_version=dify_workflow_version,
+            dify_ui_evidence_path=dify_ui_evidence_path,
         )
     steps.append(
         _run_step(
@@ -237,6 +247,8 @@ def run_pilot_rehearsal(
         required_preset=required_preset,
         started_at=started_at,
         steps=steps,
+        dify_workflow_version=dify_workflow_version,
+        dify_ui_evidence_path=dify_ui_evidence_path,
     )
 
 
@@ -249,8 +261,13 @@ def _finalize_rehearsal(
     required_preset: str,
     started_at: datetime,
     steps: list[RehearsalStep],
+    dify_workflow_version: str | None = None,
+    dify_ui_evidence_path: Path | None = None,
 ) -> dict[str, Any]:
-    secret_scan = scan_evidence_directory(out_dir)
+    secret_scan = scan_evidence_directory(
+        out_dir,
+        extra_paths=[dify_ui_evidence_path] if dify_ui_evidence_path is not None else [],
+    )
     completed_at = datetime.now(UTC)
     manifest = RehearsalManifest(
         service_id=service_id,
@@ -261,6 +278,10 @@ def _finalize_rehearsal(
         completed_at=completed_at,
         steps=steps,
         secret_scan=secret_scan,
+        dify_workflow_version_identifier=dify_workflow_version,
+        dify_ui_evidence_path=(
+            str(dify_ui_evidence_path) if dify_ui_evidence_path is not None else None
+        ),
     )
     json_path = out_dir / "pilot-rehearsal-manifest.json"
     markdown_path = out_dir / "pilot-rehearsal-manifest.md"
@@ -295,6 +316,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         bge_model_path=args.bge_model_path,
         bge_expected_sha256=args.bge_expected_sha256,
         run_bge_benchmark=args.run_bge_benchmark,
+        dify_workflow_version=args.dify_workflow_version,
+        dify_ui_evidence_path=args.dify_ui_evidence_path,
         out_dir=args.out_dir,
     )
     manifest = result["manifest"]
@@ -343,6 +366,7 @@ def _run_step(
 def _run_csv_baseline_step(
     *,
     baseline_path: Path,
+    current_csv_path: Path,
     e2e_result: RehearsalStep,
     out_dir: Path,
 ) -> RehearsalStep:
@@ -363,6 +387,7 @@ def _run_csv_baseline_step(
         operation=lambda: compare_csv_baseline(
             threshold_report_path=threshold_report_path,
             baseline_path=baseline_path,
+            csv_path=current_csv_path,
             out_dir=out_dir / "csv-baseline",
             exit_on_failure=False,
         ),
@@ -417,6 +442,9 @@ def _failure_message(result: Mapping[str, Any]) -> str:
     failure_message = result.get("failure_message") or result.get("block_reason")
     if isinstance(failure_message, str) and failure_message:
         return failure_message
+    block_reasons = result.get("block_reasons")
+    if isinstance(block_reasons, list) and block_reasons:
+        return "; ".join(str(reason) for reason in block_reasons)
     if "passed" in result:
         return "step reported passed=false"
     quality_gate = result.get("quality_gate")
@@ -457,6 +485,21 @@ def _load_state(state_path: Path) -> Mapping[str, Any]:
     return state
 
 
+def _resolve_csv_path(*, csv_tier: str, csv_path: Path | None) -> Path:
+    if csv_tier == "custom":
+        if csv_path is None:
+            raise ValueError("--csv is required when --csv-tier custom")
+        return csv_path
+    if csv_tier == "standard":
+        tier_path = ROOT / "docs/pilot/it-helpdesk-pilot-cases-50.csv"
+        return tier_path if tier_path.exists() else DEFAULT_STANDARD_CSV
+    if csv_tier == "minimum":
+        return ROOT / "docs/pilot/it-helpdesk-pilot-cases-30.csv"
+    if csv_tier == "high-confidence":
+        return ROOT / "docs/pilot/it-helpdesk-pilot-cases-100.csv"
+    raise ValueError("csv_tier must be one of: minimum, standard, high-confidence, custom")
+
+
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the pilot rehearsal evidence flow.")
     parser.add_argument("--mode", choices=("local", "closed-network"), required=True)
@@ -480,6 +523,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--bge-model-path", type=Path)
     parser.add_argument("--bge-expected-sha256")
     parser.add_argument("--run-bge-benchmark", action="store_true")
+    parser.add_argument("--dify-workflow-version")
+    parser.add_argument("--dify-ui-evidence-path", type=Path)
     parser.add_argument("--out-dir", type=Path, required=True)
     return parser.parse_args(argv)
 

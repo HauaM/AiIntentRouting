@@ -29,6 +29,7 @@ def test_csv_baseline_freeze_then_compare_passes(tmp_path: Path) -> None:
     compare_result = compare_csv_baseline(
         threshold_report_path=threshold_report_path,
         baseline_path=baseline_path,
+        csv_path=ROOT / "docs/pilot/it-helpdesk-pilot-cases.csv",
         out_dir=out_dir,
     )
 
@@ -76,6 +77,45 @@ def test_csv_baseline_compare_writes_failure_report_and_exits_nonzero(
     report = json.loads((out_dir / "csv-baseline-comparison.json").read_text())
     assert report["passed"] is False
     assert report["new_failures"][0]["case_id"] == "C001"
+
+
+def test_csv_baseline_compare_writes_csv_hash_mismatch_evidence(
+    tmp_path: Path,
+) -> None:
+    threshold_report_path = tmp_path / "threshold-comparison.json"
+    baseline_path = tmp_path / "baseline.json"
+    changed_csv = tmp_path / "changed.csv"
+    out_dir = tmp_path / "csv-baseline"
+    threshold_report_path.write_text(
+        json.dumps(_threshold_report(result="PASS"), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    changed_csv.write_text(
+        "case_id,query,expected_intent,case_type,memo\n"
+        "C001,changed,it_api_timeout,positive,memo\n",
+        encoding="utf-8",
+    )
+    freeze_csv_baseline(
+        threshold_report_path=threshold_report_path,
+        csv_path=ROOT / "docs/pilot/it-helpdesk-pilot-cases.csv",
+        preset="balanced",
+        baseline_id="it-helpdesk-pilot-standard-20260629",
+        out_path=baseline_path,
+    )
+
+    result = compare_csv_baseline(
+        threshold_report_path=threshold_report_path,
+        baseline_path=baseline_path,
+        csv_path=changed_csv,
+        out_dir=out_dir,
+        exit_on_failure=False,
+    )
+
+    assert result["passed"] is False
+    assert result["failure_message"] == "csv_sha256 mismatch"
+    report = json.loads((out_dir / "csv-baseline-comparison.json").read_text())
+    assert report["csv_sha256_mismatch"]["expected_sha256"]
+    assert report["csv_sha256_mismatch"]["actual_sha256"]
 
 
 def _threshold_report(

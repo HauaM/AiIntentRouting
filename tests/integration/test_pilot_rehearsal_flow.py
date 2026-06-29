@@ -315,6 +315,173 @@ def test_pilot_rehearsal_runs_csv_baseline_when_baseline_is_provided(
     assert (out_dir / "csv-baseline" / "csv-baseline-comparison.json").exists()
 
 
+def test_pilot_rehearsal_preserves_csv_baseline_failure_message(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "pilot.state.secret.json"
+    out_dir = tmp_path / "evidence"
+    csv_path = ROOT / "docs/pilot/it-helpdesk-pilot-cases.csv"
+    changed_csv = tmp_path / "changed.csv"
+    changed_csv.write_text(
+        "case_id,query,expected_intent,case_type,memo\n"
+        "C001,changed,it_api_timeout,positive,memo\n",
+        encoding="utf-8",
+    )
+    threshold_report = _threshold_report(result="PASS")
+    baseline = freeze_baseline(threshold_report, csv_path, "balanced")
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(json.dumps(baseline) + "\n", encoding="utf-8")
+
+    def e2e_stub(*, state_path: Path, out_dir: Path, **_: object) -> dict[str, object]:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            json.dumps(
+                {
+                    "api_key": "redacted-test-key",
+                    "key_id": "key-id",
+                    "app_id": "app-id",
+                    "service_id": "svc-csv-baseline",
+                }
+            ),
+            encoding="utf-8",
+        )
+        out_dir.mkdir(parents=True, exist_ok=True)
+        threshold_json = out_dir / "svc-csv-baseline-threshold-comparison.json"
+        threshold_md = out_dir / "svc-csv-baseline-threshold-comparison.md"
+        threshold_json.write_text(json.dumps(threshold_report) + "\n", encoding="utf-8")
+        threshold_md.write_text("# Threshold\n", encoding="utf-8")
+        return {
+            **_write_stub_evidence(out_dir, "pilot-e2e-smoke-index", passed=True),
+            "threshold_report": {
+                "json_path": str(threshold_json),
+                "markdown_path": str(threshold_md),
+            },
+            "quality_gate": {"passed": True},
+        }
+
+    def dify_stub(*, out_dir: Path, **_: object) -> dict[str, object]:
+        return _write_stub_evidence(out_dir, "dify-smoke-matrix", passed=True)
+
+    def ops_stub(*, out_dir: Path, **_: object) -> dict[str, object]:
+        return {"payload": {}, **_write_stub_evidence(out_dir, "ops-evidence", passed=True)}
+
+    monkeypatch.setattr(rehearsal_script, "run_pilot_e2e_smoke", e2e_stub)
+    monkeypatch.setattr(rehearsal_script, "run_dify_smoke_matrix", dify_stub)
+    monkeypatch.setattr(rehearsal_script, "run_ops_evidence_export", ops_stub)
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_pilot_rehearsal(
+            mode="local",
+            base_url="http://testserver",
+            admin_token="local-admin-token",
+            service_id="svc-csv-baseline",
+            environment="dev",
+            state_path=state_path,
+            csv_tier="custom",
+            csv_path=changed_csv,
+            required_preset="balanced",
+            baseline_path=baseline_path,
+            out_dir=out_dir,
+        )
+
+    assert exc_info.value.code == 1
+    manifest = json.loads(
+        (out_dir / "pilot-rehearsal-manifest.json").read_text(encoding="utf-8")
+    )
+    csv_baseline_step = {step["name"]: step for step in manifest["steps"]}[
+        "csv-baseline"
+    ]
+    assert csv_baseline_step["status"] == "fail"
+    assert csv_baseline_step["error_message"] == "csv_sha256 mismatch"
+
+
+def test_pilot_rehearsal_writes_dify_metadata_and_scans_ui_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "pilot.state.secret.json"
+    out_dir = tmp_path / "evidence"
+    dify_ui_evidence_path = tmp_path / "dify-ui-export.md"
+    dify_ui_evidence_path.write_text(
+        "# Dify UI Export\n\nAll visible secret fields are REDACTED.\n",
+        encoding="utf-8",
+    )
+
+    def e2e_stub(*, state_path: Path, out_dir: Path, **_: object) -> dict[str, object]:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            json.dumps(
+                {
+                    "api_key": "redacted-test-key",
+                    "key_id": "key-id",
+                    "app_id": "app-id",
+                    "service_id": "svc-dify-metadata",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return {
+            **_write_stub_evidence(out_dir, "pilot-e2e-smoke-index", passed=True),
+            "quality_gate": {"passed": True},
+        }
+
+    def dify_stub(*, out_dir: Path, **_: object) -> dict[str, object]:
+        return _write_stub_evidence(out_dir, "dify-smoke-matrix", passed=True)
+
+    def ops_stub(*, out_dir: Path, **_: object) -> dict[str, object]:
+        return {"payload": {}, **_write_stub_evidence(out_dir, "ops-evidence", passed=True)}
+
+    monkeypatch.setattr(rehearsal_script, "run_pilot_e2e_smoke", e2e_stub)
+    monkeypatch.setattr(rehearsal_script, "run_dify_smoke_matrix", dify_stub)
+    monkeypatch.setattr(rehearsal_script, "run_ops_evidence_export", ops_stub)
+
+    result = run_pilot_rehearsal(
+        mode="local",
+        base_url="http://testserver",
+        admin_token="local-admin-token",
+        service_id="svc-dify-metadata",
+        environment="dev",
+        state_path=state_path,
+        csv_tier="standard",
+        required_preset="balanced",
+        out_dir=out_dir,
+        dify_workflow_version="workflow-export-20260629-001",
+        dify_ui_evidence_path=dify_ui_evidence_path,
+    )
+
+    manifest = json.loads(Path(result["json_path"]).read_text(encoding="utf-8"))
+    assert manifest["dify_workflow_version_identifier"] == (
+        "workflow-export-20260629-001"
+    )
+    assert manifest["dify_ui_evidence_path"] == str(dify_ui_evidence_path)
+    assert manifest["secret_scan"]["passed"] is True
+    markdown = Path(result["markdown_path"]).read_text(encoding="utf-8")
+    assert "Dify workflow version identifier" in markdown
+    assert str(dify_ui_evidence_path) in markdown
+    assert "All visible secret fields are REDACTED" not in markdown
+
+
+def test_pilot_rehearsal_fails_when_dify_ui_evidence_path_is_missing(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        run_pilot_rehearsal(
+            mode="local",
+            base_url="http://testserver",
+            admin_token="local-admin-token",
+            service_id="svc-missing-dify-evidence",
+            environment="dev",
+            state_path=tmp_path / "pilot.state.secret.json",
+            csv_tier="standard",
+            required_preset="balanced",
+            out_dir=tmp_path / "evidence",
+            dify_ui_evidence_path=tmp_path / "missing-dify-export.png",
+        )
+
+    assert exc_info.value.code == 2
+
+
 def test_closed_network_bge_checksum_mismatch_keeps_package_evidence(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -80,6 +80,36 @@ def test_baseline_compare_fails_on_risk_pass_rate_regression(tmp_path: Path) -> 
     assert result.block_reasons == ["balanced risk_pass_rate 50.0% below required 100.0%"]
 
 
+def test_freeze_baseline_stores_repo_relative_csv_path() -> None:
+    csv_path = Path.cwd() / "docs/pilot/it-helpdesk-pilot-cases.csv"
+
+    baseline = freeze_baseline(_threshold_report(result="PASS"), csv_path, "balanced")
+
+    assert baseline["policy"]["csv_path"] == "docs/pilot/it-helpdesk-pilot-cases.csv"
+
+
+def test_baseline_compare_fails_on_csv_sha256_mismatch(tmp_path: Path) -> None:
+    baseline = freeze_baseline(_threshold_report(result="PASS"), _csv_path(tmp_path), "balanced")
+    changed_csv = tmp_path / "changed.csv"
+    changed_csv.write_text(
+        "case_id,query,expected_intent,case_type,memo\n"
+        "C001,changed,it_api_timeout,positive,memo\n",
+        encoding="utf-8",
+    )
+
+    result = compare_baseline(
+        _threshold_report(result="PASS"),
+        baseline,
+        current_csv_path=changed_csv,
+    )
+
+    assert result.passed is False
+    assert result.csv_sha256_mismatch is not None
+    assert result.csv_sha256_mismatch["expected_sha256"] == baseline["policy"]["csv_sha256"]
+    assert result.csv_sha256_mismatch["actual_sha256"]
+    assert "csv_sha256 mismatch" in result.block_reasons
+
+
 def test_baseline_compare_fails_on_missing_baseline_case(tmp_path: Path) -> None:
     baseline = freeze_baseline(_threshold_report(result="PASS"), _csv_path(tmp_path), "balanced")
     current = _threshold_report(result="PASS")
@@ -133,6 +163,19 @@ def test_baseline_compare_fails_on_decision_intent_and_route_key_drift(
     assert "decision drift from baseline" in result.block_reasons
     assert "intent drift from baseline" in result.block_reasons
     assert "route_key drift from baseline" in result.block_reasons
+
+
+def test_baseline_markdown_escapes_table_cells_as_single_line(tmp_path: Path) -> None:
+    baseline = freeze_baseline(_threshold_report(result="PASS"), _csv_path(tmp_path), "balanced")
+    current = _threshold_report(
+        result="PASS",
+        actual_intent="line one\nline|two",
+    )
+
+    markdown = render_baseline_comparison_markdown(compare_baseline(current, baseline))
+
+    assert "line one line\\|two" in markdown
+    assert "line one\nline" not in markdown
 
 
 def test_baseline_renderer_excludes_query_text_and_secret_fields(tmp_path: Path) -> None:

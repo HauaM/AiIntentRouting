@@ -406,7 +406,7 @@
     "allowed_new_failures": 0,
     "allowed_new_reviews": 0,
     "baseline_id": "it-helpdesk-pilot-standard-20260629",
-    "csv_path": "/home/haua/workspace/AiIntentRouting/docs/pilot/it-helpdesk-pilot-cases.csv",
+    "csv_path": "docs/pilot/it-helpdesk-pilot-cases.csv",
     "csv_sha256": "08a99fd9ebbee5f06428f005d44359bd897239e19d325593cc193688759cc1e1",
     "minimum_pass_rate": 1.0,
     "required_preset": "balanced",

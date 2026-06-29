@@ -37,6 +37,7 @@ class CsvBaselineComparison:
     new_failures: list[dict[str, str]]
     new_reviews: list[dict[str, str]]
     missing_cases: list[dict[str, str]]
+    csv_sha256_mismatch: dict[str, str] | None
     changed_decisions: list[dict[str, str | None]]
     changed_intents: list[dict[str, str | None]]
     changed_route_keys: list[dict[str, str | None]]
@@ -51,7 +52,7 @@ def freeze_baseline(
     rows = _required_sequence(_required_mapping(threshold_report, "results"), preset)
     policy = CsvBaselinePolicy(
         baseline_id=f"{threshold_report.get('service_id', 'csv')}-{preset}",
-        csv_path=str(csv_path),
+        csv_path=_display_path(csv_path),
         csv_sha256=_sha256_file(csv_path),
         required_preset=preset,
         minimum_pass_rate=float(run.get("pass_rate", 0.0)),
@@ -72,6 +73,8 @@ def freeze_baseline(
 def compare_baseline(
     threshold_report: Mapping[str, Any],
     baseline: Mapping[str, Any],
+    *,
+    current_csv_path: Path | None = None,
 ) -> CsvBaselineComparison:
     policy = _policy_from_baseline(baseline)
     rows = _required_sequence(
@@ -83,6 +86,7 @@ def compare_baseline(
     new_failures: list[dict[str, str]] = []
     new_reviews: list[dict[str, str]] = []
     missing_cases: list[dict[str, str]] = []
+    csv_sha256_mismatch: dict[str, str] | None = None
     changed_decisions: list[dict[str, str | None]] = []
     changed_intents: list[dict[str, str | None]] = []
     changed_route_keys: list[dict[str, str | None]] = []
@@ -111,6 +115,15 @@ def compare_baseline(
                 policy.required_risk_pass_rate,
             )
         )
+    if current_csv_path is not None:
+        actual_csv_sha256 = _sha256_file(current_csv_path)
+        if actual_csv_sha256 != policy.csv_sha256:
+            csv_sha256_mismatch = {
+                "baseline_csv_path": policy.csv_path,
+                "current_csv_path": _display_path(current_csv_path),
+                "expected_sha256": policy.csv_sha256,
+                "actual_sha256": actual_csv_sha256,
+            }
 
     for expectation in _expectations_from_baseline(baseline):
         current = current_by_case_id.get(expectation.case_id)
@@ -159,6 +172,8 @@ def compare_baseline(
         block_reasons.append("new FAIL cases above allowance")
     if len(new_reviews) > policy.allowed_new_reviews:
         block_reasons.append("new REVIEW cases above allowance")
+    if csv_sha256_mismatch is not None:
+        block_reasons.append("csv_sha256 mismatch")
     if missing_cases:
         block_reasons.append("missing baseline cases in current report")
     if changed_decisions:
@@ -174,6 +189,7 @@ def compare_baseline(
         new_failures=new_failures,
         new_reviews=new_reviews,
         missing_cases=missing_cases,
+        csv_sha256_mismatch=csv_sha256_mismatch,
         changed_decisions=changed_decisions,
         changed_intents=changed_intents,
         changed_route_keys=changed_route_keys,
@@ -216,6 +232,19 @@ def render_baseline_comparison_markdown(result: CsvBaselineComparison) -> str:
             ("preset", "case_id"),
         )
     )
+    if result.csv_sha256_mismatch is not None:
+        lines.extend(
+            _render_case_table(
+                "CSV SHA-256 Mismatch",
+                (result.csv_sha256_mismatch,),
+                (
+                    "baseline_csv_path",
+                    "current_csv_path",
+                    "expected_sha256",
+                    "actual_sha256",
+                ),
+            )
+        )
     lines.extend(
         _render_case_table(
             "Changed Decisions",
@@ -350,6 +379,14 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _display_path(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
 def _required_mapping(mapping: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     value = mapping[key]
     if not isinstance(value, Mapping):
@@ -373,4 +410,4 @@ def _optional_string(value: Any) -> str | None:
 def _cell(value: Any) -> str:
     if value is None:
         return ""
-    return str(value).replace("|", "\\|")
+    return " ".join(str(value).splitlines()).replace("|", "\\|")

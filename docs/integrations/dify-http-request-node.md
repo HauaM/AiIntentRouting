@@ -6,14 +6,16 @@
 Checked template: `docs/integrations/dify-http-request-node-template.json`
 Branch playbook: `docs/integrations/dify-branching-playbook.md`
 Handoff checklist: `docs/integrations/dify-handoff-checklist.md`
+Dry-run rehearsal: `docs/integrations/dify-dry-run-rehearsal.md`
 
 ## HTTP Request 노드 설정
 
 - Method: `POST`
 - URL: `http://intent-routing.internal/v1/intent-route`
-- Timeout: connect/read/write를 합산한 클라이언트 총 timeout이 6~8초가 되도록 설정한다.
+- Timeout: 8 seconds.
 - Workflow variable: Dify 시스템 변수 `{{sys.workflow_run_id}}`를 이전 노드에서 로컬 변수
   `{{workflow_run_id}}`로 매핑해 둔다. 아래 설정은 이 alias를 사용한다.
+- Secret variable: `intent_routing_api_key secret variable` is masked in the Dify UI.
 
 Headers:
 
@@ -83,6 +85,14 @@ uv run python scripts/smoke_runtime_dify.py \
   --timeout-seconds 8 \
   --output var/evidence/${SERVICE_ID}/dify-smoke-confident.json
 ```
+
+## Dry-Run Rehearsal Metadata
+
+During the Dify UI dry-run, record the `Dify workflow version identifier` or
+export identifier and pass the masked screenshot/export path to
+`scripts/run_pilot_rehearsal.py` with `--dify-ui-evidence-path`. The wrapper
+records only the path and identifier in `pilot-rehearsal-manifest.md`; it does
+not inline screenshot/export content.
 
 ## Dify Variable Mapping
 

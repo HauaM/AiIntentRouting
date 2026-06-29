@@ -43,12 +43,17 @@ def compare_csv_baseline(
     *,
     threshold_report_path: Path,
     baseline_path: Path,
+    csv_path: Path | None = None,
     out_dir: Path,
     exit_on_failure: bool = True,
 ) -> dict[str, Any]:
     threshold_report = _read_json(threshold_report_path)
     baseline = _read_json(baseline_path)
-    comparison = compare_baseline(threshold_report, baseline)
+    comparison = compare_baseline(
+        threshold_report,
+        baseline,
+        current_csv_path=csv_path,
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / "csv-baseline-comparison.json"
     markdown_path = out_dir / "csv-baseline-comparison.md"
@@ -62,6 +67,7 @@ def compare_csv_baseline(
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
         "block_reasons": comparison.block_reasons,
+        "failure_message": "; ".join(comparison.block_reasons),
     }
     if not comparison.passed and exit_on_failure:
         raise SystemExit(1)
@@ -83,6 +89,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     result = compare_csv_baseline(
         threshold_report_path=args.threshold_report,
         baseline_path=args.baseline,
+        csv_path=args.csv,
         out_dir=args.out_dir,
     )
     print(result["json_path"])
@@ -109,6 +116,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     compare = subcommands.add_parser("compare")
     compare.add_argument("--threshold-report", type=Path, required=True)
     compare.add_argument("--baseline", type=Path, required=True)
+    compare.add_argument("--csv", type=Path)
     compare.add_argument("--out-dir", type=Path, required=True)
     return parser.parse_args(argv)
 

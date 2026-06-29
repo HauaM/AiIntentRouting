@@ -69,6 +69,8 @@ class RehearsalManifest:
     completed_at: datetime
     steps: list[RehearsalStep]
     secret_scan: SecretScanResult
+    dify_workflow_version_identifier: str | None = None
+    dify_ui_evidence_path: str | None = None
 
 
 def render_rehearsal_json(manifest: RehearsalManifest) -> str:
@@ -89,12 +91,33 @@ def render_rehearsal_markdown(manifest: RehearsalManifest) -> str:
         f"- Completed at: `{payload.get('completed_at', 'unknown')}`",
         f"- Final status: **{payload.get('final_status', 'FAIL')}**",
         f"- Secret scan: **{'PASS' if secret_scan.get('passed') else 'FAIL'}**",
-        "",
-        "## Steps",
-        "",
-        "| step | status | required | summary | error |",
-        "| --- | --- | --- | --- | --- |",
     ]
+    if payload.get("dify_workflow_version_identifier") or payload.get(
+        "dify_ui_evidence_path"
+    ):
+        lines.extend(
+            [
+                "",
+                "## Dify Dry-Run Metadata",
+                "",
+                "- Dify workflow version identifier: `{version}`".format(
+                    version=payload.get("dify_workflow_version_identifier")
+                    or "not provided"
+                ),
+                "- Dify UI evidence path: `{path}`".format(
+                    path=payload.get("dify_ui_evidence_path") or "not provided"
+                ),
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "## Steps",
+            "",
+            "| step | status | required | summary | error |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
     for step in payload.get("steps", []):
         if not isinstance(step, Mapping):
             continue
@@ -146,7 +169,9 @@ def render_rehearsal_markdown(manifest: RehearsalManifest) -> str:
     return "\n".join(lines)
 
 
-def scan_evidence_directory(root: Path) -> SecretScanResult:
+def scan_evidence_directory(
+    root: Path, *, extra_paths: Iterable[Path] = ()
+) -> SecretScanResult:
     if not root.exists():
         return SecretScanResult(
             passed=False,
@@ -171,13 +196,29 @@ def scan_evidence_directory(root: Path) -> SecretScanResult:
         )
 
     findings: list[SecretScanFinding] = []
+    scanned_paths: set[Path] = set()
     for path in sorted(item for item in root.rglob("*") if item.is_file()):
-        display_path = str(path.relative_to(root))
-        if ".secret.json" in path.name:
+        findings.extend(_scan_evidence_file(root, path, scanned_paths))
+    for path in extra_paths:
+        if not path.exists():
             findings.append(
-                SecretScanFinding(path=display_path, marker=".secret.json", line_number=1)
+                SecretScanFinding(
+                    path=str(path),
+                    marker="missing_evidence_file",
+                    line_number=0,
+                )
             )
-        findings.extend(_scan_file(root, path))
+            continue
+        if not path.is_file():
+            findings.append(
+                SecretScanFinding(
+                    path=str(path),
+                    marker="invalid_evidence_file",
+                    line_number=0,
+                )
+            )
+            continue
+        findings.extend(_scan_evidence_file(root, path, scanned_paths))
     return SecretScanResult(passed=not findings, findings=findings)
 
 
@@ -209,13 +250,36 @@ def _redact_manifest(value: Any) -> Any:
     return value
 
 
-def _scan_file(root: Path, path: Path) -> list[SecretScanFinding]:
+def _scan_evidence_file(
+    root: Path, path: Path, scanned_paths: set[Path]
+) -> list[SecretScanFinding]:
+    resolved_path = path.resolve()
+    if resolved_path in scanned_paths:
+        return []
+    scanned_paths.add(resolved_path)
+    display_path = _display_path(root, path)
+    findings: list[SecretScanFinding] = []
+    if ".secret.json" in path.name:
+        findings.append(
+            SecretScanFinding(path=display_path, marker=".secret.json", line_number=1)
+        )
+    findings.extend(_scan_file(path, display_path))
+    return findings
+
+
+def _display_path(root: Path, path: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
+def _scan_file(path: Path, display_path: str) -> list[SecretScanFinding]:
     text = path.read_text(encoding="utf-8", errors="replace")
     if _json_evidence_is_redacted(text):
         return []
 
     findings: list[SecretScanFinding] = []
-    display_path = str(path.relative_to(root))
     for line_number, line in enumerate(text.splitlines(), start=1):
         if _line_is_redacted_evidence_field(line):
             continue
