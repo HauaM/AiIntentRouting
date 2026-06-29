@@ -34,6 +34,27 @@ def test_model_package_manifest_is_deterministic(tmp_path: Path) -> None:
     assert first.offline_required is True
 
 
+def test_model_package_manifest_streams_file_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    model_package = _import_model_package_module()
+    model_dir = tmp_path / "bge-m3"
+    model_dir.mkdir()
+    (model_dir / "model.safetensors").write_bytes(b"large-model-bytes")
+
+    def fail_read_bytes(path: Path) -> bytes:
+        raise AssertionError(f"read_bytes must not be used for package hashing: {path}")
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
+
+    manifest = model_package.build_model_package_manifest(model_dir)
+
+    assert manifest.sha256 == _expected_package_sha_from_bytes(
+        {"model.safetensors": b"large-model-bytes"}
+    )
+
+
 def test_model_package_json_is_deterministic(tmp_path: Path) -> None:
     model_package = _import_model_package_module()
     model_dir = tmp_path / "bge-m3"
@@ -174,12 +195,91 @@ def test_cli_writes_reports_then_exits_non_zero_on_checksum_mismatch(
     assert secret_content.strip() not in markdown_path.read_text(encoding="utf-8")
 
 
+def test_cli_normalizes_expected_checksum_before_comparing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    model_package = _import_model_package_module()
+    verify_script = _import_verify_script_module()
+    model_dir = tmp_path / "bge-m3"
+    model_dir.mkdir()
+    (model_dir / "config.json").write_text("model-metadata\n", encoding="utf-8")
+    manifest = model_package.build_model_package_manifest(model_dir)
+
+    verify_script.main(
+        [
+            "--model-path",
+            str(model_dir),
+            "--out-dir",
+            str(tmp_path / "benchmarks"),
+            "--expected-sha256",
+            f"  {manifest.sha256.upper()}  ",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert "mismatch" not in captured.err
+
+
+@pytest.mark.parametrize(
+    "expected_sha256",
+    [
+        "not-a-checksum",
+        "0" * 63,
+        ("0" * 63) + "g",
+    ],
+)
+def test_cli_writes_reports_then_exits_non_zero_on_invalid_expected_checksum(
+    expected_sha256: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    verify_script = _import_verify_script_module()
+    model_dir = tmp_path / "bge-m3"
+    model_dir.mkdir()
+    secret_content = "model-content-must-not-appear\n"
+    (model_dir / "config.json").write_text(secret_content, encoding="utf-8")
+    out_dir = tmp_path / "benchmarks"
+
+    with pytest.raises(SystemExit) as exc_info:
+        verify_script.main(
+            [
+                "--model-path",
+                str(model_dir),
+                "--out-dir",
+                str(out_dir),
+                "--expected-sha256",
+                expected_sha256,
+            ]
+        )
+
+    json_path = out_dir / "bge-m3-package.json"
+    markdown_path = out_dir / "bge-m3-package.md"
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert json_path.exists()
+    assert markdown_path.exists()
+    assert "expected SHA-256 must be 64 lowercase hex characters" in captured.err
+    assert secret_content.strip() not in captured.out
+    assert secret_content.strip() not in captured.err
+
+
 def _expected_package_sha(model_dir: Path, relative_paths: list[str]) -> str:
     sha256 = hashlib.sha256()
     for relative_path in sorted(relative_paths):
         sha256.update(relative_path.encode("utf-8"))
         sha256.update(b"\0")
         sha256.update((model_dir / relative_path).read_bytes())
+        sha256.update(b"\n")
+    return sha256.hexdigest()
+
+
+def _expected_package_sha_from_bytes(contents_by_relative_path: dict[str, bytes]) -> str:
+    sha256 = hashlib.sha256()
+    for relative_path, contents in sorted(contents_by_relative_path.items()):
+        sha256.update(relative_path.encode("utf-8"))
+        sha256.update(b"\0")
+        sha256.update(contents)
         sha256.update(b"\n")
     return sha256.hexdigest()
 

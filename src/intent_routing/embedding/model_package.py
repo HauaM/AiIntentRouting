@@ -7,6 +7,8 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+HASH_CHUNK_SIZE = 1024 * 1024
+
 
 @dataclass(frozen=True, slots=True)
 class ModelPackageManifest:
@@ -31,11 +33,9 @@ def build_model_package_manifest(model_path: Path) -> ModelPackageManifest:
     sha256 = hashlib.sha256()
     total_bytes = 0
     for relative_path, file_path in files:
-        contents = file_path.read_bytes()
-        total_bytes += len(contents)
         sha256.update(relative_path.encode("utf-8"))
         sha256.update(b"\0")
-        sha256.update(contents)
+        total_bytes += _hash_file_bytes(sha256, file_path)
         sha256.update(b"\n")
 
     return ModelPackageManifest(
@@ -92,3 +92,12 @@ def _regular_file_within_model_path(path: Path, model_path: Path) -> Path | None
     if path.is_file():
         return path
     return None
+
+
+def _hash_file_bytes(sha256: hashlib._Hash, file_path: Path) -> int:
+    total_bytes = 0
+    with file_path.open("rb") as file:
+        for chunk in iter(lambda: file.read(HASH_CHUNK_SIZE), b""):
+            total_bytes += len(chunk)
+            sha256.update(chunk)
+    return total_bytes

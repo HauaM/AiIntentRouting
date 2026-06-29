@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -13,6 +14,7 @@ from intent_routing.embedding.model_package import (
 
 DEFAULT_JSON_REPORT = "bge-m3-package.json"
 DEFAULT_MARKDOWN_REPORT = "bge-m3-package.md"
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -24,10 +26,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     print(result["json_path"])
     print(result["markdown_path"])
 
-    if args.expected_sha256 and args.expected_sha256 != result["sha256"]:
+    try:
+        expected_sha256 = _normalize_expected_sha256(args.expected_sha256)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+
+    if expected_sha256 and expected_sha256 != result["sha256"]:
         print(
             "BGE-M3 package SHA-256 mismatch: "
-            f"expected {args.expected_sha256}, actual {result['sha256']}",
+            f"expected {expected_sha256}, actual {result['sha256']}",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -55,6 +63,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--expected-sha256")
     return parser.parse_args(argv)
+
+
+def _normalize_expected_sha256(expected_sha256: str | None) -> str | None:
+    if expected_sha256 is None:
+        return None
+    normalized = expected_sha256.strip().lower()
+    if not SHA256_PATTERN.fullmatch(normalized):
+        raise ValueError("expected SHA-256 must be 64 lowercase hex characters.")
+    return normalized
 
 
 if __name__ == "__main__":
