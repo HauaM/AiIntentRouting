@@ -176,7 +176,7 @@ def test_main_exits_nonzero_after_writing_redacted_request_failure_evidence(
             request=request,
         )
 
-    monkeypatch.setattr(smoke_matrix_script.httpx, "post", raise_connect_error)
+    monkeypatch.setattr("scripts.run_dify_smoke_matrix.httpx.post", raise_connect_error)
 
     with pytest.raises(SystemExit) as exc_info:
         smoke_matrix_script.main(
