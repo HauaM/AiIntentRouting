@@ -83,7 +83,7 @@ Run these commands before attaching the bundle:
 uv run python -m json.tool var/evidence/${SERVICE_ID}/rehearsal/pilot-rehearsal-manifest.json
 sha256sum var/evidence/${SERVICE_ID}/rehearsal/pilot-rehearsal-manifest.json
 find var/evidence/${SERVICE_ID}/rehearsal -name '*.secret.json' -print
-rg -n 'Bearer |RAW_TEXT_KEK_BASE64|RAW_TEXT_LEGACY_KEKS_JSON|query_raw|text_raw|encrypted_dek|ciphertext|irt_live_|irt_secret' var/evidence/${SERVICE_ID}/rehearsal
+rg -n 'Authorization: Bearer|Bearer |RAW_TEXT_KEK_BASE64|RAW_TEXT_LEGACY_KEKS_JSON|api_key=|intent_routing_api_key|query_raw|text_raw|encrypted_dek|ciphertext|irt_live_|irt_secret' var/evidence/${SERVICE_ID}/rehearsal
 ```
 
 Expected:
@@ -106,12 +106,18 @@ Confirm the wrapper's recursive secret scan passed and the reviewer scan prints
 no findings. The attached evidence must have:
 
 - no .secret.json files
+- no Authorization: Bearer
 - no Bearer token
 - no RAW_TEXT_KEK_BASE64
 - no RAW_TEXT_LEGACY_KEKS_JSON
-- no query_raw or `text_raw`
-- no `encrypted_dek` or `ciphertext`
-- no `irt_live_` or `irt_secret` values
+- no api_key=
+- no intent_routing_api_key
+- no query_raw
+- no text_raw
+- no encrypted_dek
+- no ciphertext
+- no irt_live_
+- no irt_secret
 
 If any command prints a finding, stop the review and move to Failure Handling.
 

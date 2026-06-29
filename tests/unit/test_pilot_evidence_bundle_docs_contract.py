@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from intent_routing.ops.rehearsal import SECRET_MARKERS
+
 ROOT = Path(__file__).resolve().parents[2]
 CHECKLIST = ROOT / "docs/ops/pilot-evidence-bundle-checklist.md"
 
@@ -33,9 +35,18 @@ def test_pilot_evidence_bundle_checklist_documents_required_contract() -> None:
         "ops-evidence.md",
         "ops/ops-evidence.md",
         "no .secret.json",
+        "no Authorization: Bearer",
         "no Bearer token",
         "no RAW_TEXT_KEK_BASE64",
+        "no RAW_TEXT_LEGACY_KEKS_JSON",
+        "no api_key=",
+        "no intent_routing_api_key",
         "no query_raw",
+        "no text_raw",
+        "no encrypted_dek",
+        "no ciphertext",
+        "no irt_live_",
+        "no irt_secret",
         "sha256sum pilot-rehearsal-manifest.json",
         "do not commit var/evidence",
         "SERVICE_ID",
@@ -43,6 +54,9 @@ def test_pilot_evidence_bundle_checklist_documents_required_contract() -> None:
         "ADMIN_BOOTSTRAP_TOKEN",
     ):
         assert expected in text
+
+    for marker in SECRET_MARKERS:
+        assert marker in text
 
 
 def test_assigned_docs_link_sprint_6_review_checklist() -> None:

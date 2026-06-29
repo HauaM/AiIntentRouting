@@ -24,6 +24,9 @@ SECRET_MARKERS = (
     "irt_live_",
     "irt_secret",
 )
+SAFE_SECRET_MARKER_CONTEXTS = ("intent_routing_api_key secret variable",)
+
+
 @dataclass(frozen=True)
 class EvidenceFile:
     path: str
@@ -329,11 +332,20 @@ def _line_is_redacted_evidence_field(line: str) -> bool:
 
 
 def _contains_secret_marker(text: str) -> bool:
-    return any(marker in text for marker in SECRET_MARKERS)
+    scan_text = _remove_safe_secret_marker_contexts(text)
+    return any(marker in scan_text for marker in SECRET_MARKERS)
 
 
 def _markers_in_text(text: str) -> Iterable[str]:
-    return (marker for marker in SECRET_MARKERS if marker in text)
+    scan_text = _remove_safe_secret_marker_contexts(text)
+    return (marker for marker in SECRET_MARKERS if marker in scan_text)
+
+
+def _remove_safe_secret_marker_contexts(text: str) -> str:
+    scan_text = text
+    for context in SAFE_SECRET_MARKER_CONTEXTS:
+        scan_text = scan_text.replace(context, "")
+    return scan_text
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:

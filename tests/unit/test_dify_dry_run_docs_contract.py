@@ -79,7 +79,7 @@ def test_dify_dry_run_evidence_template_covers_ui_contract() -> None:
         "docs/integrations/dify-dry-run-evidence-template.md",
         "Dify workflow version identifier",
         "masked screenshot or workflow export path",
-        "Dify secret variable for the Intent Routing API key",
+        "intent_routing_api_key secret variable",
         "workflow_run_id",
         "Timeout: 8 seconds",
         "no automatic retry loop",
@@ -110,5 +110,19 @@ def test_dify_dry_run_evidence_template_is_secret_scan_safe(
     assert doc.exists()
 
     result = scan_evidence_directory(tmp_path, extra_paths=[doc])
+
+    assert result == SecretScanResult(passed=True, findings=[])
+
+
+def test_secret_scan_allows_approved_dify_secret_variable_label(
+    tmp_path: Path,
+) -> None:
+    evidence = tmp_path / "dify-dry-run-evidence.md"
+    evidence.write_text(
+        "HTTP authorization header uses the intent_routing_api_key secret variable.\n",
+        encoding="utf-8",
+    )
+
+    result = scan_evidence_directory(tmp_path)
 
     assert result == SecretScanResult(passed=True, findings=[])

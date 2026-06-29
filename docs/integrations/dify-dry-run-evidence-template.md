@@ -21,7 +21,7 @@ template.
 | --- | --- | --- |
 | Method is `POST` |  |  |
 | URL points to `/v1/intent-route` |  |  |
-| HTTP authorization header uses the Dify secret variable for the Intent Routing API key |  |  |
+| HTTP authorization header uses the approved `intent_routing_api_key secret variable` |  |  |
 | `X-Key-Id` uses the approved key id variable |  |  |
 | `X-App-Id` uses the approved Dify app id |  |  |
 | `X-Service-Id` maps to the target service |  |  |
@@ -57,7 +57,7 @@ template.
 - Record the masked screenshot or workflow export path:
 - Confirm no raw token, API key, secret value, or unmasked key id appears in the
   evidence file.
-- Confirm the Dify secret variable for the Intent Routing API key remains masked
+- Confirm the `intent_routing_api_key secret variable` remains masked
   in the Dify UI.
 
 ## Workflow Version
