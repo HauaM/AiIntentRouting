@@ -2,6 +2,12 @@
 
 This runbook covers the Sprint 3 KEK rewrap, runtime raw-query retention, and operations evidence workflow for one service.
 
+Use `docs/ops/pilot-rehearsal.md` as the top-level Sprint 5 execution path for
+pilot readiness and security rehearsal. The KEK rewrap and runtime raw-query
+retention commands below remain diagnostic or separately approved lifecycle
+workflows; the Sprint 5 wrapper runs dry evidence collection only and does not
+execute destructive security operations.
+
 ## KEK rotation prerequisites
 
 Before changing a raw-text KEK:

@@ -78,6 +78,8 @@ docker compose --profile runtime config
 ## Branch Protection
 
 After Sprint 4, require the `CI / verify` check before merging into `main`.
+Use `docs/ops/branch-protection.md` for the GitHub UI, GitHub CLI/API,
+temporary bypass approval, and branch protection rollback procedure.
 
 ## Artifact Policy
 

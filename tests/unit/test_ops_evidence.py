@@ -80,6 +80,14 @@ def test_ops_evidence_redacts_sensitive_keys_and_substrings_recursively() -> Non
     assert "masked summary is safe" in json_text
 
 
+def test_ops_evidence_markdown_redaction_statement_avoids_secret_markers() -> None:
+    markdown = render_ops_evidence_markdown(_payload())
+
+    assert "ciphertext" not in markdown
+    assert "encrypted DEK" not in markdown
+    assert "encrypted_dek" not in markdown
+
+
 def test_ops_evidence_redacts_legacy_kek_json_key_and_arbitrary_kek_value() -> None:
     legacy_kek_value = "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI="
     payload = {

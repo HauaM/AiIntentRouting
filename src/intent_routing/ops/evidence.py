@@ -230,8 +230,8 @@ def render_ops_evidence_markdown(payload: Mapping[str, Any]) -> str:
             "Sensitive fields and secret-looking substrings were redacted recursively.",
             f"Redaction marker: `{REDACTED}`.",
             (
-                "No raw plaintext, bearer tokens, API keys, KEK material, ciphertext, "
-                "encrypted DEKs, or secret state paths are intentionally exported."
+                "No raw plaintext, bearer tokens, API keys, KEK material, encrypted "
+                "payload material, or secret state paths are intentionally exported."
             ),
             "",
         ]

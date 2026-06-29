@@ -1,0 +1,416 @@
+{
+  "baseline_id": "it-helpdesk-pilot-standard-20260629",
+  "cases": [
+    {
+      "case_id": "CL001",
+      "expected_decision": "clarify",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "CL002",
+      "expected_decision": "clarify",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "CL003",
+      "expected_decision": "clarify",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "CL004",
+      "expected_decision": "clarify",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "CL005",
+      "expected_decision": "clarify",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "F001",
+      "expected_decision": "fallback",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "F002",
+      "expected_decision": "fallback",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "F003",
+      "expected_decision": "fallback",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "F004",
+      "expected_decision": "fallback",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "F005",
+      "expected_decision": "fallback",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "F006",
+      "expected_decision": "fallback",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "F007",
+      "expected_decision": "fallback",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "F008",
+      "expected_decision": "fallback",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "O001",
+      "expected_decision": "off_topic",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "O002",
+      "expected_decision": "off_topic",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "O003",
+      "expected_decision": "off_topic",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "O004",
+      "expected_decision": "off_topic",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "O005",
+      "expected_decision": "off_topic",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "O006",
+      "expected_decision": "off_topic",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P001",
+      "expected_decision": "confident",
+      "expected_intent": "it_api_timeout",
+      "expected_result": "PASS",
+      "expected_route_key": "it.api_timeout.manual_lookup",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P002",
+      "expected_decision": "confident",
+      "expected_intent": "it_api_timeout",
+      "expected_result": "PASS",
+      "expected_route_key": "it.api_timeout.manual_lookup",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P003",
+      "expected_decision": "confident",
+      "expected_intent": "it_api_timeout",
+      "expected_result": "PASS",
+      "expected_route_key": "it.api_timeout.manual_lookup",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P004",
+      "expected_decision": "confident",
+      "expected_intent": "it_api_timeout",
+      "expected_result": "PASS",
+      "expected_route_key": "it.api_timeout.manual_lookup",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P005",
+      "expected_decision": "confident",
+      "expected_intent": "it_api_timeout",
+      "expected_result": "PASS",
+      "expected_route_key": "it.api_timeout.manual_lookup",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P006",
+      "expected_decision": "confident",
+      "expected_intent": "it_api_timeout",
+      "expected_result": "PASS",
+      "expected_route_key": "it.api_timeout.manual_lookup",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P007",
+      "expected_decision": "confident",
+      "expected_intent": "it_api_timeout",
+      "expected_result": "PASS",
+      "expected_route_key": "it.api_timeout.manual_lookup",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P008",
+      "expected_decision": "confident",
+      "expected_intent": "it_api_timeout",
+      "expected_result": "PASS",
+      "expected_route_key": "it.api_timeout.manual_lookup",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P009",
+      "expected_decision": "confident",
+      "expected_intent": "it_password_reset",
+      "expected_result": "PASS",
+      "expected_route_key": "it.password_reset.self_service",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P010",
+      "expected_decision": "confident",
+      "expected_intent": "it_password_reset",
+      "expected_result": "PASS",
+      "expected_route_key": "it.password_reset.self_service",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P011",
+      "expected_decision": "confident",
+      "expected_intent": "it_password_reset",
+      "expected_result": "PASS",
+      "expected_route_key": "it.password_reset.self_service",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P012",
+      "expected_decision": "confident",
+      "expected_intent": "it_password_reset",
+      "expected_result": "PASS",
+      "expected_route_key": "it.password_reset.self_service",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P013",
+      "expected_decision": "confident",
+      "expected_intent": "it_password_reset",
+      "expected_result": "PASS",
+      "expected_route_key": "it.password_reset.self_service",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P014",
+      "expected_decision": "confident",
+      "expected_intent": "it_password_reset",
+      "expected_result": "PASS",
+      "expected_route_key": "it.password_reset.self_service",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P015",
+      "expected_decision": "confident",
+      "expected_intent": "it_password_reset",
+      "expected_result": "PASS",
+      "expected_route_key": "it.password_reset.self_service",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P016",
+      "expected_decision": "confident",
+      "expected_intent": "it_password_reset",
+      "expected_result": "PASS",
+      "expected_route_key": "it.password_reset.self_service",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P017",
+      "expected_decision": "confident",
+      "expected_intent": "it_vpn_access",
+      "expected_result": "PASS",
+      "expected_route_key": "it.vpn_access.ticket_create",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P018",
+      "expected_decision": "confident",
+      "expected_intent": "it_vpn_access",
+      "expected_result": "PASS",
+      "expected_route_key": "it.vpn_access.ticket_create",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P019",
+      "expected_decision": "confident",
+      "expected_intent": "it_vpn_access",
+      "expected_result": "PASS",
+      "expected_route_key": "it.vpn_access.ticket_create",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P020",
+      "expected_decision": "confident",
+      "expected_intent": "it_vpn_access",
+      "expected_result": "PASS",
+      "expected_route_key": "it.vpn_access.ticket_create",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P021",
+      "expected_decision": "confident",
+      "expected_intent": "it_vpn_access",
+      "expected_result": "PASS",
+      "expected_route_key": "it.vpn_access.ticket_create",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P022",
+      "expected_decision": "confident",
+      "expected_intent": "it_vpn_access",
+      "expected_result": "PASS",
+      "expected_route_key": "it.vpn_access.ticket_create",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P023",
+      "expected_decision": "confident",
+      "expected_intent": "it_vpn_access",
+      "expected_result": "PASS",
+      "expected_route_key": "it.vpn_access.ticket_create",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "P024",
+      "expected_decision": "confident",
+      "expected_intent": "it_vpn_access",
+      "expected_result": "PASS",
+      "expected_route_key": "it.vpn_access.ticket_create",
+      "preset": "balanced"
+    },
+    {
+      "case_id": "R001",
+      "expected_decision": "risk",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "R002",
+      "expected_decision": "risk",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "R003",
+      "expected_decision": "risk",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "R004",
+      "expected_decision": "risk",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "R005",
+      "expected_decision": "risk",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "R006",
+      "expected_decision": "risk",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    },
+    {
+      "case_id": "R007",
+      "expected_decision": "risk",
+      "expected_intent": null,
+      "expected_result": "PASS",
+      "expected_route_key": null,
+      "preset": "balanced"
+    }
+  ],
+  "policy": {
+    "allowed_new_failures": 0,
+    "allowed_new_reviews": 0,
+    "baseline_id": "it-helpdesk-pilot-standard-20260629",
+    "csv_path": "docs/pilot/it-helpdesk-pilot-cases.csv",
+    "csv_sha256": "08a99fd9ebbee5f06428f005d44359bd897239e19d325593cc193688759cc1e1",
+    "minimum_pass_rate": 1.0,
+    "required_preset": "balanced",
+    "required_risk_pass_rate": 1.0
+  },
+  "schema_version": 1
+}

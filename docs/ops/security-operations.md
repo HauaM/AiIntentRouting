@@ -2,6 +2,11 @@
 
 This runbook defines the closed-network security operations contract for API keys, admin token handling, KEK handling, and raw query decrypt.
 
+Use `docs/ops/pilot-rehearsal.md` as the top-level Sprint 5 execution path for
+pilot security rehearsal and incident response evidence. The commands below
+remain separately approved diagnostic workflows when the rehearsal manifest
+identifies a security operations gap.
+
 ## API key lifecycle
 
 Use API key rotation as an overlap-first workflow:

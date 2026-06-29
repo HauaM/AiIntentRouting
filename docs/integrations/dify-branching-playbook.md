@@ -2,6 +2,7 @@
 
 Template: `docs/integrations/dify-http-request-node-template.json`
 Handoff checklist: `docs/integrations/dify-handoff-checklist.md`
+Dry-run rehearsal: `docs/integrations/dify-dry-run-rehearsal.md`
 
 ## Runtime Branches
 
@@ -22,3 +23,11 @@ Handoff checklist: `docs/integrations/dify-handoff-checklist.md`
 - `timeout`: client fallback or human handoff.
 
 For `408`, `5xx`, and `timeout`, use no automatic retry loop. Dify should show a fixed fallback or hand off with `workflow_run_id`, `trace_id` when available, and `request_id`.
+
+## Dry-Run Evidence
+
+Before handoff, compare the Dify UI branch settings with `dify-smoke-matrix.json`
+and `dify-smoke-matrix.md`, then record the `Dify workflow version identifier`
+in `pilot-rehearsal-manifest.md`. Confirm the `intent_routing_api_key secret
+variable` is masked and the workflow keeps `release_version` wherever the API
+returns it.

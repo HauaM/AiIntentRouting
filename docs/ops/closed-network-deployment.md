@@ -2,6 +2,10 @@
 
 This runbook is the Compose-based pilot deployment path for `INTENT_ROUTING_ENVIRONMENT=pilot`.
 Use `docs/ops/intent-routing-local-runbook.md` for developer-local fake-embedding runs.
+After the image, model, environment file, migration, and API are ready, use
+`docs/ops/pilot-rehearsal.md` as the top-level Sprint 5 execution path before
+Dify handoff. The lower-level commands in this runbook remain diagnostic steps
+for isolating deployment, BGE-M3, readiness, or evidence failures.
 
 ## 1. Build Image
 
@@ -102,32 +106,42 @@ curl -s http://127.0.0.1:8000/readyz
 
 `/healthz` verifies the process is up. `/readyz` verifies the dependencies required before Dify traffic is allowed.
 
-## 7. Pilot Seed And Evidence
+## 7. Pilot Rehearsal Evidence
 
-Run the pilot readiness automation after the API is ready and after BGE-M3 package
-preflight plus benchmark evidence has been captured:
+Run the Sprint 5 rehearsal wrapper after the API is ready. Closed-network mode
+captures BGE-M3 package preflight, BGE-M3 benchmark, Sprint 4 e2e smoke, Dify
+smoke matrix, CSV baseline comparison, ops evidence, and the rehearsal secret
+scan in one manifest:
 
 ```bash
 export SERVICE_ID=it-helpdesk-pilot-$(date +%Y%m%d%H%M%S)
 export STATE_PATH="var/pilot/${SERVICE_ID}.state.secret.json"
 
-uv run python scripts/run_pilot_readiness.py \
+uv run python scripts/run_pilot_rehearsal.py \
+  --mode closed-network \
   --base-url http://127.0.0.1:8000 \
   --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
   --service-id ${SERVICE_ID} \
   --environment pilot \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
-  --out-dir var/evidence/${SERVICE_ID}
+  --required-preset balanced \
+  --baseline docs/pilot/it-helpdesk-pilot-baseline.json \
+  --bge-model-path /models/bge-m3 \
+  --bge-expected-sha256 ${BGE_M3_MODEL_SHA256} \
+  --run-bge-benchmark \
+  --out-dir var/evidence/${SERVICE_ID}/rehearsal
 ```
 
 The `standard` CSV tier is the 50-row pilot default. Use `minimum` for 30 rows, `high-confidence` for 100 rows, or `custom --csv <path>` for an operator-supplied dataset.
-Do not connect Dify HTTP Request nodes to this API until the package preflight,
-benchmark, readiness, and smoke evidence are all present in the pilot evidence package.
+Do not connect Dify HTTP Request nodes to this API until the rehearsal manifest,
+package preflight, benchmark, readiness, smoke, baseline, ops evidence, and
+secret scan are all PASS in the pilot evidence package.
 
-## 8. Operations Evidence And Security Lifecycle
+## 8. Diagnostic Operations Evidence And Security Lifecycle
 
-After readiness evidence, export the operations evidence package:
+If the rehearsal `ops-evidence-export` step fails, run the operations evidence
+export directly as a diagnostic:
 
 ```bash
 uv run python scripts/export_ops_evidence.py \

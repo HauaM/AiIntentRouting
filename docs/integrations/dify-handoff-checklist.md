@@ -3,12 +3,14 @@
 Use this checklist before handing a Dify workflow to pilot operators. Attach the
 completed evidence files to the pilot handoff ticket or release folder.
 
+Dry-run rehearsal: `docs/integrations/dify-dry-run-rehearsal.md`
+
 ## HTTP Request Node Mapping
 
 - [ ] Method is `POST`.
 - [ ] URL points to `/v1/intent-route` for the target environment.
 - [ ] Timeout: 8 seconds.
-- [ ] `Authorization` is `Bearer {{intent_routing_api_key}}`.
+- [ ] `Authorization` is `Bearer {{intent_routing_api_key}}`; Dify masks the `intent_routing_api_key secret variable`.
 - [ ] `X-Key-Id` maps to `{{intent_routing_key_id}}`.
 - [ ] `X-App-Id` is the approved app id, usually `dify-platform`.
 - [ ] `X-Service-Id` maps to the pilot `service_id`.
@@ -39,13 +41,16 @@ completed evidence files to the pilot handoff ticket or release folder.
 
 - [ ] `dify-smoke-matrix.json`
 - [ ] `dify-smoke-matrix.md`
+- [ ] `pilot-rehearsal-manifest.md`
 - [ ] `readiness-report.md`
 - [ ] threshold comparison Markdown
 - [ ] screenshot or exported Dify workflow version identifier
+- [ ] Dify workflow version identifier recorded through `--dify-workflow-version`.
+- [ ] Dify UI evidence path recorded through `--dify-ui-evidence-path`; do not inline screenshot/export content into Markdown.
 
 ## Manual UI Checks
 
-- [ ] Dify secret variable hides `intent_routing_api_key`.
+- [ ] Dify hides the `intent_routing_api_key secret variable`.
 - [ ] `X-Request-Id` maps to `workflow_run_id`.
 - [ ] Downstream nodes preserve `trace_id`, `request_id`, and `release_version`.
 - [ ] risk branch does not call business route.
