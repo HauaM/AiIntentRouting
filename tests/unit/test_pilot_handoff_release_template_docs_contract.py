@@ -4,13 +4,14 @@ from intent_routing.ops.rehearsal import SecretScanResult, scan_evidence_directo
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = ROOT / "docs/ops/pilot-handoff-release-ticket-template.md"
+TEMPLATE_PATH = "docs/ops/pilot-handoff-release-ticket-template.md"
 
 
 def test_pilot_handoff_release_ticket_template_contains_required_contract() -> None:
     text = TEMPLATE.read_text(encoding="utf-8")
 
     for expected in (
-        "docs/ops/pilot-handoff-release-ticket-template.md",
+        TEMPLATE_PATH,
         "service_id",
         "environment",
         "release_version",
@@ -77,3 +78,41 @@ def test_pilot_handoff_release_ticket_template_is_secret_scan_safe(
     result = scan_evidence_directory(tmp_path, extra_paths=[TEMPLATE])
 
     assert result == SecretScanResult(passed=True, findings=[])
+
+
+def test_pilot_handoff_release_ticket_template_is_linked_from_required_docs() -> None:
+    for path in (
+        ROOT / "README.md",
+        ROOT / "docs/ops/intent-routing-pilot-runbook.md",
+        ROOT / "docs/integrations/dify-handoff-checklist.md",
+        ROOT / "docs/ops/pilot-rehearsal.md",
+    ):
+        text = path.read_text(encoding="utf-8")
+
+        assert TEMPLATE_PATH in text
+
+
+def test_pilot_rehearsal_documents_release_ticket_dry_fill_scans() -> None:
+    text = (ROOT / "docs/ops/pilot-rehearsal.md").read_text(encoding="utf-8")
+
+    assert (
+        "rg -n 'PASS|CI / verify|pilot-rehearsal-manifest.md|"
+        "Dify workflow version identifier|go/no-go' "
+        "var/evidence/${SERVICE_ID}/release-ticket.md"
+    ) in text
+
+    for marker in (
+        "Bearer ",
+        "RAW_TEXT_KEK_BASE64",
+        "RAW_TEXT_LEGACY_KEKS_JSON",
+        "api_key=",
+        "Authorization: Bearer",
+        "intent_routing_api_key",
+        "query_raw",
+        "text_raw",
+        "encrypted_dek",
+        "ciphertext",
+        "irt_live_",
+        "irt_secret",
+    ):
+        assert marker in text

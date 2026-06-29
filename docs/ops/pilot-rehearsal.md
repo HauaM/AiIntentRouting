@@ -178,7 +178,7 @@ Manual review commands for the filled ticket:
 
 ```bash
 rg -n 'PASS|CI / verify|pilot-rehearsal-manifest.md|Dify workflow version identifier|go/no-go' var/evidence/${SERVICE_ID}/release-ticket.md
-rg -n 'Bearer |RAW_TEXT_KEK_BASE64|query_raw|text_raw|encrypted_dek|ciphertext|irt_live_|irt_secret' var/evidence/${SERVICE_ID}/release-ticket.md
+rg -n 'Bearer |Authorization: Bearer|RAW_TEXT_KEK_BASE64|RAW_TEXT_LEGACY_KEKS_JSON|api_key=|intent_routing_api_key|query_raw|text_raw|encrypted_dek|ciphertext|irt_live_|irt_secret' var/evidence/${SERVICE_ID}/release-ticket.md
 ```
 
 Expected:
