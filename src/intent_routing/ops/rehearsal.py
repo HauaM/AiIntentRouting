@@ -24,19 +24,6 @@ SECRET_MARKERS = (
     "irt_live_",
     "irt_secret",
 )
-REDACTABLE_FIELD_MARKERS = {
-    "Authorization: Bearer",
-    "RAW_TEXT_KEK_BASE64",
-    "RAW_TEXT_LEGACY_KEKS_JSON",
-    "api_key=",
-    "intent_routing_api_key",
-    "query_raw",
-    "text_raw",
-    "encrypted_dek",
-    "ciphertext",
-}
-
-
 @dataclass(frozen=True)
 class EvidenceFile:
     path: str
@@ -246,22 +233,12 @@ def _json_value_is_secret_safe(value: Any) -> bool:
 
 def _line_is_redacted_evidence_field(line: str) -> bool:
     normalized = line.strip().strip(",")
-    if REDACTED not in normalized:
+    if REDACTED not in normalized or not _contains_secret_marker(normalized):
         return False
-    for marker in _markers_in_text(normalized):
-        if marker not in REDACTABLE_FIELD_MARKERS:
-            return False
-        before, _, after = normalized.partition(marker)
-        if marker == "api_key=":
-            return after.strip(" `\"'") == REDACTED
-        if marker == "Authorization: Bearer":
-            return False
-        if ":" not in before + after:
-            return False
-        field_value = (before + after).rsplit(":", maxsplit=1)[-1]
-        if field_value.strip(" `\"'") != REDACTED:
-            return False
-    return True
+    field_name, separator, field_value = normalized.rpartition(":")
+    return bool(separator and _contains_secret_marker(field_name)) and (
+        field_value.strip(" `\"'") == REDACTED
+    )
 
 
 def _contains_secret_marker(text: str) -> bool:

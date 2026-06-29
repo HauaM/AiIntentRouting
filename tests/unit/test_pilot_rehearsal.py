@@ -162,12 +162,19 @@ def test_secret_scan_allows_redacted_evidence_fields(tmp_path) -> None:
     (tmp_path / "evidence.md").write_text(
         "\n".join(
             [
+                "- .secret.json: `REDACTED`",
                 "- Authorization: `REDACTED`",
+                "- Authorization: Bearer: `REDACTED`",
+                "- Bearer token: `REDACTED`",
                 "- api_key: `REDACTED`",
+                "- api_key=: `REDACTED`",
+                "- intent_routing_api_key: `REDACTED`",
                 "- query_raw: `REDACTED`",
                 "- text_raw: `REDACTED`",
                 "- encrypted_dek: `REDACTED`",
                 "- ciphertext: `REDACTED`",
+                "- irt_live_: `REDACTED`",
+                "- irt_secret: `REDACTED`",
                 "- RAW_TEXT_KEK_BASE64: `REDACTED`",
                 "- RAW_TEXT_LEGACY_KEKS_JSON: `REDACTED`",
             ]
