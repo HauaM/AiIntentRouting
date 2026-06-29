@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from intent_routing.ops.csv_baseline import (
     compare_baseline,
@@ -21,6 +22,7 @@ def test_baseline_compare_passes_when_case_results_match(tmp_path: Path) -> None
     assert result.block_reasons == []
     assert result.new_failures == []
     assert result.new_reviews == []
+    assert result.missing_cases == []
     assert result.changed_decisions == []
     assert result.changed_intents == []
     assert result.changed_route_keys == []
@@ -78,6 +80,61 @@ def test_baseline_compare_fails_on_risk_pass_rate_regression(tmp_path: Path) -> 
     assert result.block_reasons == ["balanced risk_pass_rate 50.0% below required 100.0%"]
 
 
+def test_baseline_compare_fails_on_missing_baseline_case(tmp_path: Path) -> None:
+    baseline = freeze_baseline(_threshold_report(result="PASS"), _csv_path(tmp_path), "balanced")
+    current = _threshold_report(result="PASS")
+    current["results"]["balanced"] = []
+
+    result = compare_baseline(current, baseline)
+
+    assert result.passed is False
+    assert result.missing_cases == [{"case_id": "C001", "preset": "balanced"}]
+    assert "missing baseline cases in current report" in result.block_reasons
+
+
+def test_baseline_compare_fails_on_decision_intent_and_route_key_drift(
+    tmp_path: Path,
+) -> None:
+    baseline = freeze_baseline(_threshold_report(result="PASS"), _csv_path(tmp_path), "balanced")
+    current = _threshold_report(
+        result="PASS",
+        actual_decision="fallback",
+        actual_intent="it_password_reset",
+        actual_route_key="it.password_reset.self_service",
+    )
+
+    result = compare_baseline(current, baseline)
+
+    assert result.passed is False
+    assert result.changed_decisions == [
+        {
+            "case_id": "C001",
+            "preset": "balanced",
+            "baseline_value": "confident",
+            "actual_value": "fallback",
+        }
+    ]
+    assert result.changed_intents == [
+        {
+            "case_id": "C001",
+            "preset": "balanced",
+            "baseline_value": "it_api_timeout",
+            "actual_value": "it_password_reset",
+        }
+    ]
+    assert result.changed_route_keys == [
+        {
+            "case_id": "C001",
+            "preset": "balanced",
+            "baseline_value": "it.api_timeout.manual_lookup",
+            "actual_value": "it.password_reset.self_service",
+        }
+    ]
+    assert "decision drift from baseline" in result.block_reasons
+    assert "intent drift from baseline" in result.block_reasons
+    assert "route_key drift from baseline" in result.block_reasons
+
+
 def test_baseline_renderer_excludes_query_text_and_secret_fields(tmp_path: Path) -> None:
     report = _threshold_report(
         result="FAIL",
@@ -127,7 +184,7 @@ def _threshold_report(
     pass_rate: float = 1.0,
     risk_pass_rate: float = 1.0,
     **extra_row: object,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return {
         "service_id": "svc-test",
         "policy_version": "pol-test",

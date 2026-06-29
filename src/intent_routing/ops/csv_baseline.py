@@ -36,6 +36,7 @@ class CsvBaselineComparison:
     block_reasons: list[str]
     new_failures: list[dict[str, str]]
     new_reviews: list[dict[str, str]]
+    missing_cases: list[dict[str, str]]
     changed_decisions: list[dict[str, str | None]]
     changed_intents: list[dict[str, str | None]]
     changed_route_keys: list[dict[str, str | None]]
@@ -81,6 +82,7 @@ def compare_baseline(
     block_reasons: list[str] = []
     new_failures: list[dict[str, str]] = []
     new_reviews: list[dict[str, str]] = []
+    missing_cases: list[dict[str, str]] = []
     changed_decisions: list[dict[str, str | None]] = []
     changed_intents: list[dict[str, str | None]] = []
     changed_route_keys: list[dict[str, str | None]] = []
@@ -113,6 +115,9 @@ def compare_baseline(
     for expectation in _expectations_from_baseline(baseline):
         current = current_by_case_id.get(expectation.case_id)
         if current is None:
+            missing_cases.append(
+                {"case_id": expectation.case_id, "preset": expectation.preset}
+            )
             continue
         actual_result = _optional_string(current.get("result")) or ""
         actual_decision = _optional_string(current.get("actual_decision"))
@@ -154,12 +159,21 @@ def compare_baseline(
         block_reasons.append("new FAIL cases above allowance")
     if len(new_reviews) > policy.allowed_new_reviews:
         block_reasons.append("new REVIEW cases above allowance")
+    if missing_cases:
+        block_reasons.append("missing baseline cases in current report")
+    if changed_decisions:
+        block_reasons.append("decision drift from baseline")
+    if changed_intents:
+        block_reasons.append("intent drift from baseline")
+    if changed_route_keys:
+        block_reasons.append("route_key drift from baseline")
 
     return CsvBaselineComparison(
         passed=not block_reasons,
         block_reasons=block_reasons,
         new_failures=new_failures,
         new_reviews=new_reviews,
+        missing_cases=missing_cases,
         changed_decisions=changed_decisions,
         changed_intents=changed_intents,
         changed_route_keys=changed_route_keys,
@@ -193,6 +207,13 @@ def render_baseline_comparison_markdown(result: CsvBaselineComparison) -> str:
             "New Reviews",
             result.new_reviews,
             ("preset", "case_id", "expected_result", "actual_result"),
+        )
+    )
+    lines.extend(
+        _render_case_table(
+            "Missing Cases",
+            result.missing_cases,
+            ("preset", "case_id"),
         )
     )
     lines.extend(
