@@ -8,6 +8,8 @@ bundle to the pilot approval record.
 Use `docs/ops/pilot-evidence-bundle-checklist.md` as the Sprint 6 review standard
 before attaching a local evidence bundle. Use the older runbooks for
 diagnostic commands when one rehearsal step fails.
+Use `docs/pilot/csv-baseline-refresh-policy.md` as the source of truth before
+approving or rolling back any checked-in CSV baseline refresh.
 Use `docs/ops/bge-m3-evidence-template.md` as the closed-network BGE-M3 evidence
 record for package approval, preflight, benchmark, rehearsal, offline runtime,
 and pilot go/no-go.
@@ -65,7 +67,8 @@ Local acceptance:
 - `run_pilot_e2e_smoke.py` passes the required `balanced` preset.
 - `run_dify_smoke_matrix.py` passes the Dify request and error branches.
 - `compare_csv_baseline.py` reports no blocking regression against the checked-in
-  pilot baseline.
+  pilot baseline. Baseline refresh approval is governed by
+  `docs/pilot/csv-baseline-refresh-policy.md`.
 - `export_ops_evidence.py` writes operations evidence for the service.
 - The rehearsal `secret scan` passes.
 
@@ -244,7 +247,7 @@ exception procedure instead of reading database fields directly.
 | BGE checksum mismatch | Wrong model package, incomplete transfer, or stale approval checksum | Rerun `verify_bge_m3_package.py`, compare the generated SHA-256 with the import record, and reject the package until they match. |
 | BGE benchmark memory or latency failure | Host sizing, batch size, or dependency issue | Rerun `benchmark_bge_m3.py` with a smaller `BGE_M3_BATCH_SIZE`, then attach before/after benchmark reports. |
 | Balanced gate failure | Catalog, policy, threshold, or embedding regression | Inspect the `run_pilot_e2e_smoke.py` threshold comparison report and rerun lower-level CSV diagnostics. |
-| Baseline regression | Current threshold report drifted from the approved pilot baseline | Inspect `compare_csv_baseline.py` Markdown and update the baseline only through the approved review process. |
+| Baseline regression | Current threshold report drifted from the approved pilot baseline | Inspect `compare_csv_baseline.py` Markdown and update the baseline only through `docs/pilot/csv-baseline-refresh-policy.md`. |
 | Dify branch mismatch | HTTP Request node headers, request body mapping, or workflow branch rules differ from the handoff contract | Inspect `run_dify_smoke_matrix.py` output and the Dify workflow version identifier. |
 | Ops evidence export failure | Admin token, role scope, service ID, or API availability issue | Run `export_ops_evidence.py` directly with the same service ID and actor headers. |
 | Secret scan failure | Evidence bundle contains state files, tokens, KEKs, raw queries, encrypted DEKs, or ciphertext | Remove unsafe files from the evidence source, rerun the wrapper, and attach only the clean manifest. |
