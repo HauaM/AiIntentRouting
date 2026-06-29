@@ -1,6 +1,22 @@
 # Pilot Readiness Evidence
 
-Use this workflow after the API is running and `/readyz` returns ready.
+For Sprint 4 pilot handoff, prefer `scripts/run_pilot_e2e_smoke.py`; it wraps this readiness workflow, requires the `balanced` quality gate, and writes an e2e evidence index. Use this page when you need to run the lower-level readiness workflow directly after the API is running and `/readyz` returns ready.
+
+Default Sprint 4 command:
+
+```bash
+uv run python scripts/run_pilot_e2e_smoke.py \
+  --base-url http://127.0.0.1:8000 \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --service-id ${SERVICE_ID} \
+  --environment ${INTENT_ROUTING_ENVIRONMENT} \
+  --state-path ${STATE_PATH} \
+  --csv-tier standard \
+  --required-preset balanced \
+  --out-dir var/evidence/${SERVICE_ID}/e2e
+```
+
+Lower-level readiness command:
 
 ```bash
 uv run python scripts/run_pilot_readiness.py \
@@ -22,6 +38,7 @@ CSV tier options:
 
 Evidence outputs:
 
+- `pilot-e2e-smoke-index.json` and `pilot-e2e-smoke-index.md` when using the e2e wrapper
 - `readiness-report.json`
 - `readiness-report.md`
 - threshold comparison JSON and Markdown reports

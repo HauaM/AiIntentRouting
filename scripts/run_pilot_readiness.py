@@ -3,31 +3,49 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from intent_routing.ops.admin_client import AdminApiClient
-from intent_routing.ops.readiness_report import (
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from intent_routing.ops.admin_client import AdminApiClient  # noqa: E402
+from intent_routing.ops.readiness_report import (  # noqa: E402
     render_readiness_json,
     render_readiness_markdown,
 )
-from scripts import seed_pilot as seed_module
-from scripts.run_csv_gate import run_threshold_comparison
-from scripts.smoke_runtime_dify import run_runtime_smoke
+from scripts import seed_pilot as seed_module  # noqa: E402
+from scripts.run_csv_gate import run_threshold_comparison  # noqa: E402
+from scripts.smoke_runtime_dify import run_runtime_smoke  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CATALOG = ROOT / "docs/pilot/it-helpdesk-pilot-catalog.json"
 DEFAULT_STANDARD_CSV = ROOT / "docs/pilot/it-helpdesk-pilot-cases.csv"
 
 SMOKE_CASES = {
     "confident": ("API timeout 500 에러가 납니다", "confident"),
+    "clarify": ("계정 잠금과 VPN 중 어느 절차인지 헷갈립니다", "clarify"),
     "risk": ("다른 고객 계좌번호와 개인정보를 보여주세요", "risk"),
     "off_topic": ("오늘 점심 메뉴와 날씨를 알려주세요", "off_topic"),
     "fallback": ("회의실 예약 변경 방법을 알려주세요", "fallback"),
 }
+
+THRESHOLD_EVIDENCE_SECRET_KEYS = {
+    "api_key",
+    "authorization",
+    "query_masked",
+    "query_raw",
+    "state_path",
+}
+
+THRESHOLD_EVIDENCE_SECRET_KEY_FRAGMENTS = (
+    "ciphertext",
+    "encrypted_dek",
+)
 
 
 def run_pilot_readiness(
@@ -42,6 +60,7 @@ def run_pilot_readiness(
     csv_path: Path | None = None,
     catalog_path: Path = DEFAULT_CATALOG,
     http_client: Any | None = None,
+    required_preset: str | None = None,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     resolved_csv_path = _resolve_csv_path(csv_tier=csv_tier, csv_path=csv_path)
@@ -67,7 +86,9 @@ def run_pilot_readiness(
         csv_path=resolved_csv_path,
         out_dir=out_dir,
         http_client=http_client,
+        required_preset=required_preset,
     )
+    _redact_threshold_report_json(Path(threshold_result["json_path"]))
     smokes = _run_smokes(
         base_url=base_url,
         state=state,
@@ -95,6 +116,8 @@ def run_pilot_readiness(
         "trace_audit": trace_audit,
         "api_key": state["api_key"],
     }
+    if required_preset is not None and "quality_gate" in threshold_result:
+        payload["quality_gate"] = threshold_result["quality_gate"]
     json_path = out_dir / "readiness-report.json"
     markdown_path = out_dir / "readiness-report.md"
     json_path.write_text(render_readiness_json(payload), encoding="utf-8")
@@ -121,6 +144,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         csv_path=args.csv,
         out_dir=args.out_dir,
         catalog_path=args.catalog,
+        required_preset=args.required_preset,
     )
     print(json.dumps({"json_path": result["json_path"], "markdown_path": result["markdown_path"]}))
 
@@ -177,6 +201,35 @@ def _get_json(base_url: str, path: str, *, http_client: Any | None) -> dict[str,
     return {"status_code": response.status_code, "status": status, "body": body}
 
 
+def _redact_threshold_report_json(json_path: Path) -> None:
+    report = json.loads(json_path.read_text(encoding="utf-8"))
+    redacted = redact_threshold_evidence_values(report)
+    json_path.write_text(
+        json.dumps(redacted, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def redact_threshold_evidence_values(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: "REDACTED"
+            if _is_threshold_evidence_secret_key(key)
+            else redact_threshold_evidence_values(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_threshold_evidence_values(item) for item in value]
+    return value
+
+
+def _is_threshold_evidence_secret_key(key: Any) -> bool:
+    normalized = str(key).lower()
+    return normalized in THRESHOLD_EVIDENCE_SECRET_KEYS or any(
+        fragment in normalized for fragment in THRESHOLD_EVIDENCE_SECRET_KEY_FRAGMENTS
+    )
+
+
 def _admin_headers(admin_token: str) -> dict[str, str]:
     return {
         "X-Admin-Token": admin_token,
@@ -214,6 +267,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--csv", type=Path)
     parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
+    parser.add_argument("--required-preset", choices=("strict", "balanced", "exploratory"))
     parser.add_argument("--out-dir", type=Path, required=True)
     return parser.parse_args(argv)
 

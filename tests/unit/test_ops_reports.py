@@ -77,6 +77,59 @@ def test_render_threshold_report_uses_default_findings_message_when_none_exist()
     assert report.endswith("\n")
 
 
+def test_render_threshold_report_includes_required_gate_pass() -> None:
+    report = render_threshold_report(
+        service_id="it-helpdesk-pilot",
+        runs=_complete_runs(),
+        required_gate={
+            "required_preset": "balanced",
+            "passed": True,
+            "pass_rate": 0.8,
+            "risk_pass_rate": 1.0,
+            "block_reasons": [],
+        },
+    )
+
+    expected = (
+        "## Required Gate\n\n"
+        "- Required preset: `balanced`\n"
+        "- Gate: `PASS`\n"
+        "- Pass rate: `80.0%`\n"
+        "- Risk pass rate: `100.0%`"
+    )
+    assert expected in report
+    assert report.index("## Required Gate") < report.index("## Findings")
+
+
+def test_render_threshold_report_includes_required_gate_fail_blocks() -> None:
+    report = render_threshold_report(
+        service_id="it-helpdesk-pilot",
+        runs=_complete_runs(),
+        required_gate={
+            "required_preset": "balanced",
+            "passed": False,
+            "pass_rate": 0.6,
+            "risk_pass_rate": 1.0,
+            "block_reasons": [
+                "required preset balanced failed CSV gate",
+                "balanced pass_rate=60.0%",
+            ],
+        },
+    )
+
+    expected = (
+        "## Required Gate\n\n"
+        "- Required preset: `balanced`\n"
+        "- Gate: `FAIL`\n"
+        "- Pass rate: `60.0%`\n"
+        "- Risk pass rate: `100.0%`\n"
+        "- Block: required preset balanced failed CSV gate\n"
+        "- Block: balanced pass_rate=60.0%"
+    )
+    assert expected in report
+    assert report.index("## Required Gate") < report.index("## Findings")
+
+
 def test_render_threshold_report_raises_when_a_preset_is_missing() -> None:
     runs = _complete_runs()
     del runs["exploratory"]
@@ -288,6 +341,241 @@ def test_run_csv_gate_posts_presets_writes_outputs_and_avoids_secret_logging(
     assert "# CSV Gate Threshold Comparison: it-helpdesk-pilot" in markdown_output
     assert "## Case Result Counts" in markdown_output
     assert "## Review Cases" in markdown_output
+
+
+def test_run_csv_gate_require_preset_exits_zero_when_required_preset_passes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import scripts.run_csv_gate as run_csv_gate
+
+    state_path = tmp_path / "seed-state.json"
+    csv_path = tmp_path / "cases.csv"
+    out_dir = tmp_path / "reports"
+
+    state_path.write_text(
+        json.dumps(
+            {
+                "service_id": "it-helpdesk-pilot",
+                "policy_version": 3,
+                "intent_catalog_version": 7,
+                "api_key": "super-secret-api-key",
+            }
+        ),
+        encoding="utf-8",
+    )
+    csv_path.write_text(
+        "case_id,query,expected_intent,case_type,memo\n"
+        "C001,hello,it_api_timeout,positive,sample\n",
+        encoding="utf-8",
+    )
+
+    class FakeAdminApiClient:
+        def __init__(self, **_kwargs: object) -> None:
+            return None
+
+        def __enter__(self) -> FakeAdminApiClient:
+            return self
+
+        def __exit__(
+            self,
+            _exc_type: type[BaseException] | None,
+            _exc: BaseException | None,
+            _traceback: TracebackType | None,
+        ) -> None:
+            return None
+
+        def post(self, _path: str, *, json: dict[str, object] | None = None) -> dict[str, object]:
+            assert json is not None
+            preset = str(json["threshold_preset"])
+            return {
+                "test_run_id": f"tr-{preset}",
+                "threshold_value": {"strict": 1.0, "balanced": 0.8, "exploratory": 0.6}[preset],
+                "pass_rate": {"strict": 0.5, "balanced": 0.8, "exploratory": 0.7}[preset],
+                "review_rate": {"strict": 0.5, "balanced": 0.1, "exploratory": 0.2}[preset],
+                "risk_pass_rate": 1.0,
+                "gate_passed": preset != "strict",
+                "block_reasons": ["pass rate below 70%"] if preset == "strict" else [],
+                "recommendations": [],
+            }
+
+        def get(self, path: str) -> list[dict[str, object]]:
+            test_run_id = path.rsplit("/", 2)[1]
+            return [
+                {
+                    "case_id": f"{test_run_id}-001",
+                    "query_masked": "masked query",
+                    "case_type": "positive",
+                    "expected_decision": "confident",
+                    "expected_intent": "it_api_timeout",
+                    "actual_decision": "confident",
+                    "actual_intent": "it_api_timeout",
+                    "actual_route_key": "it.api_timeout.manual_lookup",
+                    "confidence": 0.91,
+                    "result": "PASS",
+                    "reason": "matched expected decision and intent",
+                }
+            ]
+
+    monkeypatch.setattr(run_csv_gate, "AdminApiClient", FakeAdminApiClient)
+
+    run_csv_gate.main(
+        [
+            "--base-url",
+            "http://testserver",
+            "--admin-token",
+            "bootstrap-token",
+            "--state",
+            str(state_path),
+            "--csv",
+            str(csv_path),
+            "--out-dir",
+            str(out_dir),
+            "--require-preset",
+            "balanced",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert "super-secret-api-key" not in captured.out
+    assert "super-secret-api-key" not in captured.err
+
+    json_output = json.loads(
+        (out_dir / "it-helpdesk-pilot-threshold-comparison.json").read_text(encoding="utf-8")
+    )
+    assert json_output["quality_gate"] == {
+        "required_preset": "balanced",
+        "passed": True,
+        "pass_rate": 0.8,
+        "risk_pass_rate": 1.0,
+        "block_reasons": [],
+    }
+    markdown_output = (
+        out_dir / "it-helpdesk-pilot-threshold-comparison.md"
+    ).read_text(encoding="utf-8")
+    assert "- Gate: `PASS`" in markdown_output
+
+
+def test_run_csv_gate_require_preset_exits_one_after_writing_outputs_when_required_preset_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import scripts.run_csv_gate as run_csv_gate
+
+    state_path = tmp_path / "seed-state.json"
+    csv_path = tmp_path / "cases.csv"
+    out_dir = tmp_path / "reports"
+
+    state_path.write_text(
+        json.dumps(
+            {
+                "service_id": "it-helpdesk-pilot",
+                "policy_version": 3,
+                "intent_catalog_version": 7,
+                "api_key": "super-secret-api-key",
+            }
+        ),
+        encoding="utf-8",
+    )
+    csv_path.write_text(
+        "case_id,query,expected_intent,case_type,memo\n"
+        "C001,hello,it_api_timeout,positive,sample\n",
+        encoding="utf-8",
+    )
+
+    class FakeAdminApiClient:
+        def __init__(self, **_kwargs: object) -> None:
+            return None
+
+        def __enter__(self) -> FakeAdminApiClient:
+            return self
+
+        def __exit__(
+            self,
+            _exc_type: type[BaseException] | None,
+            _exc: BaseException | None,
+            _traceback: TracebackType | None,
+        ) -> None:
+            return None
+
+        def post(self, _path: str, *, json: dict[str, object] | None = None) -> dict[str, object]:
+            assert json is not None
+            preset = str(json["threshold_preset"])
+            return {
+                "test_run_id": f"tr-{preset}",
+                "threshold_value": {"strict": 1.0, "balanced": 0.8, "exploratory": 0.6}[preset],
+                "pass_rate": {"strict": 0.5, "balanced": 0.6, "exploratory": 0.7}[preset],
+                "review_rate": {"strict": 0.5, "balanced": 0.1, "exploratory": 0.2}[preset],
+                "risk_pass_rate": 1.0,
+                "gate_passed": preset == "exploratory",
+                "block_reasons": ["pass rate below 70%"] if preset != "exploratory" else [],
+                "recommendations": [],
+            }
+
+        def get(self, path: str) -> list[dict[str, object]]:
+            test_run_id = path.rsplit("/", 2)[1]
+            return [
+                {
+                    "case_id": f"{test_run_id}-001",
+                    "query_masked": "masked query",
+                    "case_type": "positive",
+                    "expected_decision": "confident",
+                    "expected_intent": "it_api_timeout",
+                    "actual_decision": "fallback",
+                    "actual_intent": None,
+                    "actual_route_key": None,
+                    "confidence": None,
+                    "result": "FAIL",
+                    "reason": "actual decision did not match expected decision",
+                }
+            ]
+
+    monkeypatch.setattr(run_csv_gate, "AdminApiClient", FakeAdminApiClient)
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_csv_gate.main(
+            [
+                "--base-url",
+                "http://testserver",
+                "--admin-token",
+                "bootstrap-token",
+                "--state",
+                str(state_path),
+                "--csv",
+                str(csv_path),
+                "--out-dir",
+                str(out_dir),
+                "--require-preset",
+                "balanced",
+            ]
+        )
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "super-secret-api-key" not in captured.out
+    assert "super-secret-api-key" not in captured.err
+
+    json_output = json.loads(
+        (out_dir / "it-helpdesk-pilot-threshold-comparison.json").read_text(encoding="utf-8")
+    )
+    assert json_output["quality_gate"] == {
+        "required_preset": "balanced",
+        "passed": False,
+        "pass_rate": 0.6,
+        "risk_pass_rate": 1.0,
+        "block_reasons": [
+            "required preset balanced failed CSV gate",
+            "balanced pass_rate=60.0%",
+        ],
+    }
+    markdown_output = (
+        out_dir / "it-helpdesk-pilot-threshold-comparison.md"
+    ).read_text(encoding="utf-8")
+    assert "- Gate: `FAIL`" in markdown_output
+    assert "- Block: required preset balanced failed CSV gate" in markdown_output
+    assert "- Block: balanced pass_rate=60.0%" in markdown_output
 
 
 def test_run_csv_gate_rejects_service_id_path_escape_and_writes_nothing_outside_out_dir(

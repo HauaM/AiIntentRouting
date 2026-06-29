@@ -8,6 +8,7 @@ from types import ModuleType
 
 import pytest
 
+from intent_routing.embedding.fake import FakeEmbeddingProvider
 from intent_routing.embedding.provider import (
     clear_embedding_provider_cache,
     get_embedding_provider,
@@ -130,6 +131,25 @@ def test_selecting_fake_provider_does_not_import_flag_embedding(
     assert "FlagEmbedding" not in sys.modules
 
 
+def test_fake_provider_blends_multi_intent_signals_for_clarify_cases() -> None:
+    provider = FakeEmbeddingProvider()
+
+    ambiguous, password, vpn = provider.embed_texts(
+        [
+            "계정 잠금과 VPN 중 어느 절차인지 헷갈립니다",
+            "계정 잠금 해제를 요청합니다",
+            "VPN 접속 신청을 하고 싶습니다",
+        ],
+        max_tokens=256,
+    )
+
+    password_similarity = _dot(ambiguous, password)
+    vpn_similarity = _dot(ambiguous, vpn)
+    assert password_similarity > 0.6
+    assert vpn_similarity > 0.6
+    assert abs(password_similarity - vpn_similarity) < 0.05
+
+
 def test_bge_provider_loads_model_only_when_embedding(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path_factory: pytest.TempPathFactory,
@@ -183,3 +203,10 @@ def test_bge_provider_loads_model_only_when_embedding(
         "HF_HUB_DISABLE_TELEMETRY": "1",
     }
     assert embedding == [[1.0] + [0.0] * 1023]
+
+
+def _dot(left: list[float], right: list[float]) -> float:
+    return sum(
+        left_value * right_value
+        for left_value, right_value in zip(left, right, strict=True)
+    )

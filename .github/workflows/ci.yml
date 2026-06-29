@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: intent_routing
+          POSTGRES_USER: intent
+          POSTGRES_PASSWORD: intent
+        ports:
+          - "55432:5432"
+        options: >-
+          --health-cmd "pg_isready -U intent -d intent_routing"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://intent:intent@127.0.0.1:55432/intent_routing
+      TEST_DATABASE_URL: postgresql+psycopg://intent:intent@127.0.0.1:55432/intent_routing
+      ADMIN_BOOTSTRAP_TOKEN: ci-admin-token
+      INTENT_ROUTING_ENVIRONMENT: dev
+      RAW_TEXT_KEK_ID: ci-kek-001
+      RAW_TEXT_KEK_BASE64: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      RAW_TEXT_LEGACY_KEKS_JSON: "{}"
+      EMBEDDING_PROVIDER: fake
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --group dev
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run mypy src tests
+
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+
+      - name: Start API
+        run: |
+          mkdir -p var/logs
+          uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 8000 > var/logs/api.log 2>&1 &
+          echo $! > var/logs/api.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/readyz; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat var/logs/api.log
+          exit 1
+
+      - name: Run pilot e2e smoke
+        run: |
+          SERVICE_ID="it-helpdesk-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          STATE_PATH="var/pilot/${SERVICE_ID}.state.secret.json"
+          uv run python scripts/run_pilot_e2e_smoke.py \
+            --base-url http://127.0.0.1:8000 \
+            --admin-token "${ADMIN_BOOTSTRAP_TOKEN}" \
+            --service-id "${SERVICE_ID}" \
+            --environment "${INTENT_ROUTING_ENVIRONMENT}" \
+            --state-path "${STATE_PATH}" \
+            --csv-tier standard \
+            --required-preset balanced \
+            --out-dir "var/evidence/${SERVICE_ID}/e2e"
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ ! -f var/logs/api.pid ]; then
+            echo "API PID file not found; nothing to stop."
+            exit 0
+          fi
+
+          pid="$(cat var/logs/api.pid || true)"
+          if [ -z "${pid}" ]; then
+            echo "API PID file is empty; nothing to stop."
+            exit 0
+          fi
+
+          wait_for_exit() {
+            for i in $(seq 1 10); do
+              if ! kill -0 "${pid}" 2>/dev/null; then
+                return 0
+              fi
+              sleep 1
+            done
+            return 1
+          }
+
+          if ! kill -0 "${pid}" 2>/dev/null; then
+            echo "API process ${pid} is not running."
+            exit 0
+          fi
+
+          kill "${pid}" 2>/dev/null || true
+          if ! wait_for_exit; then
+            echo "API process ${pid} did not stop after SIGTERM; sending SIGKILL."
+            kill -9 "${pid}" 2>/dev/null || true
+            wait_for_exit || true
+          fi
+
+      - name: Upload pilot e2e evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilot-e2e-evidence
+          path: |
+            var/evidence/**/*
+            var/logs/api.log
+          retention-days: 14
+
+      - name: Test
+        run: uv run pytest -q
+
+      - name: Validate runtime Compose config
+        run: docker compose --profile runtime config

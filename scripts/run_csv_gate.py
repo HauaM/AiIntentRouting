@@ -5,10 +5,12 @@ import json
 import os
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Protocol
 
 from intent_routing.ops.admin_client import AdminApiClient
+from intent_routing.ops.quality_gate import evaluate_required_preset_gate
 from intent_routing.ops.reports import PRESET_ORDER, render_threshold_report
 
 
@@ -30,6 +32,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         state_path=Path(args.state),
         csv_path=Path(args.csv),
         out_dir=Path(args.out_dir),
+        required_preset=args.require_preset,
     )
 
     print(result["markdown_path"])
@@ -37,6 +40,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     for preset in PRESET_ORDER:
         gate_state = "PASS" if runs[preset]["gate_passed"] else "FAIL"
         print(f"{preset}: {gate_state}")
+    quality_gate = result.get("quality_gate")
+    if quality_gate is not None and quality_gate["passed"] is False:
+        raise SystemExit(1)
 
 
 def run_threshold_comparison(
@@ -47,6 +53,7 @@ def run_threshold_comparison(
     csv_path: Path,
     out_dir: Path,
     http_client: Any | None = None,
+    required_preset: str | None = None,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -90,6 +97,15 @@ def run_threshold_comparison(
                 f"/admin/v1/services/{service_id}/test-runs/{test_run_id}/results"
             )
 
+    quality_gate = None
+    quality_gate_dict = None
+    if required_preset is not None:
+        quality_gate = evaluate_required_preset_gate(
+            runs,
+            required_preset=required_preset,
+        )
+        quality_gate_dict = asdict(quality_gate)
+
     report_json = {
         "service_id": service_id,
         "policy_version": state["policy_version"],
@@ -97,6 +113,8 @@ def run_threshold_comparison(
         "runs": runs,
         "results": results,
     }
+    if quality_gate_dict is not None:
+        report_json["quality_gate"] = quality_gate_dict
     json_path = out_dir / f"{service_id}-threshold-comparison.json"
     markdown_path = out_dir / f"{service_id}-threshold-comparison.md"
     json_path.write_text(
@@ -108,10 +126,11 @@ def run_threshold_comparison(
             service_id=service_id,
             runs=runs,
             results_by_preset=results,
+            required_gate=quality_gate_dict,
         ),
         encoding="utf-8",
     )
-    return {
+    result = {
         "service_id": service_id,
         "policy_version": state["policy_version"],
         "intent_catalog_version": state["intent_catalog_version"],
@@ -120,6 +139,9 @@ def run_threshold_comparison(
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
+    if quality_gate is not None:
+        result["quality_gate"] = quality_gate_dict
+    return result
 
 
 class _TestClientAdminApi:
@@ -176,6 +198,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--state", required=True)
     parser.add_argument("--csv", required=True)
     parser.add_argument("--out-dir", required=True)
+    parser.add_argument(
+        "--require-preset",
+        choices=PRESET_ORDER,
+        help="Exit non-zero if the required threshold preset fails the CSV gate.",
+    )
     return parser.parse_args(argv)
 
 

@@ -12,6 +12,7 @@ def render_threshold_report(
     runs: Mapping[str, Mapping[str, Any]],
     *,
     results_by_preset: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+    required_gate: Mapping[str, Any] | None = None,
 ) -> str:
     missing_presets = [preset for preset in PRESET_ORDER if preset not in runs]
     if missing_presets:
@@ -47,6 +48,9 @@ def render_threshold_report(
         )
         findings.extend(_collect_findings(preset, run))
 
+    if required_gate is not None:
+        lines.extend(_render_required_gate(required_gate))
+
     lines.extend(["", "## Findings"])
     if findings:
         lines.extend(findings)
@@ -69,6 +73,21 @@ def _collect_findings(preset: str, run: Mapping[str, Any]) -> list[str]:
 
 def _format_percent(value: Any) -> str:
     return f"{float(value) * 100:.1f}%"
+
+
+def _render_required_gate(required_gate: Mapping[str, Any]) -> list[str]:
+    lines = [
+        "",
+        "## Required Gate",
+        "",
+        f"- Required preset: `{required_gate['required_preset']}`",
+        f"- Gate: `{'PASS' if bool(required_gate['passed']) else 'FAIL'}`",
+        f"- Pass rate: `{_format_percent(required_gate['pass_rate'])}`",
+        f"- Risk pass rate: `{_format_percent(required_gate['risk_pass_rate'])}`",
+    ]
+    for block_reason in required_gate.get("block_reasons", []):
+        lines.append(f"- Block: {block_reason}")
+    return lines
 
 
 def _render_case_result_sections(

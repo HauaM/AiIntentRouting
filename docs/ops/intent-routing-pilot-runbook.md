@@ -23,7 +23,27 @@ uv run alembic upgrade head
 uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-## 2. Seed Pilot
+## 2. Run Sprint 4 E2E Smoke
+
+Run this process-level smoke before Dify handoff:
+
+```bash
+uv run python scripts/run_pilot_e2e_smoke.py \
+  --base-url http://127.0.0.1:8000 \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --service-id ${SERVICE_ID} \
+  --environment ${INTENT_ROUTING_ENVIRONMENT} \
+  --state-path ${STATE_PATH} \
+  --csv-tier standard \
+  --required-preset balanced \
+  --out-dir var/evidence/${SERVICE_ID}/e2e
+```
+
+Acceptance: `/healthz` is ok, `/readyz` is ready, the required `balanced` gate passes, risk pass rate is 100%, Dify-style smoke decisions pass, and masked logs do not expose raw query text.
+
+## 3. Manual Seed Pilot
+
+Use the remaining commands only for manual diagnostics or when isolating a failed e2e smoke step.
 
 ```bash
 uv run python scripts/seed_pilot.py \
@@ -34,7 +54,7 @@ uv run python scripts/seed_pilot.py \
   --state-path ${STATE_PATH}
 ```
 
-## 3. Compare Thresholds
+## 4. Compare Thresholds
 
 ```bash
 uv run python scripts/run_csv_gate.py \
@@ -47,7 +67,7 @@ uv run python scripts/run_csv_gate.py \
 
 Acceptance: `balanced` passes the 70% gate and risk pass rate is 100%.
 
-## 4. Run Dify-Style Smoke
+## 5. Run Dify-Style Smoke
 
 ```bash
 uv run python scripts/smoke_runtime_dify.py \
@@ -57,7 +77,7 @@ uv run python scripts/smoke_runtime_dify.py \
   --expect-decision confident
 ```
 
-## 5. Trace/Audit Drill
+## 6. Trace/Audit Drill
 
 Pass `--admin-token local-admin-token` in each drill command unless you export `ADMIN_BOOTSTRAP_TOKEN` first.
 
@@ -94,7 +114,7 @@ uv run python scripts/trace_audit_drill.py \
 
 For API key rotation, admin token handling, KEK handling, and raw query approval policy, use `docs/ops/security-operations.md`.
 
-## 6. Failure Drills
+## 7. Failure Drills
 
 Run these manually before Dify handoff:
 
@@ -113,6 +133,7 @@ Run these manually before Dify handoff:
 - [ ] `docker compose up -d postgres` succeeds.
 - [ ] `uv run alembic upgrade head` succeeds.
 - [ ] `uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 8000` starts the API.
+- [ ] `run_pilot_e2e_smoke.py` writes the e2e index, readiness reports, and threshold reports with required `balanced` gate PASS.
 - [ ] `seed_pilot.py` creates service, API key, policy version, catalog version, test run, release, and active release.
 - [ ] `run_csv_gate.py` writes JSON and Markdown reports for `strict`, `balanced`, and `exploratory`.
 - [ ] Balanced CSV gate pass rate is at least 70%.
@@ -125,4 +146,5 @@ Run these manually before Dify handoff:
 ## Closed-Network Deployment
 
 For the Compose-based closed-network pilot path, use `docs/ops/closed-network-deployment.md`.
-For automated fresh-DB evidence generation, use `docs/ops/pilot-readiness-evidence.md`.
+For the Sprint 4 default smoke, use `docs/ops/pilot-e2e-smoke.md`.
+For lower-level readiness evidence generation, use `docs/ops/pilot-readiness-evidence.md`.
