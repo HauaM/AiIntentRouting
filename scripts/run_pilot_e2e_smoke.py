@@ -7,7 +7,10 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from scripts.run_pilot_readiness import run_pilot_readiness
+try:
+    from scripts.run_pilot_readiness import run_pilot_readiness
+except ModuleNotFoundError:  # pragma: no cover - exercised by direct script invocation
+    from run_pilot_readiness import run_pilot_readiness
 
 
 def run_pilot_e2e_smoke(

@@ -14,9 +14,15 @@ from intent_routing.ops.readiness_report import (
     render_readiness_json,
     render_readiness_markdown,
 )
-from scripts import seed_pilot as seed_module
-from scripts.run_csv_gate import run_threshold_comparison
-from scripts.smoke_runtime_dify import run_runtime_smoke
+
+try:
+    from scripts import seed_pilot as seed_module
+    from scripts.run_csv_gate import run_threshold_comparison
+    from scripts.smoke_runtime_dify import run_runtime_smoke
+except ModuleNotFoundError:  # pragma: no cover - exercised by direct script invocation
+    import seed_pilot as seed_module
+    from run_csv_gate import run_threshold_comparison
+    from smoke_runtime_dify import run_runtime_smoke
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CATALOG = ROOT / "docs/pilot/it-helpdesk-pilot-catalog.json"

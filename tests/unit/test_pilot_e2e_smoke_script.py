@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +10,22 @@ import pytest
 
 from scripts import run_pilot_e2e_smoke as e2e_script
 from scripts.run_pilot_readiness import _redact_threshold_report_json
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_pilot_e2e_cli_supports_direct_file_invocation() -> None:
+    result = subprocess.run(
+        [sys.executable, "scripts/run_pilot_e2e_smoke.py", "--help"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "Run pilot end-to-end smoke evidence workflow." in result.stdout
+    assert "ModuleNotFoundError" not in result.stderr
 
 
 def test_threshold_report_json_redacts_shared_evidence_secret_keys(tmp_path: Path) -> None:
