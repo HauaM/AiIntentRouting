@@ -17,6 +17,7 @@ Template path: `docs/ops/branch-protection-evidence-template.md`
 - Contract shorthand:
   - `strict: true`
   - `contexts: ["CI / verify"]`
+  - `enforce_admins: true`
 - Operator status: `<authorized | operator-not-permitted>`
 
 Required rule value:
@@ -42,8 +43,36 @@ gh api repos/HauaM/AiIntentRouting/branches/main/protection \
 Verification command:
 
 ```bash
-uv run python -m json.tool var/evidence/${SERVICE_ID}/branch-protection/main-protection.json
-rg -n '"CI / verify"|"strict": true|"enforce_admins": true' var/evidence/${SERVICE_ID}/branch-protection/main-protection.json
+uv run python - var/evidence/${SERVICE_ID}/branch-protection/main-protection.json <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    protection = json.load(fh)
+
+required_status_checks = protection.get("required_status_checks") or {}
+if required_status_checks.get("strict") is not True:
+    raise SystemExit("required_status_checks.strict is not true")
+
+contexts = set(required_status_checks.get("contexts") or [])
+for check in required_status_checks.get("checks") or []:
+    contexts.update(
+        value
+        for value in (check.get("context"), check.get("name"))
+        if isinstance(value, str)
+    )
+if "CI / verify" not in contexts:
+    raise SystemExit("CI / verify is not a required status check")
+
+enforce_admins = protection.get("enforce_admins")
+admins_enabled = enforce_admins is True or (
+    isinstance(enforce_admins, dict) and enforce_admins.get("enabled") is True
+)
+if not admins_enabled:
+    raise SystemExit("enforce_admins is not enabled")
+
+print("branch protection capture verified")
+PY
 ```
 
 Expected:
@@ -51,7 +80,7 @@ Expected:
 ```text
 CI / verify appears as a required status check
 strict is true
-enforce_admins is true when repository policy requires admin enforcement
+enforce_admins is true, or enforce_admins.enabled is true, when repository policy requires admin enforcement
 ```
 
 ## Required Check Verification
