@@ -127,7 +127,10 @@ def _render_index_markdown(index: Mapping[str, Any]) -> str:
 
 
 def _percent(value: Any) -> str:
-    return f"{float(value) * 100:.1f}%"
+    try:
+        return f"{float(value) * 100:.1f}%"
+    except (TypeError, ValueError):
+        return "0.0%"
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

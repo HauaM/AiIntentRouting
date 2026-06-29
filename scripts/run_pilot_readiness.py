@@ -29,6 +29,19 @@ SMOKE_CASES = {
     "fallback": ("회의실 예약 변경 방법을 알려주세요", "fallback"),
 }
 
+THRESHOLD_EVIDENCE_SECRET_KEYS = {
+    "api_key",
+    "authorization",
+    "query_masked",
+    "query_raw",
+    "state_path",
+}
+
+THRESHOLD_EVIDENCE_SECRET_KEY_FRAGMENTS = (
+    "ciphertext",
+    "encrypted_dek",
+)
+
 
 def run_pilot_readiness(
     *,
@@ -185,22 +198,31 @@ def _get_json(base_url: str, path: str, *, http_client: Any | None) -> dict[str,
 
 def _redact_threshold_report_json(json_path: Path) -> None:
     report = json.loads(json_path.read_text(encoding="utf-8"))
-    redacted = _redact_query_text(report)
+    redacted = redact_threshold_evidence_values(report)
     json_path.write_text(
         json.dumps(redacted, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 
 
-def _redact_query_text(value: Any) -> Any:
+def redact_threshold_evidence_values(value: Any) -> Any:
     if isinstance(value, dict):
         return {
-            key: "REDACTED" if key == "query_masked" else _redact_query_text(item)
+            key: "REDACTED"
+            if _is_threshold_evidence_secret_key(key)
+            else redact_threshold_evidence_values(item)
             for key, item in value.items()
         }
     if isinstance(value, list):
-        return [_redact_query_text(item) for item in value]
+        return [redact_threshold_evidence_values(item) for item in value]
     return value
+
+
+def _is_threshold_evidence_secret_key(key: Any) -> bool:
+    normalized = str(key).lower()
+    return normalized in THRESHOLD_EVIDENCE_SECRET_KEYS or any(
+        fragment in normalized for fragment in THRESHOLD_EVIDENCE_SECRET_KEY_FRAGMENTS
+    )
 
 
 def _admin_headers(admin_token: str) -> dict[str, str]:

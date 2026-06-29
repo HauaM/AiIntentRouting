@@ -76,7 +76,8 @@ uv run python scripts/run_pilot_e2e_smoke.py \
 ## Secret Scan
 
 ```bash
-grep -R -n -E 'Bearer[[:space:]]+|api_key|secret state|encrypted_dek|ciphertext|query_raw' var/evidence/${SERVICE_ID}/e2e
+grep -R -n -E 'Bearer[[:space:]]+|api_key|authorization|secret state|encrypted_dek|ciphertext|query_raw|query_masked' var/evidence/${SERVICE_ID}/e2e \
+  | grep -v -E '"(api_key|authorization|state_path|query_raw|query_masked|[^"]*(encrypted_dek|ciphertext)[^"]*)"[[:space:]]*:[[:space:]]*"REDACTED"'
 ```
 
-Expected result: no matches, except JSON field names explicitly documented as redacted metadata. Do not share `.secret.json` state files, raw API keys, bearer tokens, encrypted DEKs, ciphertext, or raw query text in evidence bundles.
+Expected result: no matches after filtering fields whose value is exactly `REDACTED`. Investigate any remaining match before sharing the evidence bundle. Do not share `.secret.json` state files, raw API keys, bearer tokens, encrypted DEKs, ciphertext, or raw query text in evidence bundles.
