@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 import pytest
 
 from intent_routing.ops.quality_gate import evaluate_required_preset_gate
-
 
 RUNS = {
     "strict": {"gate_passed": False, "pass_rate": 0.5, "risk_pass_rate": 1.0},
