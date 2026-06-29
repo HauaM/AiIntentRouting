@@ -42,6 +42,7 @@ def run_pilot_readiness(
     csv_path: Path | None = None,
     catalog_path: Path = DEFAULT_CATALOG,
     http_client: Any | None = None,
+    required_preset: str | None = None,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     resolved_csv_path = _resolve_csv_path(csv_tier=csv_tier, csv_path=csv_path)
@@ -67,7 +68,9 @@ def run_pilot_readiness(
         csv_path=resolved_csv_path,
         out_dir=out_dir,
         http_client=http_client,
+        required_preset=required_preset,
     )
+    _redact_threshold_report_json(Path(threshold_result["json_path"]))
     smokes = _run_smokes(
         base_url=base_url,
         state=state,
@@ -95,6 +98,8 @@ def run_pilot_readiness(
         "trace_audit": trace_audit,
         "api_key": state["api_key"],
     }
+    if required_preset is not None and "quality_gate" in threshold_result:
+        payload["quality_gate"] = threshold_result["quality_gate"]
     json_path = out_dir / "readiness-report.json"
     markdown_path = out_dir / "readiness-report.md"
     json_path.write_text(render_readiness_json(payload), encoding="utf-8")
@@ -121,6 +126,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         csv_path=args.csv,
         out_dir=args.out_dir,
         catalog_path=args.catalog,
+        required_preset=args.required_preset,
     )
     print(json.dumps({"json_path": result["json_path"], "markdown_path": result["markdown_path"]}))
 
@@ -177,6 +183,26 @@ def _get_json(base_url: str, path: str, *, http_client: Any | None) -> dict[str,
     return {"status_code": response.status_code, "status": status, "body": body}
 
 
+def _redact_threshold_report_json(json_path: Path) -> None:
+    report = json.loads(json_path.read_text(encoding="utf-8"))
+    redacted = _redact_query_text(report)
+    json_path.write_text(
+        json.dumps(redacted, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _redact_query_text(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: "REDACTED" if key == "query_masked" else _redact_query_text(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_query_text(item) for item in value]
+    return value
+
+
 def _admin_headers(admin_token: str) -> dict[str, str]:
     return {
         "X-Admin-Token": admin_token,
@@ -214,6 +240,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--csv", type=Path)
     parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
+    parser.add_argument("--required-preset", choices=("strict", "balanced", "exploratory"))
     parser.add_argument("--out-dir", type=Path, required=True)
     return parser.parse_args(argv)
 

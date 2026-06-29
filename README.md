@@ -27,19 +27,12 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 4. Start the API:
    `uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 8000`
 
-5. Seed the pilot:
-   `uv run python scripts/seed_pilot.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --environment ${INTENT_ROUTING_ENVIRONMENT} --state-path ${STATE_PATH}`
+5. Run the Sprint 4 pilot e2e smoke before Dify handoff:
+   `uv run python scripts/run_pilot_e2e_smoke.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --environment ${INTENT_ROUTING_ENVIRONMENT} --state-path ${STATE_PATH} --csv-tier standard --required-preset balanced --out-dir var/evidence/${SERVICE_ID}/e2e`
 
-6. Compare CSV gate thresholds:
-   `uv run python scripts/run_csv_gate.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --state ${STATE_PATH} --csv docs/pilot/it-helpdesk-pilot-cases.csv --out-dir var/reports`
+   The wrapper performs seed, health/readiness checks, threshold comparison, Dify-style runtime smokes, masked log checks, and writes the e2e evidence index.
 
-7. Run a Dify-style runtime smoke:
-   `uv run python scripts/smoke_runtime_dify.py --base-url http://127.0.0.1:8000 --state ${STATE_PATH} --query "API timeout 500 에러가 납니다" --expect-decision confident`
-
-8. Inspect masked runtime logs:
-   `uv run python scripts/trace_audit_drill.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --state ${STATE_PATH}`
-
-9. Export operations evidence:
+6. Export operations evidence:
    `uv run python scripts/export_ops_evidence.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --out-dir var/evidence/${SERVICE_ID}/ops --window-hours 24 --actor-id ops-evidence --environment ${INTENT_ROUTING_ENVIRONMENT}`
 
    The evidence command writes `ops-evidence.json` and `ops-evidence.md`.
@@ -50,6 +43,7 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 - CI verification: `docs/ops/ci-verification.md`
 - Pilot runbook: `docs/ops/intent-routing-pilot-runbook.md`
 - Closed-network deployment: `docs/ops/closed-network-deployment.md`
+- Pilot e2e smoke: `docs/ops/pilot-e2e-smoke.md`
 - Pilot readiness evidence: `docs/ops/pilot-readiness-evidence.md`
 - Security lifecycle and operations evidence: `docs/ops/security-lifecycle.md`
 - Security operations: `docs/ops/security-operations.md`
