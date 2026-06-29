@@ -238,7 +238,6 @@ def _finalize_rehearsal(
     started_at: datetime,
     steps: list[RehearsalStep],
 ) -> dict[str, Any]:
-    _normalize_rehearsal_evidence_prose(out_dir)
     secret_scan = scan_evidence_directory(out_dir)
     completed_at = datetime.now(UTC)
     manifest = RehearsalManifest(
@@ -406,19 +405,6 @@ def _load_state(state_path: Path) -> Mapping[str, Any]:
     if not isinstance(state, Mapping):
         raise RuntimeError("pilot state file must contain a JSON object")
     return state
-
-
-def _normalize_rehearsal_evidence_prose(out_dir: Path) -> None:
-    for path in out_dir.rglob("*.md"):
-        text = path.read_text(encoding="utf-8")
-        normalized = text.replace(
-            "No raw plaintext, bearer tokens, API keys, KEK material, ciphertext, "
-            "encrypted DEKs, or secret state paths are intentionally exported.",
-            "No raw plaintext, bearer tokens, API keys, KEK material, encrypted "
-            "payload material, or secret state paths are intentionally exported.",
-        )
-        if normalized != text:
-            path.write_text(normalized, encoding="utf-8")
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
