@@ -43,6 +43,10 @@ The Compose runtime profile mounts `/models/bge-m3:/models/bge-m3:ro`.
 The application must use `BGE_M3_MODEL_PATH=/models/bge-m3` and CPU-only inference.
 Use `docs/ops/bge-m3-closed-network.md` for model package import, checksum evidence, and benchmark interpretation.
 
+Before enabling any Dify traffic, run the package preflight and benchmark from that
+runbook. `scripts/verify_bge_m3_package.py` must produce package checksum evidence
+before `scripts/benchmark_bge_m3.py` is accepted as runtime readiness evidence.
+
 ## 4. Environment File
 
 Copy `.env.closed-network.example` to a real secret-managed environment file:
@@ -100,7 +104,8 @@ curl -s http://127.0.0.1:8000/readyz
 
 ## 7. Pilot Seed And Evidence
 
-Run the pilot readiness automation after the API is ready:
+Run the pilot readiness automation after the API is ready and after BGE-M3 package
+preflight plus benchmark evidence has been captured:
 
 ```bash
 export SERVICE_ID=it-helpdesk-pilot-$(date +%Y%m%d%H%M%S)
@@ -117,6 +122,8 @@ uv run python scripts/run_pilot_readiness.py \
 ```
 
 The `standard` CSV tier is the 50-row pilot default. Use `minimum` for 30 rows, `high-confidence` for 100 rows, or `custom --csv <path>` for an operator-supplied dataset.
+Do not connect Dify HTTP Request nodes to this API until the package preflight,
+benchmark, readiness, and smoke evidence are all present in the pilot evidence package.
 
 ## 8. Operations Evidence And Security Lifecycle
 
