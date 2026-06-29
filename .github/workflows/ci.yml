@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: intent_routing
+          POSTGRES_USER: intent
+          POSTGRES_PASSWORD: intent
+        ports:
+          - "55432:5432"
+        options: >-
+          --health-cmd "pg_isready -U intent -d intent_routing"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://intent:intent@127.0.0.1:55432/intent_routing
+      TEST_DATABASE_URL: postgresql+psycopg://intent:intent@127.0.0.1:55432/intent_routing
+      ADMIN_BOOTSTRAP_TOKEN: ci-admin-token
+      INTENT_ROUTING_ENVIRONMENT: dev
+      RAW_TEXT_KEK_ID: ci-kek-001
+      RAW_TEXT_KEK_BASE64: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      RAW_TEXT_LEGACY_KEKS_JSON: "{}"
+      EMBEDDING_PROVIDER: fake
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --group dev
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run mypy src tests
+
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+
+      - name: Test
+        run: uv run pytest -q
+
+      - name: Validate runtime Compose config
+        run: docker compose --profile runtime config

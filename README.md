@@ -47,6 +47,7 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 ## Documents
 
 - Local runbook: `docs/ops/intent-routing-local-runbook.md`
+- CI verification: `docs/ops/ci-verification.md`
 - Pilot runbook: `docs/ops/intent-routing-pilot-runbook.md`
 - Closed-network deployment: `docs/ops/closed-network-deployment.md`
 - Pilot readiness evidence: `docs/ops/pilot-readiness-evidence.md`

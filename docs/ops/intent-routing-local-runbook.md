@@ -42,6 +42,8 @@ Expected health response:
 
 ## Verification
 
+For the GitHub CI baseline and the matching local reproduction commands, see `docs/ops/ci-verification.md`.
+
 ```bash
 uv run ruff check .
 uv run mypy src tests
