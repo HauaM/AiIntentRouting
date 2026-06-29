@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 from intent_routing.ops.rehearsal import (
     EvidenceFile,
     RehearsalManifest,
     RehearsalStep,
+    SecretScanFinding,
     SecretScanResult,
     manifest_passed,
     render_rehearsal_json,
@@ -98,7 +100,7 @@ def test_manifest_json_and_markdown_are_secret_safe() -> None:
     assert "REDACTED" in rendered_markdown
 
 
-def test_secret_scan_blocks_secret_state_and_raw_token_markers(tmp_path) -> None:
+def test_secret_scan_blocks_secret_state_and_raw_token_markers(tmp_path: Path) -> None:
     (tmp_path / "pilot.state.secret.json").write_text(
         '{"state_path": "var/pilot/prod.state.secret.json"}\n',
         encoding="utf-8",
@@ -141,7 +143,7 @@ def test_secret_scan_blocks_secret_state_and_raw_token_markers(tmp_path) -> None
     assert all(finding.line_number >= 1 for finding in result.findings)
 
 
-def test_secret_scan_allows_redacted_evidence_fields(tmp_path) -> None:
+def test_secret_scan_allows_redacted_evidence_fields(tmp_path: Path) -> None:
     (tmp_path / "evidence.json").write_text(
         json.dumps(
             {
@@ -185,6 +187,38 @@ def test_secret_scan_allows_redacted_evidence_fields(tmp_path) -> None:
     result = scan_evidence_directory(tmp_path)
 
     assert result == SecretScanResult(passed=True, findings=[])
+
+
+def test_secret_scan_fails_closed_for_missing_or_invalid_directory(
+    tmp_path: Path,
+) -> None:
+    missing_root = tmp_path / "missing"
+    file_root = tmp_path / "evidence.txt"
+    file_root.write_text("plain evidence\n", encoding="utf-8")
+
+    missing_result = scan_evidence_directory(missing_root)
+    file_result = scan_evidence_directory(file_root)
+
+    assert missing_result == SecretScanResult(
+        passed=False,
+        findings=[
+            SecretScanFinding(
+                path=str(missing_root),
+                marker="missing_evidence_directory",
+                line_number=0,
+            )
+        ],
+    )
+    assert file_result == SecretScanResult(
+        passed=False,
+        findings=[
+            SecretScanFinding(
+                path=str(file_root),
+                marker="invalid_evidence_directory",
+                line_number=0,
+            )
+        ],
+    )
 
 
 def _manifest(steps: list[RehearsalStep]) -> RehearsalManifest:

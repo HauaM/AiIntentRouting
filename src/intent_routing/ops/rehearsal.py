@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 REDACTED = "REDACTED"
 VALID_STATUSES = {"pass", "fail", "skip"}
@@ -147,6 +147,29 @@ def render_rehearsal_markdown(manifest: RehearsalManifest) -> str:
 
 
 def scan_evidence_directory(root: Path) -> SecretScanResult:
+    if not root.exists():
+        return SecretScanResult(
+            passed=False,
+            findings=[
+                SecretScanFinding(
+                    path=str(root),
+                    marker="missing_evidence_directory",
+                    line_number=0,
+                )
+            ],
+        )
+    if not root.is_dir():
+        return SecretScanResult(
+            passed=False,
+            findings=[
+                SecretScanFinding(
+                    path=str(root),
+                    marker="invalid_evidence_directory",
+                    line_number=0,
+                )
+            ],
+        )
+
     findings: list[SecretScanFinding] = []
     for path in sorted(item for item in root.rglob("*") if item.is_file()):
         display_path = str(path.relative_to(root))
@@ -169,7 +192,7 @@ def _manifest_payload(manifest: RehearsalManifest) -> dict[str, Any]:
     payload["started_at"] = _format_datetime(manifest.started_at)
     payload["completed_at"] = _format_datetime(manifest.completed_at)
     payload["final_status"] = "PASS" if manifest_passed(manifest) else "FAIL"
-    return _redact_manifest(payload)
+    return cast(dict[str, Any], _redact_manifest(payload))
 
 
 def _format_datetime(value: datetime) -> str:
