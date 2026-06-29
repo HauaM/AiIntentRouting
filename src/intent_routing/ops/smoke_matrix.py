@@ -181,4 +181,10 @@ def _format_actual(item: Mapping[str, Any]) -> str:
         parts.append(f"error={actual_error_code}")
     if actual_route_key is not None:
         parts.append(f"route={actual_route_key}")
+    error_type = item.get("error_type")
+    error_message = item.get("error_message")
+    if error_type is not None:
+        parts.append(f"type={error_type}")
+    if error_message is not None:
+        parts.append(f"message={error_message}")
     return "<br>".join(parts)

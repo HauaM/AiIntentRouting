@@ -86,14 +86,16 @@ def _run_case(
     request_id = f"dify-smoke-matrix-{case.name}"
     headers = _headers_for_case(case=case, state=state, request_id=request_id)
     body = _body_for_case(case=case, request_id=request_id)
-    response = _post(
-        base_url=base_url,
-        headers=headers,
-        body=body,
-        timeout_seconds=timeout_seconds,
-        http_client=http_client,
-        state=state,
-    )
+    try:
+        response = _post(
+            base_url=base_url,
+            headers=headers,
+            body=body,
+            timeout_seconds=timeout_seconds,
+            http_client=http_client,
+        )
+    except httpx.RequestError as exc:
+        return _request_failure_result(case=case, request_id=request_id, exc=exc, state=state)
     response_body = _response_body(response)
     actual_decision = response_body.get("decision")
     actual_error_code = _error_code(response_body)
@@ -122,6 +124,31 @@ def _run_case(
         "request_id": response_body.get("request_id", request_id),
         "release_version": response_body.get("release_version"),
         "passed": passed,
+    }
+
+
+def _request_failure_result(
+    *,
+    case: DifySmokeCase,
+    request_id: str,
+    exc: httpx.RequestError,
+    state: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "case": case.name,
+        "mutation": case.mutation,
+        "expected_status": case.expected_status,
+        "actual_status": None,
+        "expected_decision": case.expected_decision,
+        "actual_decision": None,
+        "expected_error_code": case.expected_error_code,
+        "actual_error_code": None,
+        "expected_route_key": case.expected_route_key,
+        "actual_route_key": None,
+        "request_id": request_id,
+        "error_type": type(exc).__name__,
+        "error_message": _redact_error_text(str(exc), state=state),
+        "passed": False,
     }
 
 
@@ -164,23 +191,18 @@ def _post(
     body: dict[str, Any],
     timeout_seconds: float,
     http_client: Any | None,
-    state: Mapping[str, Any],
 ) -> httpx.Response:
-    try:
-        if http_client is not None:
-            return cast(
-                "httpx.Response",
-                http_client.post("/v1/intent-route", headers=headers, json=body),
-            )
-        return httpx.post(
-            f"{base_url.rstrip('/')}/v1/intent-route",
-            headers=headers,
-            json=body,
-            timeout=timeout_seconds,
+    if http_client is not None:
+        return cast(
+            "httpx.Response",
+            http_client.post("/v1/intent-route", headers=headers, json=body),
         )
-    except httpx.RequestError as exc:
-        message = _redact_error_text(str(exc), state=state)
-        raise RuntimeError(f"request failed: {message}") from exc
+    return httpx.post(
+        f"{base_url.rstrip('/')}/v1/intent-route",
+        headers=headers,
+        json=body,
+        timeout=timeout_seconds,
+    )
 
 
 def _response_body(response: httpx.Response) -> dict[str, Any]:
@@ -207,6 +229,9 @@ def _redact_error_text(value: str, *, state: Mapping[str, Any]) -> str:
     api_key = state.get("api_key")
     if isinstance(api_key, str) and api_key:
         redacted = redacted.replace(api_key, "REDACTED")
+    for case in default_dify_smoke_cases():
+        if case.query:
+            redacted = redacted.replace(case.query, "REDACTED_QUERY")
     return redacted
 
 

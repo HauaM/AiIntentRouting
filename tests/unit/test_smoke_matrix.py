@@ -12,6 +12,7 @@ from intent_routing.ops.smoke_matrix import (
     render_dify_smoke_matrix_json,
     render_dify_smoke_matrix_markdown,
 )
+from scripts import run_dify_smoke_matrix as smoke_matrix_script
 from scripts.run_dify_smoke_matrix import run_dify_smoke_matrix
 
 
@@ -123,21 +124,85 @@ def test_run_dify_smoke_matrix_writes_reports_and_returns_failures(
         assert forbidden not in markdown_report
 
 
-def test_run_dify_smoke_matrix_raises_redacted_error_on_request_failure() -> None:
-    client = _RaisingHttpClient()
+def test_request_failure_writes_redacted_failure_row_and_continues(
+    tmp_path: Path,
+) -> None:
+    client = _OneFailureHttpClient()
 
-    with pytest.raises(RuntimeError) as exc_info:
-        run_dify_smoke_matrix(
-            base_url="http://example.test",
-            state=_state(),
-            out_dir=Path("unused"),
-            http_client=client,
+    result = run_dify_smoke_matrix(
+        base_url="http://example.test",
+        state=_state(),
+        out_dir=tmp_path,
+        http_client=client,
+    )
+
+    assert result["passed"] is False
+    assert len(result["results"]) == len(default_dify_smoke_cases())
+    failed = result["results"][0]
+    assert failed["case"] == "confident"
+    assert failed["passed"] is False
+    assert failed["actual_status"] is None
+    assert failed["error_type"] == "ConnectError"
+    assert "REDACTED" in failed["error_message"]
+    assert client.calls[-1]["case"] == "invalid_body_422"
+
+    json_report = (tmp_path / "dify-smoke-matrix.json").read_text(encoding="utf-8")
+    markdown_report = (tmp_path / "dify-smoke-matrix.md").read_text(encoding="utf-8")
+    serialized = json_report + markdown_report
+    assert "ConnectError" in json_report
+    assert "ConnectError" in markdown_report
+    assert "dify-smoke-matrix-confidence" not in serialized
+    for forbidden in (
+        "irt_secret_value",
+        "Bearer",
+        "API timeout 500 에러가 납니다",
+    ):
+        assert forbidden not in serialized
+
+
+def test_main_exits_nonzero_after_writing_redacted_request_failure_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    state_path = tmp_path / "pilot.state.secret.json"
+    state_path.write_text(json.dumps(_state()), encoding="utf-8")
+    out_dir = tmp_path / "evidence"
+
+    def raise_connect_error(_url: str, **_kwargs: Any) -> httpx.Response:
+        request = httpx.Request("POST", "http://example.test/v1/intent-route")
+        raise httpx.ConnectError(
+            "Bearer irt_secret_value refused for API timeout 500 에러가 납니다",
+            request=request,
         )
 
-    message = str(exc_info.value)
-    assert "request failed" in message
-    assert "irt_secret_value" not in message
-    assert "Bearer" not in message
+    monkeypatch.setattr(smoke_matrix_script.httpx, "post", raise_connect_error)
+
+    with pytest.raises(SystemExit) as exc_info:
+        smoke_matrix_script.main(
+            [
+                "--base-url",
+                "http://example.test",
+                "--state",
+                str(state_path),
+                "--out-dir",
+                str(out_dir),
+            ]
+        )
+
+    assert exc_info.value.code == 1
+    assert (out_dir / "dify-smoke-matrix.json").exists()
+    assert (out_dir / "dify-smoke-matrix.md").exists()
+    captured = capsys.readouterr()
+    terminal_output = captured.out + captured.err
+    assert "dify-smoke-matrix.json" in terminal_output
+    for forbidden in (
+        "irt_secret_value",
+        "Bearer",
+        "API timeout 500 에러가 납니다",
+        ".secret.json",
+    ):
+        assert forbidden not in terminal_output
 
 
 class _MatrixHttpClient:
@@ -179,10 +244,51 @@ class _MatrixHttpClient:
         )
 
 
-class _RaisingHttpClient:
-    def post(self, *_args: Any, **_kwargs: Any) -> httpx.Response:
-        request = httpx.Request("POST", "http://example.test/v1/intent-route")
-        raise httpx.ConnectError("Bearer irt_secret_value refused", request=request)
+class _OneFailureHttpClient:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def post(
+        self,
+        path: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+    ) -> httpx.Response:
+        case_index = len(self.calls)
+        case = default_dify_smoke_cases()[case_index]
+        self.calls.append(
+            {"case": case.name, "path": path, "headers": headers, "json": json}
+        )
+        if case_index == 0:
+            request = httpx.Request("POST", "http://example.test/v1/intent-route")
+            raise httpx.ConnectError(
+                "Bearer irt_secret_value refused for API timeout 500 에러가 납니다",
+                request=request,
+            )
+        if case.name == "wrong_api_key_401":
+            return httpx.Response(
+                401,
+                json={"status": "error", "error": {"code": "AUTHENTICATION_FAILED"}},
+            )
+        if case.name == "wrong_service_403":
+            return httpx.Response(
+                403,
+                json={"status": "error", "error": {"code": "SERVICE_SCOPE_DENIED"}},
+            )
+        if case.name == "invalid_body_422":
+            return httpx.Response(
+                422,
+                json={"status": "error", "error": {"code": "INVALID_REQUEST"}},
+            )
+        return httpx.Response(
+            200,
+            json={
+                "decision": case.expected_decision,
+                "route_key": case.expected_route_key,
+                "trace_id": f"trace-{case.name}",
+            },
+        )
 
 
 def _state() -> dict[str, str]:
