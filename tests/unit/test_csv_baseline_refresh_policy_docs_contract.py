@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / "docs/pilot/csv-baseline-refresh-policy.md"
 README = ROOT / "docs/pilot/README.md"
+PILOT_REHEARSAL = ROOT / "docs/ops/pilot-rehearsal.md"
 
 
 def test_csv_baseline_refresh_policy_documents_required_contract() -> None:
@@ -26,7 +27,16 @@ def test_csv_baseline_refresh_policy_documents_required_contract() -> None:
         "approval ID",
         "risk_pass_rate",
         "compare_csv_baseline.py freeze",
+        "uv run python scripts/compare_csv_baseline.py freeze",
+        "--threshold-report var/evidence/${SERVICE_ID}/rehearsal/e2e/${SERVICE_ID}-threshold-comparison.json",
+        "--csv docs/pilot/it-helpdesk-pilot-cases.csv",
+        "--preset balanced",
+        "--baseline-id it-helpdesk-pilot-standard-YYYYMMDD",
+        "--out docs/pilot/it-helpdesk-pilot-baseline.json",
         "compare_csv_baseline.py compare",
+        "uv run python scripts/compare_csv_baseline.py compare",
+        "--baseline docs/pilot/it-helpdesk-pilot-baseline.json",
+        "--out-dir var/evidence/${SERVICE_ID}/rehearsal/csv-baseline",
         "no raw query text",
         "Baseline JSON must not contain raw query text or secret-bearing fields.",
     ):
@@ -37,6 +47,15 @@ def test_pilot_readme_declares_policy_source_of_truth_for_regression_gate() -> N
     text = README.read_text(encoding="utf-8")
 
     assert (
-        "docs/pilot/csv-baseline-refresh-policy.md is the source of truth for "
+        "docs/pilot/csv-baseline-refresh-policy.md"
+    ) in text
+    assert (
+        "is the source of truth for "
         "the CSV Baseline Regression Gate"
     ) in text
+
+
+def test_pilot_rehearsal_runbook_links_csv_baseline_refresh_policy() -> None:
+    text = PILOT_REHEARSAL.read_text(encoding="utf-8")
+
+    assert "docs/pilot/csv-baseline-refresh-policy.md" in text
