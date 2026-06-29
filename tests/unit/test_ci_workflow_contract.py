@@ -27,6 +27,19 @@ def test_ci_workflow_runs_required_verification_commands() -> None:
         assert expected in text
 
 
+def test_ci_locked_install_uses_repository_lockfile() -> None:
+    text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    gitignore_entries = {
+        line.strip()
+        for line in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
+
+    assert "uv sync --locked --group dev" in text
+    assert (ROOT / "uv.lock").exists()
+    assert "uv.lock" not in gitignore_entries
+
+
 def test_ci_workflow_uses_fake_embedding_and_no_real_secrets() -> None:
     text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
