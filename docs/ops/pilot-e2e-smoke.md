@@ -1,6 +1,6 @@
 # Pilot End-to-End Smoke
 
-Preferred path: run the Sprint 5 pilot rehearsal wrapper before Dify handoff. It calls this Sprint 4 e2e smoke, runs the Dify smoke matrix and ops evidence export, performs the rehearsal secret scan, and writes `pilot-rehearsal-manifest.json` and `pilot-rehearsal-manifest.md`.
+Preferred path: run the Sprint 5 pilot rehearsal wrapper before Dify handoff. It calls this Sprint 4 e2e smoke, runs the Dify smoke matrix, CSV baseline comparison, and ops evidence export, performs the rehearsal secret scan, and writes `pilot-rehearsal-manifest.json` and `pilot-rehearsal-manifest.md`.
 
 Use this Sprint 4 smoke directly only as a lower-level diagnostic. It seeds a unique pilot service, checks `/healthz` and `/readyz`, runs the CSV threshold comparison with the required `balanced` gate, executes Dify-style runtime smokes, checks masked logs, and writes an e2e evidence index.
 
@@ -27,6 +27,7 @@ uv run python scripts/run_pilot_rehearsal.py \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
   --required-preset balanced \
+  --baseline docs/pilot/it-helpdesk-pilot-baseline.json \
   --out-dir var/evidence/${SERVICE_ID}/rehearsal
 ```
 
@@ -59,6 +60,7 @@ uv run python scripts/run_pilot_rehearsal.py \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
   --required-preset balanced \
+  --baseline docs/pilot/it-helpdesk-pilot-baseline.json \
   --bge-model-path /models/bge-m3 \
   --bge-expected-sha256 ${BGE_M3_MODEL_SHA256} \
   --run-bge-benchmark \
@@ -89,6 +91,8 @@ Preferred rehearsal outputs:
 - `e2e/pilot-e2e-smoke-index.md`
 - `dify/dify-smoke-matrix.json`
 - `dify/dify-smoke-matrix.md`
+- `csv-baseline/csv-baseline-comparison.json`
+- `csv-baseline/csv-baseline-comparison.md`
 - `ops/ops-evidence.json`
 - `ops/ops-evidence.md`
 
@@ -106,7 +110,8 @@ Diagnostic e2e-only outputs:
 
 - Rehearsal manifest final status is PASS.
 - Required rehearsal steps are PASS.
-- Local-only BGE steps and the Task 3 CSV baseline placeholder are SKIP in local mode.
+- Local-only BGE steps are SKIP in local mode.
+- The `csv-baseline` step is PASS when `--baseline docs/pilot/it-helpdesk-pilot-baseline.json` is provided.
 - Rehearsal secret scan has no findings.
 - `/healthz` returns ok.
 - `/readyz` returns ready.

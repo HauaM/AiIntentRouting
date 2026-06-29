@@ -28,9 +28,9 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
    `uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 8000`
 
 5. Run the Sprint 5 pilot rehearsal before Dify handoff:
-   `uv run python scripts/run_pilot_rehearsal.py --mode local --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --environment ${INTENT_ROUTING_ENVIRONMENT} --state-path ${STATE_PATH} --csv-tier standard --required-preset balanced --out-dir var/evidence/${SERVICE_ID}/rehearsal`
+   `uv run python scripts/run_pilot_rehearsal.py --mode local --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --environment ${INTENT_ROUTING_ENVIRONMENT} --state-path ${STATE_PATH} --csv-tier standard --required-preset balanced --baseline docs/pilot/it-helpdesk-pilot-baseline.json --out-dir var/evidence/${SERVICE_ID}/rehearsal`
 
-   The rehearsal performs the Sprint 4 e2e smoke, Dify smoke matrix, ops evidence export, CSV baseline placeholder, and recursive secret scan, then writes `pilot-rehearsal-manifest.json` and `pilot-rehearsal-manifest.md`.
+   The rehearsal performs the Sprint 4 e2e smoke, Dify smoke matrix, CSV baseline comparison, ops evidence export, and recursive secret scan, then writes `pilot-rehearsal-manifest.json` and `pilot-rehearsal-manifest.md`.
 
 6. Use the lower-level Sprint 4 e2e smoke only for diagnosis:
    `uv run python scripts/run_pilot_e2e_smoke.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --environment ${INTENT_ROUTING_ENVIRONMENT} --state-path ${STATE_PATH} --csv-tier standard --required-preset balanced --out-dir var/evidence/${SERVICE_ID}/rehearsal/e2e`
@@ -50,6 +50,7 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 - Local runbook: `docs/ops/intent-routing-local-runbook.md`
 - CI verification: `docs/ops/ci-verification.md`
 - Branch protection required checks: `docs/ops/branch-protection.md`
+- Pilot rehearsal operations: `docs/ops/pilot-rehearsal.md`
 - Pilot runbook: `docs/ops/intent-routing-pilot-runbook.md`
 - Closed-network deployment: `docs/ops/closed-network-deployment.md`
 - Pilot e2e smoke: `docs/ops/pilot-e2e-smoke.md`
@@ -57,3 +58,5 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 - Security lifecycle and operations evidence: `docs/ops/security-lifecycle.md`
 - Security operations: `docs/ops/security-operations.md`
 - Dify guide: `docs/integrations/dify-http-request-node.md`
+- Dify dry-run rehearsal: `docs/integrations/dify-dry-run-rehearsal.md`
+- Pilot CSV fixtures and baseline: `docs/pilot/README.md`

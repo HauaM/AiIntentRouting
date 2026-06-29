@@ -1,6 +1,6 @@
 # Pilot Readiness Evidence
 
-For Sprint 5 pilot handoff, prefer `scripts/run_pilot_rehearsal.py`; it wraps the Sprint 4 e2e smoke, Dify smoke matrix, ops evidence export, CSV baseline placeholder, and rehearsal secret scan into one manifest. Use this page when you need to run the lower-level readiness workflow directly after the API is running and `/readyz` returns ready.
+For Sprint 5 pilot handoff, prefer `scripts/run_pilot_rehearsal.py`; it wraps the Sprint 4 e2e smoke, Dify smoke matrix, CSV baseline comparison, ops evidence export, and rehearsal secret scan into one manifest. Use this page when you need to run the lower-level readiness workflow directly after the API is running and `/readyz` returns ready.
 
 Default Sprint 5 rehearsal command:
 
@@ -14,6 +14,7 @@ uv run python scripts/run_pilot_rehearsal.py \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
   --required-preset balanced \
+  --baseline docs/pilot/it-helpdesk-pilot-baseline.json \
   --out-dir var/evidence/${SERVICE_ID}/rehearsal
 ```
 
@@ -29,6 +30,7 @@ uv run python scripts/run_pilot_rehearsal.py \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
   --required-preset balanced \
+  --baseline docs/pilot/it-helpdesk-pilot-baseline.json \
   --bge-model-path /models/bge-m3 \
   --bge-expected-sha256 ${BGE_M3_MODEL_SHA256} \
   --run-bge-benchmark \

@@ -24,7 +24,7 @@ Password examples in the catalog are seed examples for embedding separation only
 
 ## CSV Baseline Regression Gate
 
-`it-helpdesk-pilot-baseline.json` freezes the standard 50-row pilot CSV expectations for the `balanced` preset. It stores case IDs, expected results, decisions, intents, route keys, the CSV SHA-256, and the required pass-rate thresholds. It intentionally does not store raw `query` text or secret-bearing fields.
+`it-helpdesk-pilot-baseline.json` freezes the standard 50-row pilot CSV expectations for the `balanced` preset. It stores case IDs, expected results, decisions, intents, route keys, the CSV SHA-256, and the required pass-rate thresholds. It intentionally does not store raw `query` text or secret-bearing fields. `scripts/compare_csv_baseline.py compare --csv docs/pilot/it-helpdesk-pilot-cases.csv` verifies the current dataset SHA-256 before accepting a rehearsal comparison.
 
 Refresh the baseline only when a reviewer intentionally accepts changed pilot behavior, such as a curated CSV update, catalog route change, or threshold policy change. Do not refresh it merely to make a failing rehearsal pass.
 
