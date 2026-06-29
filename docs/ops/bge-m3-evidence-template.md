@@ -4,7 +4,7 @@ Use `docs/ops/bge-m3-evidence-template.md` to record the closed-network BGE-M3
 package, benchmark, rehearsal, offline runtime, and pilot go/no-go evidence.
 This procedure is documented here for operators to execute on the approved
 closed-network host; do not commit `var/evidence`, `var/pilot`, model files,
-benchmark output, or `*.secret.json` files.
+benchmark output, or generated secret state files.
 
 ## Status
 
