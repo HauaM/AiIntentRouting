@@ -1,6 +1,6 @@
 # Security Operations Runbook
 
-This runbook defines the Sprint 2 closed-network security operations contract for API keys, admin token handling, KEK handling, and raw query decrypt.
+This runbook defines the closed-network security operations contract for API keys, admin token handling, KEK handling, and raw query decrypt.
 
 ## API key lifecycle
 
@@ -57,10 +57,24 @@ KEK requirements:
 
 - Store KEK material in an approved internal secret manager, HSM, or KMS-equivalent control.
 - Use separate KEKs per environment.
-- Never place real KEK material in `.env.closed-network.example`, reports, tickets, or application logs.
-- Treat Sprint 2 as a single active KEK implementation.
+- Never place real base64 KEKs in `.env.closed-network.example`, reports, tickets, chat, or application logs.
+- Base64 KEKs must only live in the approved secret manager or deployment secret channel.
+- The runtime encrypts new raw text with a single active KEK while legacy KEKs are configured only for decrypting records during rotation.
 
-Current limitation: changing `RAW_TEXT_KEK_ID` or `RAW_TEXT_KEK_BASE64` without a DEK rewrap migration makes previously encrypted raw text undecryptable. A safe KEK rewrap workflow must be implemented and verified in a later sprint before production KEK rotation.
+Use the Sprint 3 KEK rewrap workflow in `docs/ops/security-lifecycle.md` before changing `RAW_TEXT_KEK_ID` or `RAW_TEXT_KEK_BASE64` for a service with encrypted raw text. The workflow covers `RAW_TEXT_LEGACY_KEKS_JSON`, dry-run, execute with approval ID, raw-text key summary validation, rollback, and secret leak checks.
+
+After KEK rewrap or runtime raw-query retention, export consolidated operations evidence:
+
+```bash
+uv run python scripts/export_ops_evidence.py \
+  --base-url http://127.0.0.1:8000 \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --service-id ${SERVICE_ID} \
+  --out-dir var/evidence/${SERVICE_ID}/ops \
+  --window-hours 24 \
+  --actor-id ops-evidence \
+  --environment ${INTENT_ROUTING_ENVIRONMENT:-dev}
+```
 
 ## Raw query decrypt
 

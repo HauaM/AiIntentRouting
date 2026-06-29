@@ -118,7 +118,25 @@ uv run python scripts/run_pilot_readiness.py \
 
 The `standard` CSV tier is the 50-row pilot default. Use `minimum` for 30 rows, `high-confidence` for 100 rows, or `custom --csv <path>` for an operator-supplied dataset.
 
-## 8. Rollback
+## 8. Operations Evidence And Security Lifecycle
+
+After readiness evidence, export the operations evidence package:
+
+```bash
+uv run python scripts/export_ops_evidence.py \
+  --base-url http://127.0.0.1:8000 \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --service-id ${SERVICE_ID} \
+  --out-dir var/evidence/${SERVICE_ID}/ops \
+  --window-hours 24 \
+  --actor-id ops-evidence \
+  --environment pilot
+```
+
+Expected outputs are `ops-evidence.json` and `ops-evidence.md`.
+Use `docs/ops/security-lifecycle.md` for KEK rewrap, runtime raw-query retention, rollback, and secret leak checks.
+
+## 9. Rollback
 
 Rollback is image plus release oriented:
 

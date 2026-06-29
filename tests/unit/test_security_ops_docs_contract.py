@@ -23,6 +23,9 @@ def test_security_operations_runbook_documents_required_controls() -> None:
         "single active KEK",
         "rewrap",
         "approval ID",
+        "docs/ops/security-lifecycle.md",
+        "Sprint 3 KEK rewrap workflow",
+        "scripts/export_ops_evidence.py",
         "raw_query.viewed",
     ):
         assert expected in text

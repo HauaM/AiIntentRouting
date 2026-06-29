@@ -30,6 +30,20 @@ def test_operator_docs_link_closed_network_deployment_runbook() -> None:
         assert "docs/ops/closed-network-deployment.md" in text
 
 
+def test_operator_docs_link_security_lifecycle_and_ops_evidence_workflow() -> None:
+    texts = [
+        (ROOT / "README.md").read_text(encoding="utf-8"),
+        (ROOT / "docs/ops/closed-network-deployment.md").read_text(encoding="utf-8"),
+        (ROOT / "docs/ops/pilot-readiness-evidence.md").read_text(encoding="utf-8"),
+    ]
+
+    for text in texts:
+        assert "docs/ops/security-lifecycle.md" in text
+        assert "scripts/export_ops_evidence.py" in text
+        assert "ops-evidence.json" in text
+        assert "ops-evidence.md" in text
+
+
 def test_dify_docs_use_actual_pilot_intent_and_route_keys() -> None:
     texts = [
         (ROOT / "docs/integrations/dify-http-request-node.md").read_text(

@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from intent_routing.health import _alembic_head_revision
 from intent_routing.main import create_app
 
 
@@ -81,7 +82,7 @@ class _ReadySession:
         if "SELECT 1" in sql:
             return _ScalarResult(1)
         if "alembic_version" in sql:
-            return _ScalarResult("0003_runtime_log_idx")
+            return _ScalarResult(_alembic_head_revision())
         if "pg_extension" in sql:
             return _ScalarResult(1)
         raise AssertionError(f"unexpected readiness SQL: {sql}")

@@ -4,15 +4,17 @@ from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from os import environ
-from typing import Annotated, Any, NoReturn
+from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID, uuid4
 
+from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
+from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekError
 from intent_routing.db.models import (
     ApiKey,
     Intent,
@@ -45,7 +47,12 @@ from intent_routing.embedding.provider import get_embedding_provider
 from intent_routing.logging.audit import (
     decrypt_runtime_raw_query,
     raw_query_view_after_state,
+    runtime_log_encrypted_raw_query,
     source_ip_from_request,
+)
+from intent_routing.ops.metrics import (
+    raw_text_key_summary_from_counts,
+    safe_audit_log_item,
 )
 from intent_routing.security.admin_auth import (
     AdminContext,
@@ -57,7 +64,8 @@ from intent_routing.security.api_keys import (
     generate_api_key_secret,
     hash_secret,
 )
-from intent_routing.security.encryption import EncryptedText, EnvelopeEncryptor
+from intent_routing.security.encryption import EncryptedText
+from intent_routing.security.keyring import RawTextKeyring, load_raw_text_keyring
 from intent_routing.security.pii import mask_pii
 from intent_routing.testing.csv_runner import (
     CsvTestRunSummary,
@@ -384,6 +392,75 @@ class RuntimeLogResponse(BaseModel):
     created_at: datetime
 
 
+class LatencyMetricsResponse(BaseModel):
+    p50: int | None
+    p95: int | None
+    max: int | None
+
+
+class RawQueryRetentionMetricsResponse(BaseModel):
+    encrypted_count: int
+    incomplete_count: int
+    redacted_count: int
+
+
+class TopRouteKeyResponse(BaseModel):
+    route_key: str
+    count: int
+
+
+class RuntimeMetricsResponse(BaseModel):
+    service_id: str
+    window_hours: int
+    request_count: int
+    decision_counts: dict[str, int]
+    error_counts: dict[str, int]
+    latency_ms: LatencyMetricsResponse
+    top_route_keys: list[TopRouteKeyResponse]
+    raw_query_retention: RawQueryRetentionMetricsResponse
+
+
+class AuditLogResponse(BaseModel):
+    audit_id: UUID
+    event_type: str
+    actor_id: str
+    service_id: str
+    trace_id: str | None
+    target_type: str
+    target_id: str
+    view_reason: str | None
+    source_ip: str | None
+    created_at: datetime
+
+
+class RawTextStoredKeyCountResponse(BaseModel):
+    key_id: str
+    count: int
+
+
+class RawTextRedactedCountResponse(BaseModel):
+    key_id: None
+    count: int
+    state: Literal["raw_query_redacted"]
+
+
+class RawTextIncompleteCountResponse(BaseModel):
+    key_id: None
+    count: int
+    state: Literal["raw_query_incomplete"]
+
+
+class RawTextKeySummaryResponse(BaseModel):
+    service_id: str
+    active_key_id: str | None
+    intent_examples: list[RawTextStoredKeyCountResponse]
+    runtime_logs: list[
+        RawTextStoredKeyCountResponse
+        | RawTextRedactedCountResponse
+        | RawTextIncompleteCountResponse
+    ]
+
+
 class RawQueryDecryptRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -429,6 +506,20 @@ def _raise_not_found(message: str) -> NoReturn:
             error=ErrorInfo(
                 code=ErrorCode.INVALID_REQUEST,
                 message=message,
+                retryable=False,
+            ),
+        ).model_dump(mode="json", exclude_none=True),
+    )
+
+
+def _raise_raw_query_unavailable() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail=ErrorEnvelope(
+            trace_id=_trace_id(),
+            error=ErrorInfo(
+                code=ErrorCode.RAW_QUERY_UNAVAILABLE,
+                message="Runtime log raw query is unavailable.",
                 retryable=False,
             ),
         ).model_dump(mode="json", exclude_none=True),
@@ -511,6 +602,25 @@ def _require_runtime_log_access(context: AdminContext, service_id: str) -> None:
     if context.roles.intersection(allowed_roles) and context.can_access_service(service_id):
         return
     raise_admin_forbidden("Runtime log scope is required for this action.")
+
+
+def _require_runtime_metrics_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_role("service_operator") and context.can_access_service(service_id):
+        return
+    raise_admin_forbidden("Runtime metrics scope is required for this action.")
+
+
+def _require_security_lifecycle_read_access(
+    context: AdminContext,
+    service_id: str,
+) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_role("auditor") and context.can_access_service(service_id):
+        return
+    raise_admin_forbidden("Security lifecycle audit scope is required for this action.")
 
 
 def _require_raw_query_access(context: AdminContext, service_id: str) -> None:
@@ -685,27 +795,27 @@ def _runtime_log_response(runtime_log: Mapping[str, Any]) -> RuntimeLogResponse:
     return RuntimeLogResponse.model_validate(values)
 
 
-def _raw_text_encryptor() -> EnvelopeEncryptor:
-    kek_base64 = environ.get("RAW_TEXT_KEK_BASE64")
-    if kek_base64 is None or not kek_base64.strip():
-        _raise_internal_error("Raw text encryption key is not configured.")
+def _raw_text_keyring() -> RawTextKeyring:
     try:
-        return EnvelopeEncryptor(
-            kek_id=environ.get("RAW_TEXT_KEK_ID", "local-kek-001"),
-            kek_base64=kek_base64,
-        )
+        return load_raw_text_keyring()
+    except MissingRawTextKekError:
+        _raise_internal_error("Raw text encryption key is not configured.")
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=ErrorEnvelope(
-                trace_id=_trace_id(),
-                error=ErrorInfo(
-                    code=ErrorCode.INTERNAL_ERROR,
-                    message="Raw text encryption key is invalid.",
-                    retryable=False,
-                ),
-            ).model_dump(mode="json", exclude_none=True),
-        ) from exc
+        raise _raw_text_keyring_invalid_error() from exc
+
+
+def _raw_text_keyring_invalid_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=ErrorEnvelope(
+            trace_id=_trace_id(),
+            error=ErrorInfo(
+                code=ErrorCode.INTERNAL_ERROR,
+                message="Raw text encryption key is invalid.",
+                retryable=False,
+            ),
+        ).model_dump(mode="json", exclude_none=True),
+    )
 
 
 def _encrypted_raw_text(example: IntentExample) -> EncryptedText:
@@ -726,7 +836,7 @@ def _example_text_for_embedding(example: IntentExample) -> str:
     if embed_from == "masked":
         return example.text_masked
     if embed_from == "raw":
-        return _raw_text_encryptor().decrypt_text(_encrypted_raw_text(example))
+        return _raw_text_keyring().decrypt_text(_encrypted_raw_text(example))
     raise ValueError("EMBED_EXAMPLES_FROM must be one of: masked, raw.")
 
 
@@ -999,6 +1109,72 @@ def list_runtime_logs(
     ]
 
 
+@router.get(
+    "/services/{service_id}/runtime-metrics",
+    response_model=RuntimeMetricsResponse,
+)
+def get_runtime_metrics(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    window_hours: Annotated[int, Query(ge=1, le=24 * 31)] = 24,
+) -> RuntimeMetricsResponse:
+    _require_runtime_metrics_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    return RuntimeMetricsResponse.model_validate(
+        repository.runtime_metrics(service_id, window_hours=window_hours)
+    )
+
+
+@router.get(
+    "/services/{service_id}/audit-logs",
+    response_model=list[AuditLogResponse],
+)
+def list_audit_logs(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    event_type: Annotated[str | None, Query(min_length=1)] = None,
+    trace_id: Annotated[str | None, Query(min_length=1)] = None,
+) -> list[AuditLogResponse]:
+    _require_security_lifecycle_read_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    return [
+        AuditLogResponse.model_validate(safe_audit_log_item(audit_log))
+        for audit_log in repository.list_audit_logs(
+            service_id,
+            limit=limit,
+            event_type=event_type,
+            trace_id=trace_id,
+        )
+    ]
+
+
+@router.get(
+    "/services/{service_id}/security/raw-text-key-summary",
+    response_model=RawTextKeySummaryResponse,
+)
+def get_raw_text_key_summary(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> RawTextKeySummaryResponse:
+    _require_security_lifecycle_read_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    active_key_id = (environ.get("RAW_TEXT_KEK_ID", DEFAULT_RAW_TEXT_KEK_ID)).strip() or None
+    return RawTextKeySummaryResponse.model_validate(
+        raw_text_key_summary_from_counts(
+            service_id=service_id,
+            active_key_id=active_key_id,
+            counts=repository.count_raw_text_key_inventory(service_id),
+        )
+    )
+
+
 @router.post(
     "/services/{service_id}/runtime-logs/{trace_id}:decrypt-raw-query",
     response_model=RawQueryDecryptResponse,
@@ -1019,9 +1195,18 @@ def decrypt_raw_runtime_query(
     if runtime_log is None:
         _raise_not_found("Runtime log does not exist.")
 
-    query_raw = decrypt_runtime_raw_query(runtime_log, _raw_text_encryptor())
+    if (
+        runtime_log.raw_query_deleted_at is not None
+        or runtime_log_encrypted_raw_query(runtime_log) is None
+    ):
+        _raise_raw_query_unavailable()
+
+    try:
+        query_raw = decrypt_runtime_raw_query(runtime_log, _raw_text_keyring())
+    except (InvalidTag, ValueError):
+        _raise_raw_query_unavailable()
     if query_raw is None:
-        _raise_not_found("Runtime log raw query does not exist.")
+        _raise_raw_query_unavailable()
 
     repository.insert_audit_log(
         event_type="raw_query.viewed",
@@ -1167,7 +1352,7 @@ def create_example(
     if repository.get_intent(service_id, intent_id) is None:
         _raise_not_found("Intent does not exist.")
 
-    encrypted_raw_text = _raw_text_encryptor().encrypt_text(request.text_raw)
+    encrypted_raw_text = _raw_text_keyring().encrypt_text(request.text_raw)
     example = repository.create_example(
         service_id=service_id,
         intent_id=intent_id,
