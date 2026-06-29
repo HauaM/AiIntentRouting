@@ -3,6 +3,10 @@
 This runbook defines the pilot operating contract for switching from fake embeddings
 to CPU-only BGE-M3 in a closed network.
 
+Use `docs/ops/pilot-rehearsal.md` as the top-level Sprint 5 execution path once
+the BGE-M3 model is mounted. The package preflight and benchmark commands below
+remain diagnostic commands and are also called by closed-network rehearsal mode.
+
 ## Model Import Package
 
 The approved model package should contain:

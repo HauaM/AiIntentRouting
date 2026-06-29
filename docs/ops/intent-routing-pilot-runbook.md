@@ -1,5 +1,9 @@
 # Intent Routing Pilot Runbook
 
+Use `docs/ops/pilot-rehearsal.md` as the top-level Sprint 5 execution path before
+Dify handoff. The lower-level commands in this runbook remain diagnostic paths
+when the rehearsal manifest points to a specific failed step.
+
 ## 1. Start Local Stack
 
 Export the local runtime contract first:
@@ -23,9 +27,31 @@ uv run alembic upgrade head
 uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-## 2. Run Sprint 4 E2E Smoke
+## 2. Run Sprint 5 Pilot Rehearsal
 
-Run this process-level smoke before Dify handoff:
+Run the top-level rehearsal before Dify handoff:
+
+```bash
+uv run python scripts/run_pilot_rehearsal.py \
+  --mode local \
+  --base-url http://127.0.0.1:8000 \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --service-id ${SERVICE_ID} \
+  --environment ${INTENT_ROUTING_ENVIRONMENT} \
+  --state-path ${STATE_PATH} \
+  --csv-tier standard \
+  --required-preset balanced \
+  --baseline docs/pilot/it-helpdesk-pilot-baseline.json \
+  --out-dir var/evidence/${SERVICE_ID}/rehearsal
+```
+
+Acceptance: `pilot-rehearsal-manifest.md` shows PASS, the CSV baseline
+comparison passes, the Dify smoke matrix passes, operations evidence is present,
+and the rehearsal secret scan has no findings.
+
+## 3. Run Sprint 4 E2E Smoke Diagnostic
+
+Run this process-level smoke only when diagnosing a failed rehearsal e2e step:
 
 ```bash
 uv run python scripts/run_pilot_e2e_smoke.py \
@@ -41,7 +67,7 @@ uv run python scripts/run_pilot_e2e_smoke.py \
 
 Acceptance: `/healthz` is ok, `/readyz` is ready, the required `balanced` gate passes, risk pass rate is 100%, Dify-style smoke decisions pass, and masked logs do not expose raw query text.
 
-## 3. Manual Seed Pilot
+## 4. Manual Seed Pilot
 
 Use the remaining commands only for manual diagnostics or when isolating a failed e2e smoke step.
 
@@ -54,7 +80,7 @@ uv run python scripts/seed_pilot.py \
   --state-path ${STATE_PATH}
 ```
 
-## 4. Compare Thresholds
+## 5. Compare Thresholds
 
 ```bash
 uv run python scripts/run_csv_gate.py \
@@ -67,7 +93,7 @@ uv run python scripts/run_csv_gate.py \
 
 Acceptance: `balanced` passes the 70% gate and risk pass rate is 100%.
 
-## 5. Run Dify-Style Smoke
+## 6. Run Dify-Style Smoke
 
 ```bash
 uv run python scripts/smoke_runtime_dify.py \
@@ -77,7 +103,7 @@ uv run python scripts/smoke_runtime_dify.py \
   --expect-decision confident
 ```
 
-## 6. Trace/Audit Drill
+## 7. Trace/Audit Drill
 
 Pass `--admin-token local-admin-token` in each drill command unless you export `ADMIN_BOOTSTRAP_TOKEN` first.
 
@@ -114,7 +140,7 @@ uv run python scripts/trace_audit_drill.py \
 
 For API key rotation, admin token handling, KEK handling, and raw query approval policy, use `docs/ops/security-operations.md`.
 
-## 7. Failure Drills
+## 8. Failure Drills
 
 Run these manually before Dify handoff:
 

@@ -2,6 +2,10 @@
 
 This runbook is the Compose-based pilot deployment path for `INTENT_ROUTING_ENVIRONMENT=pilot`.
 Use `docs/ops/intent-routing-local-runbook.md` for developer-local fake-embedding runs.
+After the image, model, environment file, migration, and API are ready, use
+`docs/ops/pilot-rehearsal.md` as the top-level Sprint 5 execution path before
+Dify handoff. The lower-level commands in this runbook remain diagnostic steps
+for isolating deployment, BGE-M3, readiness, or evidence failures.
 
 ## 1. Build Image
 
