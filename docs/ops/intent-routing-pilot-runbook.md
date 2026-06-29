@@ -4,6 +4,10 @@ Use `docs/ops/pilot-rehearsal.md` as the top-level Sprint 5 execution path befor
 Dify handoff. The lower-level commands in this runbook remain diagnostic paths
 when the rehearsal manifest points to a specific failed step.
 
+Use `docs/ops/pilot-evidence-bundle-checklist.md` as the Sprint 6 review standard
+before attaching local rehearsal evidence. Treat this runbook as
+diagnostic when a checklist or manifest step fails.
+
 ## 1. Start Local Stack
 
 Export the local runtime contract first:

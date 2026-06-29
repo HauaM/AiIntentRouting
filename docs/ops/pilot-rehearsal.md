@@ -5,7 +5,9 @@ security operations rehearsal, and incident response rehearsal. Run
 `scripts/run_pilot_rehearsal.py` before Dify handoff and attach its evidence
 bundle to the pilot approval record.
 
-Use the older runbooks for diagnostic commands when one rehearsal step fails.
+Use `docs/ops/pilot-evidence-bundle-checklist.md` as the Sprint 6 review standard
+before attaching a local evidence bundle. Use the older runbooks for
+diagnostic commands when one rehearsal step fails.
 The wrapper calls the readiness and evidence tools, writes a manifest, and runs
 the evidence `secret scan`; no destructive security operation is executed by the wrapper.
 
