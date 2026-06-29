@@ -4,6 +4,8 @@ Use this procedure after the API smoke matrix passes and before pilot handoff.
 The goal is to prove the Dify workflow wiring without exposing any API keys,
 screen captures, or workflow exports in `pilot-rehearsal-manifest.md`.
 
+Evidence template: `docs/integrations/dify-dry-run-evidence-template.md`
+
 ## Inputs
 
 Set the target service and API endpoint before opening Dify:
@@ -50,6 +52,15 @@ The matrix must show representative API behavior for `confident`, `clarify`,
 
 ## Dify UI Dry-Run
 
+Before opening the Dify UI, copy
+`docs/integrations/dify-dry-run-evidence-template.md` into the service evidence
+directory, for example
+`var/evidence/${SERVICE_ID}/dify-ui/dify-dry-run-evidence.md`. Complete it while
+running the manual UI dry-run and keep screenshots or workflow exports as
+masked evidence files referenced by path. Attach the completed service-specific
+copy under `var/evidence/${SERVICE_ID}/dify-ui/`; do not attach the source
+template as pilot evidence.
+
 Run representative queries in the Dify UI for these successful HTTP 200
 decisions:
 
@@ -73,6 +84,7 @@ handoff instead.
 Record the `Dify workflow version identifier` or export identifier after the
 dry-run. If you keep screenshot or exported workflow evidence, inspect it before
 handoff and confirm it does not expose secrets, tokens, or raw API keys.
+Screenshots and workflow exports must show masked values only.
 
 Pass the evidence path and version identifier to the rehearsal wrapper:
 
@@ -80,18 +92,31 @@ Pass the evidence path and version identifier to the rehearsal wrapper:
 uv run python scripts/run_pilot_rehearsal.py \
   --mode local \
   --base-url http://127.0.0.1:8000 \
-  --service-id "${SERVICE_ID}" \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --service-id ${SERVICE_ID} \
   --environment dev \
-  --state-path "${STATE_PATH}" \
-  --out-dir "var/evidence/${SERVICE_ID}/rehearsal" \
-  --dify-workflow-version "dify-workflow-export-20260629-001" \
-  --dify-ui-evidence-path "var/evidence/${SERVICE_ID}/dify-ui-export.md"
+  --state-path ${STATE_PATH} \
+  --csv-tier standard \
+  --required-preset balanced \
+  --baseline docs/pilot/it-helpdesk-pilot-baseline.json \
+  --dify-workflow-version "dify-workflow-export-YYYYMMDD-NNN" \
+  --dify-ui-evidence-path "var/evidence/${SERVICE_ID}/dify-ui/dify-dry-run-evidence.md" \
+  --out-dir "var/evidence/${SERVICE_ID}/rehearsal"
 ```
 
-The wrapper records only the `Dify workflow version identifier` and evidence
-path in `pilot-rehearsal-manifest.md`. It does not inline raw screenshot/export
-content. If `--dify-ui-evidence-path` is provided, the file must exist and is
-included in the rehearsal secret scan.
+The rehearsal wrapper records only the Dify workflow version identifier and
+evidence path. Screenshots and workflow exports must show masked values only. Do
+not paste screenshot/export contents into pilot-rehearsal-manifest.md. If
+`--dify-ui-evidence-path` is provided, the file must exist and is included in
+the rehearsal secret scan.
+
+Expected documented results:
+
+- `pilot-rehearsal-manifest.md` includes the workflow version identifier.
+- `pilot-rehearsal-manifest.md` includes the Dify UI evidence path.
+- `pilot-rehearsal-manifest.md` does not inline screenshot or workflow export
+  content.
+- secret scan passes.
 
 ## Evidence Bundle
 
@@ -102,3 +127,5 @@ Attach these files to the pilot handoff ticket or release folder:
 - `pilot-rehearsal-manifest.md`
 - The masked screenshot/export file path recorded in the manifest.
 - The recorded `Dify workflow version identifier`.
+- Completed service-specific copy saved under
+  `var/evidence/${SERVICE_ID}/dify-ui/`.

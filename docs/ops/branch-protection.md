@@ -60,6 +60,64 @@ After applying the rule, verify the latest pull request run:
 4. Confirm artifact contents include runtime evidence and `api.log`.
 5. Confirm there is no .secret.json file in the artifact contents.
 
+Record the rule snapshot, required check verification, merge block verification,
+artifact review, rollback or bypass details, and final state in
+`docs/ops/branch-protection-evidence-template.md`.
+
+If the implementer does not have repository admin permission, create an evidence request using docs/ops/branch-protection-evidence-template.md and mark the rule snapshot as operator-not-permitted.
+operator-not-permitted does not satisfy pilot go/no-go until an authorized operator attaches the rule snapshot.
+
+Manual capture command, for an authorized operator only:
+
+```bash
+mkdir -p var/evidence/${SERVICE_ID}/branch-protection
+gh api repos/HauaM/AiIntentRouting/branches/main/protection \
+  > var/evidence/${SERVICE_ID}/branch-protection/main-protection.json
+```
+
+Verification command:
+
+```bash
+uv run python - var/evidence/${SERVICE_ID}/branch-protection/main-protection.json <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    protection = json.load(fh)
+
+required_status_checks = protection.get("required_status_checks") or {}
+if required_status_checks.get("strict") is not True:
+    raise SystemExit("required_status_checks.strict is not true")
+
+contexts = set(required_status_checks.get("contexts") or [])
+for check in required_status_checks.get("checks") or []:
+    contexts.update(
+        value
+        for value in (check.get("context"), check.get("name"))
+        if isinstance(value, str)
+    )
+if "CI / verify" not in contexts:
+    raise SystemExit("CI / verify is not a required status check")
+
+enforce_admins = protection.get("enforce_admins")
+admins_enabled = enforce_admins is True or (
+    isinstance(enforce_admins, dict) and enforce_admins.get("enabled") is True
+)
+if not admins_enabled:
+    raise SystemExit("enforce_admins is not enabled")
+
+print("branch protection capture verified")
+PY
+```
+
+Expected:
+
+```text
+CI / verify appears as a required status check
+strict is true
+enforce_admins is true, or enforce_admins.enabled is true, when repository policy requires admin enforcement
+```
+
 ## branch protection rollback
 
 Use rollback only for a CI infrastructure issue that blocks an urgent merge after

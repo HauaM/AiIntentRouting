@@ -4,6 +4,12 @@ Use `docs/ops/pilot-rehearsal.md` as the top-level Sprint 5 execution path befor
 Dify handoff. The lower-level commands in this runbook remain diagnostic paths
 when the rehearsal manifest points to a specific failed step.
 
+Use `docs/ops/pilot-evidence-bundle-checklist.md` as the Sprint 6 review standard
+before attaching local rehearsal evidence. Treat this runbook as
+diagnostic when a checklist or manifest step fails.
+Use `docs/ops/pilot-handoff-release-ticket-template.md` for the final pilot
+handoff and release ticket after the evidence bundle review passes.
+
 ## 1. Start Local Stack
 
 Export the local runtime contract first:
@@ -155,6 +161,7 @@ Run these manually before Dify handoff:
 
 ## Release Readiness Checklist
 
+- [ ] Completed copy of `docs/ops/pilot-handoff-release-ticket-template.md` references all required evidence and contains no secrets or raw query text.
 - [ ] `.env.example` uses `RAW_TEXT_KEK_ID` and `RAW_TEXT_KEK_BASE64`.
 - [ ] `docker compose up -d postgres` succeeds.
 - [ ] `uv run alembic upgrade head` succeeds.

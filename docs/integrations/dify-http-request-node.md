@@ -7,6 +7,7 @@ Checked template: `docs/integrations/dify-http-request-node-template.json`
 Branch playbook: `docs/integrations/dify-branching-playbook.md`
 Handoff checklist: `docs/integrations/dify-handoff-checklist.md`
 Dry-run rehearsal: `docs/integrations/dify-dry-run-rehearsal.md`
+Dry-run evidence template: `docs/integrations/dify-dry-run-evidence-template.md`
 
 ## HTTP Request 노드 설정
 
@@ -88,11 +89,35 @@ uv run python scripts/smoke_runtime_dify.py \
 
 ## Dry-Run Rehearsal Metadata
 
-During the Dify UI dry-run, record the `Dify workflow version identifier` or
-export identifier and pass the masked screenshot/export path to
-`scripts/run_pilot_rehearsal.py` with `--dify-ui-evidence-path`. The wrapper
-records only the path and identifier in `pilot-rehearsal-manifest.md`; it does
-not inline screenshot/export content.
+During the Dify UI dry-run, complete
+`docs/integrations/dify-dry-run-evidence-template.md`, record the `Dify
+workflow version identifier` or export identifier, and pass the masked
+screenshot/export path to `scripts/run_pilot_rehearsal.py` with
+`--dify-ui-evidence-path`.
+
+The rehearsal wrapper records only the Dify workflow version identifier and
+evidence path. Screenshots and workflow exports must show masked values only.
+Do not paste screenshot/export contents into pilot-rehearsal-manifest.md.
+
+```bash
+uv run python scripts/run_pilot_rehearsal.py \
+  --mode local \
+  --base-url http://127.0.0.1:8000 \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --service-id ${SERVICE_ID} \
+  --environment dev \
+  --state-path ${STATE_PATH} \
+  --csv-tier standard \
+  --required-preset balanced \
+  --baseline docs/pilot/it-helpdesk-pilot-baseline.json \
+  --dify-workflow-version "dify-workflow-export-YYYYMMDD-NNN" \
+  --dify-ui-evidence-path "var/evidence/${SERVICE_ID}/dify-ui/dify-dry-run-evidence.md" \
+  --out-dir "var/evidence/${SERVICE_ID}/rehearsal"
+```
+
+Expected documented results: `pilot-rehearsal-manifest.md` includes the
+workflow version identifier, includes the Dify UI evidence path, does not inline
+screenshot or workflow export content, and the secret scan passes.
 
 ## Dify Variable Mapping
 

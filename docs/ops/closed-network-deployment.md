@@ -6,6 +6,9 @@ After the image, model, environment file, migration, and API are ready, use
 `docs/ops/pilot-rehearsal.md` as the top-level Sprint 5 execution path before
 Dify handoff. The lower-level commands in this runbook remain diagnostic steps
 for isolating deployment, BGE-M3, readiness, or evidence failures.
+Use `docs/ops/bge-m3-evidence-template.md` as the release-ticket record for the
+closed-network BGE package, benchmark, rehearsal, offline runtime, and pilot
+go/no-go decision.
 
 ## 1. Build Image
 
@@ -50,6 +53,10 @@ Use `docs/ops/bge-m3-closed-network.md` for model package import, checksum evide
 Before enabling any Dify traffic, run the package preflight and benchmark from that
 runbook. `scripts/verify_bge_m3_package.py` must produce package checksum evidence
 before `scripts/benchmark_bge_m3.py` is accepted as runtime readiness evidence.
+Record the results in `docs/ops/bge-m3-evidence-template.md` with status
+`measured-pass`, `measured-fail`, or `pending-host-access`. `pending-host-access`
+is allowed only when the closed-network host is unavailable; it blocks actual
+pilot go/no-go and is not acceptable for Dify traffic approval.
 
 ## 4. Environment File
 
@@ -137,6 +144,24 @@ The `standard` CSV tier is the 50-row pilot default. Use `minimum` for 30 rows, 
 Do not connect Dify HTTP Request nodes to this API until the rehearsal manifest,
 package preflight, benchmark, readiness, smoke, baseline, ops evidence, and
 secret scan are all PASS in the pilot evidence package.
+
+Closed-network measurement is documented for operators to execute on the target
+host. Expected results are:
+
+- `bge-m3-package.json exists`
+- `bge-m3-package.md exists`
+- `bge-m3-benchmark.json exists`
+- `bge-m3-benchmark.md exists`
+- `pilot-rehearsal-manifest.json final_status is PASS`
+- `secret_scan.passed is true`
+- `dimension is 1024`
+- `batch_size is 16`
+- `max_tokens is 256`
+
+If the host is unavailable, fill `pending-host-access` in
+`docs/ops/bge-m3-evidence-template.md`, attach that record to the release ticket,
+and keep pilot go/no-go blocked. Pilot handoff requires `measured-pass` for
+package preflight, benchmark, closed-network rehearsal, and secret scan.
 
 ## 8. Diagnostic Operations Evidence And Security Lifecycle
 

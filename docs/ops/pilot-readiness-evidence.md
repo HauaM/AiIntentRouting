@@ -1,6 +1,6 @@
 # Pilot Readiness Evidence
 
-For Sprint 5 pilot handoff, prefer `scripts/run_pilot_rehearsal.py`; it wraps the Sprint 4 e2e smoke, Dify smoke matrix, CSV baseline comparison, ops evidence export, and rehearsal secret scan into one manifest. Use this page when you need to run the lower-level readiness workflow directly after the API is running and `/readyz` returns ready.
+For Sprint 5 pilot handoff, prefer `scripts/run_pilot_rehearsal.py`; it wraps the Sprint 4 e2e smoke, Dify smoke matrix, CSV baseline comparison, ops evidence export, and rehearsal secret scan into one manifest. Use `docs/ops/pilot-evidence-bundle-checklist.md` as the Sprint 6 review standard before attaching local rehearsal evidence. Use this page as a diagnostic reference when a checklist step fails and you need to run the lower-level readiness workflow directly after the API is running and `/readyz` returns ready.
 
 Default Sprint 5 rehearsal command:
 
