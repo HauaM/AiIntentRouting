@@ -40,3 +40,22 @@ def test_ci_workflow_uses_fake_embedding_and_no_real_secrets() -> None:
         "RAW_TEXT_LEGACY_KEKS_JSON: {",
     ):
         assert forbidden not in text
+
+
+def test_ci_workflow_runs_pilot_e2e_smoke_and_uploads_non_secret_evidence() -> None:
+    text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    for expected in (
+        "Start API",
+        "uv run uvicorn intent_routing.main:create_app --factory",
+        "Run pilot e2e smoke",
+        "scripts/run_pilot_e2e_smoke.py",
+        "--required-preset balanced",
+        "Upload pilot e2e evidence",
+        "actions/upload-artifact@v4",
+    ):
+        assert expected in text
+
+    artifact_section = text.split("Upload pilot e2e evidence", maxsplit=1)[1]
+    assert "var/pilot" not in artifact_section
+    assert "*.secret.json" not in artifact_section

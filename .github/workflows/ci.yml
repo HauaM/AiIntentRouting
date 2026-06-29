@@ -64,6 +64,44 @@ jobs:
       - name: Apply migrations
         run: uv run alembic upgrade head
 
+      - name: Start API
+        run: |
+          mkdir -p var/logs
+          uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 8000 > var/logs/api.log 2>&1 &
+          echo $! > var/logs/api.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/readyz; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat var/logs/api.log
+          exit 1
+
+      - name: Run pilot e2e smoke
+        run: |
+          SERVICE_ID="it-helpdesk-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          STATE_PATH="var/pilot/${SERVICE_ID}.state.secret.json"
+          uv run python scripts/run_pilot_e2e_smoke.py \
+            --base-url http://127.0.0.1:8000 \
+            --admin-token "${ADMIN_BOOTSTRAP_TOKEN}" \
+            --service-id "${SERVICE_ID}" \
+            --environment "${INTENT_ROUTING_ENVIRONMENT}" \
+            --state-path "${STATE_PATH}" \
+            --csv-tier standard \
+            --required-preset balanced \
+            --out-dir "var/evidence/${SERVICE_ID}/e2e"
+
+      - name: Upload pilot e2e evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilot-e2e-evidence
+          path: |
+            var/evidence/**/*
+            var/logs/api.log
+          retention-days: 14
+
       - name: Test
         run: uv run pytest -q
 

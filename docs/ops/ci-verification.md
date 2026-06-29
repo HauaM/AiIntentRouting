@@ -7,6 +7,7 @@ GitHub CI verifies the baseline checks that can run without closed-network depen
 - Ruff linting with `uv run ruff check .`
 - mypy type checking with `uv run mypy src tests`
 - Alembic migration application with `uv run alembic upgrade head`
+- Process-level pilot e2e smoke against a background Uvicorn API, using the `balanced` CSV gate
 - pytest against PostgreSQL with pgvector using `uv run pytest -q`
 - Runtime Compose configuration validation with `docker compose --profile runtime config`
 
@@ -35,8 +36,21 @@ docker compose --profile runtime config
 
 ## Branch Protection
 
-Require the `CI / verify` check before merging into `main`.
+After Sprint 4, require the `CI / verify` check before merging into `main`.
 
 ## Artifact Policy
 
-The Sprint 4 CI baseline does not upload secret-bearing state files.
+CI uploads non-secret pilot e2e evidence for 14 days, including the smoke evidence
+index, threshold comparison reports, readiness reports, and `api.log`.
+
+CI does not upload generated state secret files. The secret-bearing state remains
+under `var/pilot/*.secret.json`, and artifact upload paths must not include
+`var/pilot` or `*.secret.json`.
+
+## Pilot Smoke Triage
+
+If the pilot e2e smoke fails while unit tests pass, inspect:
+
+- `pilot-e2e-smoke-index.md`
+- The threshold comparison Markdown linked from the index
+- `api.log`
