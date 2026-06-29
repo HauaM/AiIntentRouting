@@ -52,6 +52,7 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 - CI verification: `docs/ops/ci-verification.md`
 - Branch protection required checks: `docs/ops/branch-protection.md`
 - Pilot evidence bundle checklist: `docs/ops/pilot-evidence-bundle-checklist.md`
+- Pilot handoff and release ticket template: `docs/ops/pilot-handoff-release-ticket-template.md`
 - Pilot rehearsal operations: `docs/ops/pilot-rehearsal.md`
 - Pilot runbook: `docs/ops/intent-routing-pilot-runbook.md`
 - Closed-network deployment: `docs/ops/closed-network-deployment.md`

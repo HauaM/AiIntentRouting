@@ -13,6 +13,10 @@ approving or rolling back any checked-in CSV baseline refresh.
 Use `docs/ops/bge-m3-evidence-template.md` as the closed-network BGE-M3 evidence
 record for package approval, preflight, benchmark, rehearsal, offline runtime,
 and pilot go/no-go.
+Use `docs/ops/pilot-handoff-release-ticket-template.md` for the final pilot
+handoff and release ticket after the manifest, BGE evidence, branch protection,
+Dify UI dry-run, CSV baseline comparison, and security rehearsal evidence are
+ready.
 The wrapper calls the readiness and evidence tools, writes a manifest, and runs
 the evidence `secret scan`; no destructive security operation is executed by the wrapper.
 
@@ -163,6 +167,26 @@ Notes:
 The manifest is the first file to read during review. It records each step,
 required status, evidence paths, failure messages, and the final pass/fail
 status.
+
+## Release Ticket Dry-Fill Review
+
+After evidence review, copy `docs/ops/pilot-handoff-release-ticket-template.md`
+to the release ticket path and fill it with references only. Do not create this
+file until the pilot handoff package is being prepared.
+
+Manual review commands for the filled ticket:
+
+```bash
+rg -n 'PASS|CI / verify|pilot-rehearsal-manifest.md|Dify workflow version identifier|go/no-go' var/evidence/${SERVICE_ID}/release-ticket.md
+rg -n 'Bearer |RAW_TEXT_KEK_BASE64|query_raw|text_raw|encrypted_dek|ciphertext|irt_live_|irt_secret' var/evidence/${SERVICE_ID}/release-ticket.md
+```
+
+Expected:
+
+```text
+first rg prints the required evidence references
+second rg prints no matches
+```
 
 ## Secret Scan Policy
 

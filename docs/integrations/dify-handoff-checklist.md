@@ -5,6 +5,7 @@ completed evidence files to the pilot handoff ticket or release folder.
 
 Dry-run rehearsal: `docs/integrations/dify-dry-run-rehearsal.md`
 Dry-run evidence template: `docs/integrations/dify-dry-run-evidence-template.md`
+Pilot handoff release ticket template: `docs/ops/pilot-handoff-release-ticket-template.md`
 
 ## HTTP Request Node Mapping
 
@@ -49,6 +50,7 @@ Dry-run evidence template: `docs/integrations/dify-dry-run-evidence-template.md`
 - [ ] Dify workflow version identifier recorded through `--dify-workflow-version`.
 - [ ] Dify UI evidence path recorded through `--dify-ui-evidence-path`; do not inline screenshot/export content into Markdown.
 - [ ] Completed copy of `docs/integrations/dify-dry-run-evidence-template.md`.
+- [ ] Release ticket copy based on `docs/ops/pilot-handoff-release-ticket-template.md`.
 - [ ] The rehearsal wrapper records only the Dify workflow version identifier and evidence path.
 - [ ] Screenshots and workflow exports must show masked values only.
 - [ ] Do not paste screenshot/export contents into pilot-rehearsal-manifest.md.
