@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from intent_routing.ops.rehearsal import SecretScanResult, scan_evidence_directory
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -76,7 +78,7 @@ def test_dify_dry_run_evidence_template_covers_ui_contract() -> None:
         "docs/integrations/dify-dry-run-evidence-template.md",
         "Dify workflow version identifier",
         "masked screenshot or workflow export path",
-        "intent_routing_api_key secret variable",
+        "Dify secret variable for the Intent Routing API key",
         "workflow_run_id",
         "Timeout: 8 seconds",
         "no automatic retry loop",
@@ -98,3 +100,14 @@ def test_dify_dry_run_evidence_template_covers_ui_contract() -> None:
         "pilot-rehearsal-manifest.md",
     ):
         assert expected in text
+
+
+def test_dify_dry_run_evidence_template_is_secret_scan_safe(
+    tmp_path: Path,
+) -> None:
+    doc = ROOT / "docs/integrations/dify-dry-run-evidence-template.md"
+    assert doc.exists()
+
+    result = scan_evidence_directory(tmp_path, extra_paths=[doc])
+
+    assert result == SecretScanResult(passed=True, findings=[])

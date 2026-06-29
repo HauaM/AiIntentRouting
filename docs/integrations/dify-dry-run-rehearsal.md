@@ -57,7 +57,9 @@ Before opening the Dify UI, copy
 directory, for example
 `var/evidence/${SERVICE_ID}/dify-ui/dify-dry-run-evidence.md`. Complete it while
 running the manual UI dry-run and keep screenshots or workflow exports as
-masked evidence files referenced by path.
+masked evidence files referenced by path. Attach the completed service-specific
+copy under `var/evidence/${SERVICE_ID}/dify-ui/`; do not attach the source
+template as pilot evidence.
 
 Run representative queries in the Dify UI for these successful HTTP 200
 decisions:
@@ -125,4 +127,5 @@ Attach these files to the pilot handoff ticket or release folder:
 - `pilot-rehearsal-manifest.md`
 - The masked screenshot/export file path recorded in the manifest.
 - The recorded `Dify workflow version identifier`.
-- Completed `docs/integrations/dify-dry-run-evidence-template.md` copy.
+- Completed service-specific copy saved under
+  `var/evidence/${SERVICE_ID}/dify-ui/`.
