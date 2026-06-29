@@ -48,15 +48,27 @@ wrapper identifies a failed step.
 ## Required Files
 
 Attach the `var/evidence/${SERVICE_ID}/rehearsal` directory only after all
-reviewer checks pass. The bundle must include:
+reviewer checks pass. Relative to that rehearsal bundle root, the required
+generated paths are:
 
 - `pilot-rehearsal-manifest.json`
 - `pilot-rehearsal-manifest.md`
-- `csv-baseline-comparison.md`
-- `dify-smoke-matrix.md`
-- `ops-evidence.md`
+- `csv-baseline/csv-baseline-comparison.md`
+- `dify/dify-smoke-matrix.md`
+- `ops/ops-evidence.md`
 
-The manifest must show:
+JSON siblings such as `csv-baseline/csv-baseline-comparison.json`,
+`dify/dify-smoke-matrix.json`, and `ops/ops-evidence.json` may also be present
+and reviewed when useful.
+
+Reviewers must inspect JSON field paths in `pilot-rehearsal-manifest.json`:
+
+```text
+final_status == "PASS"
+secret_scan.passed == true
+```
+
+Ticket shorthand may keep these literal status strings:
 
 ```text
 final_status: PASS
@@ -83,6 +95,10 @@ sha256sum prints one digest for pilot-rehearsal-manifest.json
 find prints no .secret.json files
 rg prints no matches
 ```
+
+`rg` returns exit code 1 when it finds no matches. For this checklist, exit code
+1 with no output is expected for the `rg` command; exit code 0 or any printed
+match fails review.
 
 ## Secret Scan Confirmation
 
@@ -117,7 +133,7 @@ Record the single digest and filename printed by `sha256sum`.
 
 ## Failure Handling
 
-If the manifest final status is not PASS, if `secret_scan.passed` is not true,
+If `final_status == "PASS"` is false, if `secret_scan.passed == true` is false,
 or if reviewer commands find forbidden files or text, do not attach the bundle.
 
 Use the lower-level runbooks only for diagnostics:
@@ -154,8 +170,9 @@ Copy these fields from the reviewed bundle into the pilot approval ticket:
 - `ADMIN_BOOTSTRAP_TOKEN` source, noted as local bootstrap only and not attached
 - Manifest path: `var/evidence/${SERVICE_ID}/rehearsal/pilot-rehearsal-manifest.json`
 - Manifest hash from `sha256sum`
-- Manifest status: `final_status: PASS`
-- Secret scan status: `secret_scan.passed: true`
+- Manifest status: `final_status == "PASS"` (`final_status: PASS`)
+- Secret scan status: `secret_scan.passed == true`
+  (`secret_scan.passed: true`)
 - Evidence files attached: `pilot-rehearsal-manifest.md`,
-  `csv-baseline-comparison.md`, `dify-smoke-matrix.md`, and
-  `ops-evidence.md`
+  `csv-baseline/csv-baseline-comparison.md`,
+  `dify/dify-smoke-matrix.md`, and `ops/ops-evidence.md`
