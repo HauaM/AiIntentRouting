@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from intent_routing.ops.csv_baseline import (
+    compare_baseline,
+    freeze_baseline,
+    render_baseline_comparison_json,
+    render_baseline_comparison_markdown,
+)
+
+
+def test_baseline_compare_passes_when_case_results_match(tmp_path: Path) -> None:
+    report = _threshold_report(result="PASS")
+    baseline = freeze_baseline(report, _csv_path(tmp_path), "balanced")
+
+    result = compare_baseline(report, baseline)
+
+    assert result.passed is True
+    assert result.block_reasons == []
+    assert result.new_failures == []
+    assert result.new_reviews == []
+    assert result.changed_decisions == []
+    assert result.changed_intents == []
+    assert result.changed_route_keys == []
+
+
+def test_baseline_compare_fails_on_new_fail_case(tmp_path: Path) -> None:
+    baseline = freeze_baseline(_threshold_report(result="PASS"), _csv_path(tmp_path), "balanced")
+    current = _threshold_report(result="FAIL", actual_decision="fallback")
+
+    result = compare_baseline(current, baseline)
+
+    assert result.passed is False
+    assert result.new_failures == [
+        {
+            "case_id": "C001",
+            "preset": "balanced",
+            "expected_result": "PASS",
+            "actual_result": "FAIL",
+        }
+    ]
+    assert "new FAIL cases above allowance" in result.block_reasons
+
+
+def test_baseline_compare_fails_on_new_review_case_when_disallowed(
+    tmp_path: Path,
+) -> None:
+    baseline = freeze_baseline(
+        _threshold_report(result="PASS"),
+        _csv_path(tmp_path),
+        "balanced",
+    )
+    current = _threshold_report(result="REVIEW")
+
+    result = compare_baseline(current, baseline)
+
+    assert result.passed is False
+    assert result.new_reviews == [
+        {
+            "case_id": "C001",
+            "preset": "balanced",
+            "expected_result": "PASS",
+            "actual_result": "REVIEW",
+        }
+    ]
+    assert "new REVIEW cases above allowance" in result.block_reasons
+
+
+def test_baseline_compare_fails_on_risk_pass_rate_regression(tmp_path: Path) -> None:
+    baseline = freeze_baseline(_threshold_report(result="PASS"), _csv_path(tmp_path), "balanced")
+    current = _threshold_report(result="PASS", risk_pass_rate=0.5)
+
+    result = compare_baseline(current, baseline)
+
+    assert result.passed is False
+    assert result.block_reasons == ["balanced risk_pass_rate 50.0% below required 100.0%"]
+
+
+def test_baseline_renderer_excludes_query_text_and_secret_fields(tmp_path: Path) -> None:
+    report = _threshold_report(
+        result="FAIL",
+        query="API timeout 500 에러가 납니다",
+        authorization="Bearer secret-token",
+        api_key="sk-secret",
+        encrypted_dek="encrypted-value",
+    )
+    baseline = freeze_baseline(report, _csv_path(tmp_path), "balanced")
+    result = compare_baseline(report, baseline)
+
+    rendered = (
+        json.dumps(baseline, ensure_ascii=False)
+        + render_baseline_comparison_json(result)
+        + render_baseline_comparison_markdown(result)
+    )
+
+    for forbidden in (
+        "API timeout 500 에러가 납니다",
+        "Bearer secret-token",
+        "sk-secret",
+        "encrypted-value",
+        "query",
+        "authorization",
+        "api_key",
+        "encrypted_dek",
+    ):
+        assert forbidden not in rendered
+
+
+def _csv_path(tmp_path: Path) -> Path:
+    path = tmp_path / "cases.csv"
+    path.write_text(
+        "case_id,query,expected_intent,case_type,memo\n"
+        "C001,hello,it_api_timeout,positive,memo\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _threshold_report(
+    *,
+    result: str,
+    actual_decision: str = "confident",
+    actual_intent: str | None = "it_api_timeout",
+    actual_route_key: str | None = "it.api_timeout.manual_lookup",
+    pass_rate: float = 1.0,
+    risk_pass_rate: float = 1.0,
+    **extra_row: object,
+) -> dict[str, object]:
+    return {
+        "service_id": "svc-test",
+        "policy_version": "pol-test",
+        "intent_catalog_version": "cat-test",
+        "runs": {
+            "balanced": {
+                "pass_rate": pass_rate,
+                "risk_pass_rate": risk_pass_rate,
+                "gate_passed": result == "PASS",
+            }
+        },
+        "results": {
+            "balanced": [
+                {
+                    "case_id": "C001",
+                    "case_type": "positive",
+                    "expected_decision": "confident",
+                    "expected_intent": "it_api_timeout",
+                    "actual_decision": actual_decision,
+                    "actual_intent": actual_intent,
+                    "actual_route_key": actual_route_key,
+                    "result": result,
+                    **extra_row,
+                }
+            ]
+        },
+    }

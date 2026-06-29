@@ -18,6 +18,7 @@ from intent_routing.api.runtime import get_runtime_session
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.embedding.provider import clear_embedding_provider_cache
 from intent_routing.main import create_app
+from intent_routing.ops.csv_baseline import freeze_baseline
 from intent_routing.security.api_keys import ApiKeyRecord
 from scripts import run_pilot_rehearsal as rehearsal_script
 from scripts.run_pilot_rehearsal import run_pilot_rehearsal
@@ -243,6 +244,77 @@ def test_pilot_rehearsal_writes_manifest_when_e2e_fails_before_state_exists(
     assert "FileNotFoundError" not in steps["pilot-e2e-smoke"]["error_message"]
 
 
+def test_pilot_rehearsal_runs_csv_baseline_when_baseline_is_provided(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "pilot.state.secret.json"
+    out_dir = tmp_path / "evidence"
+    csv_path = ROOT / "docs/pilot/it-helpdesk-pilot-cases.csv"
+    threshold_report = _threshold_report(result="PASS")
+    baseline = freeze_baseline(threshold_report, csv_path, "balanced")
+    baseline["baseline_id"] = "it-helpdesk-pilot-standard-20260629"
+    baseline["policy"]["baseline_id"] = "it-helpdesk-pilot-standard-20260629"
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(json.dumps(baseline) + "\n", encoding="utf-8")
+
+    def e2e_stub(*, state_path: Path, out_dir: Path, **_: object) -> dict[str, object]:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            json.dumps(
+                {
+                    "api_key": "redacted-test-key",
+                    "key_id": "key-id",
+                    "app_id": "app-id",
+                    "service_id": "svc-csv-baseline",
+                }
+            ),
+            encoding="utf-8",
+        )
+        out_dir.mkdir(parents=True, exist_ok=True)
+        threshold_json = out_dir / "svc-csv-baseline-threshold-comparison.json"
+        threshold_md = out_dir / "svc-csv-baseline-threshold-comparison.md"
+        threshold_json.write_text(json.dumps(threshold_report) + "\n", encoding="utf-8")
+        threshold_md.write_text("# Threshold\n", encoding="utf-8")
+        return {
+            **_write_stub_evidence(out_dir, "pilot-e2e-smoke-index", passed=True),
+            "threshold_report": {
+                "json_path": str(threshold_json),
+                "markdown_path": str(threshold_md),
+            },
+            "quality_gate": {"passed": True},
+        }
+
+    def dify_stub(*, out_dir: Path, **_: object) -> dict[str, object]:
+        return _write_stub_evidence(out_dir, "dify-smoke-matrix", passed=True)
+
+    def ops_stub(*, out_dir: Path, **_: object) -> dict[str, object]:
+        return {"payload": {}, **_write_stub_evidence(out_dir, "ops-evidence", passed=True)}
+
+    monkeypatch.setattr(rehearsal_script, "run_pilot_e2e_smoke", e2e_stub)
+    monkeypatch.setattr(rehearsal_script, "run_dify_smoke_matrix", dify_stub)
+    monkeypatch.setattr(rehearsal_script, "run_ops_evidence_export", ops_stub)
+
+    result = run_pilot_rehearsal(
+        mode="local",
+        base_url="http://testserver",
+        admin_token="local-admin-token",
+        service_id="svc-csv-baseline",
+        environment="dev",
+        state_path=state_path,
+        csv_tier="standard",
+        required_preset="balanced",
+        baseline_path=baseline_path,
+        out_dir=out_dir,
+    )
+
+    manifest = json.loads(Path(result["json_path"]).read_text(encoding="utf-8"))
+    steps = {step["name"]: step for step in manifest["steps"]}
+    assert steps["csv-baseline"]["status"] == "pass"
+    assert steps["csv-baseline"]["required"] is True
+    assert (out_dir / "csv-baseline" / "csv-baseline-comparison.json").exists()
+
+
 def test_closed_network_bge_checksum_mismatch_keeps_package_evidence(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -332,4 +404,33 @@ def _write_stub_evidence(out_dir: Path, stem: str, *, passed: bool) -> dict[str,
         "passed": passed,
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
+    }
+
+
+def _threshold_report(*, result: str) -> dict[str, object]:
+    return {
+        "service_id": "svc-csv-baseline",
+        "policy_version": "pol-test",
+        "intent_catalog_version": "cat-test",
+        "runs": {
+            "balanced": {
+                "pass_rate": 1.0,
+                "risk_pass_rate": 1.0,
+                "gate_passed": result == "PASS",
+            }
+        },
+        "results": {
+            "balanced": [
+                {
+                    "case_id": "C001",
+                    "case_type": "positive",
+                    "expected_decision": "confident",
+                    "expected_intent": "it_api_timeout",
+                    "actual_decision": "confident",
+                    "actual_intent": "it_api_timeout",
+                    "actual_route_key": "it.api_timeout.manual_lookup",
+                    "result": result,
+                }
+            ]
+        },
     }

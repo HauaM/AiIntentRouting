@@ -25,6 +25,7 @@ from intent_routing.ops.rehearsal import (  # noqa: E402
     scan_evidence_directory,
 )
 from scripts.benchmark_bge_m3 import benchmark_bge_m3  # noqa: E402
+from scripts.compare_csv_baseline import compare_csv_baseline  # noqa: E402
 from scripts.export_ops_evidence import run_ops_evidence_export  # noqa: E402
 from scripts.run_dify_smoke_matrix import run_dify_smoke_matrix  # noqa: E402
 from scripts.run_pilot_e2e_smoke import run_pilot_e2e_smoke  # noqa: E402
@@ -45,6 +46,7 @@ def run_pilot_rehearsal(
     csv_tier: str = "standard",
     csv_path: Path | None = None,
     required_preset: str = "balanced",
+    baseline_path: Path | None = None,
     bge_model_path: Path | None = None,
     bge_expected_sha256: str | None = None,
     run_bge_benchmark: bool = False,
@@ -132,7 +134,8 @@ def run_pilot_rehearsal(
                 ),
                 _skip_step(
                     name="csv-baseline",
-                    summary="Skipped until Task 3 adds CSV baseline regression integration.",
+                    summary="Skipped because pilot e2e smoke did not complete.",
+                    required=baseline_path is not None,
                 ),
                 _skip_step(
                     name="ops-evidence-export",
@@ -176,12 +179,21 @@ def run_pilot_rehearsal(
             ),
         )
     steps.append(dify_step)
-    steps.append(
-        _skip_step(
-            name="csv-baseline",
-            summary="Skipped until Task 3 adds CSV baseline regression integration.",
+    if baseline_path is None:
+        steps.append(
+            _skip_step(
+                name="csv-baseline",
+                summary="Skipped because no CSV baseline was provided.",
+            )
         )
-    )
+    else:
+        steps.append(
+            _run_csv_baseline_step(
+                baseline_path=baseline_path,
+                e2e_result=e2e_step,
+                out_dir=out_dir,
+            )
+        )
     if dify_step.status != "pass":
         steps.append(
             _skip_step(
@@ -279,6 +291,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         csv_tier=args.csv_tier,
         csv_path=args.csv,
         required_preset=args.required_preset,
+        baseline_path=args.baseline,
         bge_model_path=args.bge_model_path,
         bge_expected_sha256=args.bge_expected_sha256,
         run_bge_benchmark=args.run_bge_benchmark,
@@ -325,6 +338,43 @@ def _run_step(
         evidence_files=_evidence_files(result),
         error_message=None if passed else _failure_message(result),
     )
+
+
+def _run_csv_baseline_step(
+    *,
+    baseline_path: Path,
+    e2e_result: RehearsalStep,
+    out_dir: Path,
+) -> RehearsalStep:
+    threshold_report_path = _threshold_report_path_from_e2e_step(e2e_result)
+    if threshold_report_path is None:
+        return RehearsalStep(
+            name="csv-baseline",
+            status="fail",
+            required=True,
+            summary="CSV baseline comparison could not find the threshold report.",
+            evidence_files=[],
+            error_message="threshold report JSON path missing from pilot e2e evidence",
+        )
+    return _run_step(
+        name="csv-baseline",
+        required=True,
+        summary="CSV baseline comparison completed.",
+        operation=lambda: compare_csv_baseline(
+            threshold_report_path=threshold_report_path,
+            baseline_path=baseline_path,
+            out_dir=out_dir / "csv-baseline",
+            exit_on_failure=False,
+        ),
+    )
+
+
+def _threshold_report_path_from_e2e_step(step: RehearsalStep) -> Path | None:
+    for evidence_file in step.evidence_files:
+        path = Path(evidence_file.path)
+        if path.name.endswith("-threshold-comparison.json"):
+            return path
+    return None
 
 
 def _skip_step(*, name: str, summary: str, required: bool = False) -> RehearsalStep:
@@ -426,6 +476,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         choices=("strict", "balanced", "exploratory"),
         default="balanced",
     )
+    parser.add_argument("--baseline", type=Path)
     parser.add_argument("--bge-model-path", type=Path)
     parser.add_argument("--bge-expected-sha256")
     parser.add_argument("--run-bge-benchmark", action="store_true")
