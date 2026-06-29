@@ -54,7 +54,8 @@ def test_dify_checklists_link_dry_run_rehearsal_and_metadata() -> None:
         "dify-dry-run-rehearsal.md",
         "dify-dry-run-evidence-template.md",
         "Dify workflow version identifier",
-        "The rehearsal wrapper records only the Dify workflow version identifier and evidence path.",
+        "The rehearsal wrapper records only the Dify workflow version identifier "
+        "and evidence path.",
         "Screenshots and workflow exports must show masked values only.",
         "Do not paste screenshot/export contents into pilot-rehearsal-manifest.md.",
         "pilot-rehearsal-manifest.md",

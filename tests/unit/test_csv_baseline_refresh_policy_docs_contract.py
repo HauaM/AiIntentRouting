@@ -46,7 +46,8 @@ def test_csv_baseline_refresh_policy_pins_freeze_command_block() -> None:
 
     for expected in (
         "uv run python scripts/compare_csv_baseline.py freeze",
-        "--threshold-report var/evidence/${SERVICE_ID}/rehearsal/e2e/${SERVICE_ID}-threshold-comparison.json",
+        "--threshold-report var/evidence/${SERVICE_ID}/rehearsal/e2e/"
+        "${SERVICE_ID}-threshold-comparison.json",
         "--csv docs/pilot/it-helpdesk-pilot-cases.csv",
         "--preset balanced",
         "--baseline-id it-helpdesk-pilot-standard-YYYYMMDD",
@@ -61,7 +62,8 @@ def test_csv_baseline_refresh_policy_pins_compare_command_block() -> None:
 
     for expected in (
         "uv run python scripts/compare_csv_baseline.py compare",
-        "--threshold-report var/evidence/${SERVICE_ID}/rehearsal/e2e/${SERVICE_ID}-threshold-comparison.json",
+        "--threshold-report var/evidence/${SERVICE_ID}/rehearsal/e2e/"
+        "${SERVICE_ID}-threshold-comparison.json",
         "--baseline docs/pilot/it-helpdesk-pilot-baseline.json",
         "--csv docs/pilot/it-helpdesk-pilot-cases.csv",
         "--out-dir var/evidence/${SERVICE_ID}/rehearsal/csv-baseline",
