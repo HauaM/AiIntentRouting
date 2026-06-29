@@ -27,17 +27,20 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 4. Start the API:
    `uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 8000`
 
-5. Run the Sprint 4 pilot e2e smoke before Dify handoff:
-   `uv run python scripts/run_pilot_e2e_smoke.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --environment ${INTENT_ROUTING_ENVIRONMENT} --state-path ${STATE_PATH} --csv-tier standard --required-preset balanced --out-dir var/evidence/${SERVICE_ID}/e2e`
+5. Run the Sprint 5 pilot rehearsal before Dify handoff:
+   `uv run python scripts/run_pilot_rehearsal.py --mode local --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --environment ${INTENT_ROUTING_ENVIRONMENT} --state-path ${STATE_PATH} --csv-tier standard --required-preset balanced --out-dir var/evidence/${SERVICE_ID}/rehearsal`
 
-   The wrapper performs seed, health/readiness checks, threshold comparison, Dify-style runtime smokes, masked log checks, and writes the e2e evidence index.
+   The rehearsal performs the Sprint 4 e2e smoke, Dify smoke matrix, ops evidence export, CSV baseline placeholder, and recursive secret scan, then writes `pilot-rehearsal-manifest.json` and `pilot-rehearsal-manifest.md`.
 
-6. Run the Dify handoff smoke matrix:
+6. Use the lower-level Sprint 4 e2e smoke only for diagnosis:
+   `uv run python scripts/run_pilot_e2e_smoke.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --environment ${INTENT_ROUTING_ENVIRONMENT} --state-path ${STATE_PATH} --csv-tier standard --required-preset balanced --out-dir var/evidence/${SERVICE_ID}/rehearsal/e2e`
+
+7. Use the lower-level Dify handoff smoke matrix only for diagnosis:
    `uv run python scripts/run_dify_smoke_matrix.py --base-url http://127.0.0.1:8000 --state ${STATE_PATH} --out-dir var/evidence/${SERVICE_ID}/dify`
 
    The matrix verifies decision branches and auth/config error branches before the Dify UI handoff.
 
-7. Export operations evidence:
+8. Export operations evidence directly only when you need a standalone diagnostics bundle:
    `uv run python scripts/export_ops_evidence.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --out-dir var/evidence/${SERVICE_ID}/ops --window-hours 24 --actor-id ops-evidence --environment ${INTENT_ROUTING_ENVIRONMENT}`
 
    The evidence command writes `ops-evidence.json` and `ops-evidence.md`.

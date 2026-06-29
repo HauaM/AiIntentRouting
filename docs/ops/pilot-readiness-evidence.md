@@ -1,8 +1,41 @@
 # Pilot Readiness Evidence
 
-For Sprint 4 pilot handoff, prefer `scripts/run_pilot_e2e_smoke.py`; it wraps this readiness workflow, requires the `balanced` quality gate, and writes an e2e evidence index. Use this page when you need to run the lower-level readiness workflow directly after the API is running and `/readyz` returns ready.
+For Sprint 5 pilot handoff, prefer `scripts/run_pilot_rehearsal.py`; it wraps the Sprint 4 e2e smoke, Dify smoke matrix, ops evidence export, CSV baseline placeholder, and rehearsal secret scan into one manifest. Use this page when you need to run the lower-level readiness workflow directly after the API is running and `/readyz` returns ready.
 
-Default Sprint 4 command:
+Default Sprint 5 rehearsal command:
+
+```bash
+uv run python scripts/run_pilot_rehearsal.py \
+  --mode local \
+  --base-url http://127.0.0.1:8000 \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --service-id ${SERVICE_ID} \
+  --environment ${INTENT_ROUTING_ENVIRONMENT} \
+  --state-path ${STATE_PATH} \
+  --csv-tier standard \
+  --required-preset balanced \
+  --out-dir var/evidence/${SERVICE_ID}/rehearsal
+```
+
+Closed-network rehearsal command:
+
+```bash
+uv run python scripts/run_pilot_rehearsal.py \
+  --mode closed-network \
+  --base-url http://127.0.0.1:8000 \
+  --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
+  --service-id ${SERVICE_ID} \
+  --environment pilot \
+  --state-path ${STATE_PATH} \
+  --csv-tier standard \
+  --required-preset balanced \
+  --bge-model-path /models/bge-m3 \
+  --bge-expected-sha256 ${BGE_M3_MODEL_SHA256} \
+  --run-bge-benchmark \
+  --out-dir var/evidence/${SERVICE_ID}/rehearsal
+```
+
+Lower-level Sprint 4 e2e diagnostic command:
 
 ```bash
 uv run python scripts/run_pilot_e2e_smoke.py \
@@ -38,6 +71,7 @@ CSV tier options:
 
 Evidence outputs:
 
+- `pilot-rehearsal-manifest.json` and `pilot-rehearsal-manifest.md` when using the Sprint 5 rehearsal wrapper
 - `pilot-e2e-smoke-index.json` and `pilot-e2e-smoke-index.md` when using the e2e wrapper
 - `readiness-report.json`
 - `readiness-report.md`
