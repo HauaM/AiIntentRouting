@@ -19,25 +19,38 @@ class FakeEmbeddingProvider:
 def _normalized_vector(text: str) -> list[float]:
     vector = [0.0] * EMBEDDING_DIMENSION
     lower_text = text.casefold()
-    if (
+    has_api_signal = (
         "timeout" in lower_text
         or "타임아웃" in lower_text
         or "500" in lower_text
         # Test-only Korean server-error bucket for Sprint 0 confusing cases.
         or "에러" in lower_text
-    ):
-        vector[0] = 1.0
-        vector[1] = 0.2
-        vector[2] = 0.02
-    elif (
+        or "api" in lower_text
+    )
+    has_password_signal = (
         "비밀번호" in lower_text
         or "password" in lower_text
         or "계정 잠금" in lower_text
-    ):
+    )
+    has_vpn_signal = "vpn" in lower_text or "원격" in lower_text or "사내망" in lower_text
+    signal_count = sum((has_api_signal, has_password_signal, has_vpn_signal))
+
+    if signal_count >= 2:
+        if has_api_signal:
+            vector[0] = 1.0
+        if has_password_signal:
+            vector[1] = 1.0
+        if has_vpn_signal:
+            vector[4] = 1.0
+    elif has_api_signal:
+        vector[0] = 1.0
+        vector[1] = 0.2
+        vector[2] = 0.02
+    elif has_password_signal:
         vector[0] = 0.2
         vector[1] = 1.0
         vector[2] = 0.02
-    elif "vpn" in lower_text or "원격" in lower_text or "사내망" in lower_text:
+    elif has_vpn_signal:
         vector[0] = 0.02
         vector[1] = 0.02
         vector[2] = 0.02
