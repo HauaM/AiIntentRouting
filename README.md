@@ -32,7 +32,12 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 
    The wrapper performs seed, health/readiness checks, threshold comparison, Dify-style runtime smokes, masked log checks, and writes the e2e evidence index.
 
-6. Export operations evidence:
+6. Run the Dify handoff smoke matrix:
+   `uv run python scripts/run_dify_smoke_matrix.py --base-url http://127.0.0.1:8000 --state ${STATE_PATH} --out-dir var/evidence/${SERVICE_ID}/dify`
+
+   The matrix verifies decision branches and auth/config error branches before the Dify UI handoff.
+
+7. Export operations evidence:
    `uv run python scripts/export_ops_evidence.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --out-dir var/evidence/${SERVICE_ID}/ops --window-hours 24 --actor-id ops-evidence --environment ${INTENT_ROUTING_ENVIRONMENT}`
 
    The evidence command writes `ops-evidence.json` and `ops-evidence.md`.
