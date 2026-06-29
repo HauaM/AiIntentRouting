@@ -26,11 +26,52 @@ CI uses `EMBEDDING_PROVIDER=fake` and local CI-only key material so no productio
 Run the same verification path locally before relying on GitHub CI:
 
 ```bash
+set -euo pipefail
+
 docker compose up -d postgres
-DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:5432/intent_routing uv run alembic upgrade head
-TEST_DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:5432/intent_routing uv run pytest -q
+export DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:5432/intent_routing
+export TEST_DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:5432/intent_routing
+export ADMIN_BOOTSTRAP_TOKEN=ci-admin-token
+export INTENT_ROUTING_ENVIRONMENT=dev
+export RAW_TEXT_KEK_ID=ci-kek-001
+export RAW_TEXT_KEK_BASE64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+export RAW_TEXT_LEGACY_KEKS_JSON="{}"
+export EMBEDDING_PROVIDER=fake
+
+uv run alembic upgrade head
 uv run ruff check .
 uv run mypy src tests
+
+mkdir -p var/logs
+uv run uvicorn intent_routing.main:create_app --factory --host 127.0.0.1 --port 8000 > var/logs/api.log 2>&1 &
+echo $! > var/logs/api.pid
+trap 'kill "$(cat var/logs/api.pid)" 2>/dev/null || true' EXIT
+ready=0
+for i in $(seq 1 30); do
+  if curl -fsS http://127.0.0.1:8000/readyz; then
+    ready=1
+    break
+  fi
+  sleep 1
+done
+if [ "${ready}" -ne 1 ]; then
+  cat var/logs/api.log
+  exit 1
+fi
+SERVICE_ID="it-helpdesk-local-$(date +%s)"
+uv run python scripts/run_pilot_e2e_smoke.py \
+  --base-url http://127.0.0.1:8000 \
+  --admin-token "${ADMIN_BOOTSTRAP_TOKEN}" \
+  --service-id "${SERVICE_ID}" \
+  --environment "${INTENT_ROUTING_ENVIRONMENT}" \
+  --state-path "var/pilot/${SERVICE_ID}.state.secret.json" \
+  --csv-tier standard \
+  --required-preset balanced \
+  --out-dir "var/evidence/${SERVICE_ID}/e2e"
+kill "$(cat var/logs/api.pid)" 2>/dev/null || true
+trap - EXIT
+
+uv run pytest -q
 docker compose --profile runtime config
 ```
 

@@ -92,6 +92,42 @@ jobs:
             --required-preset balanced \
             --out-dir "var/evidence/${SERVICE_ID}/e2e"
 
+      - name: Stop API
+        if: always()
+        run: |
+          if [ ! -f var/logs/api.pid ]; then
+            echo "API PID file not found; nothing to stop."
+            exit 0
+          fi
+
+          pid="$(cat var/logs/api.pid || true)"
+          if [ -z "${pid}" ]; then
+            echo "API PID file is empty; nothing to stop."
+            exit 0
+          fi
+
+          wait_for_exit() {
+            for i in $(seq 1 10); do
+              if ! kill -0 "${pid}" 2>/dev/null; then
+                return 0
+              fi
+              sleep 1
+            done
+            return 1
+          }
+
+          if ! kill -0 "${pid}" 2>/dev/null; then
+            echo "API process ${pid} is not running."
+            exit 0
+          fi
+
+          kill "${pid}" 2>/dev/null || true
+          if ! wait_for_exit; then
+            echo "API process ${pid} did not stop after SIGTERM; sending SIGKILL."
+            kill -9 "${pid}" 2>/dev/null || true
+            wait_for_exit || true
+          fi
+
       - name: Upload pilot e2e evidence
         if: always()
         uses: actions/upload-artifact@v4
