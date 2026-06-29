@@ -5,6 +5,7 @@
 
 Checked template: `docs/integrations/dify-http-request-node-template.json`
 Branch playbook: `docs/integrations/dify-branching-playbook.md`
+Handoff checklist: `docs/integrations/dify-handoff-checklist.md`
 
 ## HTTP Request 노드 설정
 

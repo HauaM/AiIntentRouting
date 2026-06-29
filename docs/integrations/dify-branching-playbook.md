@@ -1,6 +1,7 @@
 # Dify Branching Playbook
 
 Template: `docs/integrations/dify-http-request-node-template.json`
+Handoff checklist: `docs/integrations/dify-handoff-checklist.md`
 
 ## Runtime Branches
 
