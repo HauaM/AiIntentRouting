@@ -477,7 +477,7 @@ def test_routing_engine_returns_off_topic_before_scoring() -> None:
     assert semantic_search_called is False
 
 
-def test_routing_engine_falls_back_when_single_semantic_candidate_lacks_catalog_keyword_signal() -> None:
+def test_routing_engine_falls_back_when_single_candidate_lacks_keyword_signal() -> None:
     engine = RoutingEngine(
         risk_policy=_AllowAllRiskPolicy(),
         candidate_loader=lambda _service_id, _release: [

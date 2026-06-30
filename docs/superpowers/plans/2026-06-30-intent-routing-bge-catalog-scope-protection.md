@@ -475,7 +475,7 @@ Run:
 
 ```bash
 uv run ruff check src scripts tests
-uv run mypy src scripts tests
+uv run mypy src tests
 ```
 
 Expected:
@@ -757,7 +757,7 @@ Run:
 
 ```bash
 uv run ruff check src scripts tests
-uv run mypy src scripts tests
+uv run mypy src tests
 docker compose --profile runtime config >/tmp/intent-routing-compose-config.txt
 ```
 
