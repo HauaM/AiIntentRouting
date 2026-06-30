@@ -230,6 +230,18 @@ class DecisionComposer:
             )
 
         if (
+            len(viable_candidates) == 1
+            and top_candidate.confidence < self.threshold_config.resolved_threshold
+            and top_candidate.include_keyword_match_count == 0
+        ):
+            return self._fallback(
+                top_candidate=top_candidate,
+                margin=margin,
+                ranked=ranked,
+                reason="outside_catalog_scope",
+            )
+
+        if (
             top_candidate.confidence >= self.threshold_config.min_candidate_score
             and top_candidate.confidence < self.threshold_config.resolved_threshold
         ):

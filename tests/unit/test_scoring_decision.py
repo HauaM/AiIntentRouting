@@ -163,6 +163,85 @@ def test_below_threshold_returns_clarify_with_max_three_candidates() -> None:
     ]
 
 
+def test_single_keywordless_below_threshold_candidate_falls_back_as_outside_catalog_scope() -> None:
+    result = DecisionComposer(
+        ThresholdConfig(preset="balanced", threshold=0.8, clarify_margin=0.08)
+    ).compose(
+        [
+            CandidateScore(
+                "it_password_reset",
+                "Password reset",
+                "IT",
+                "it.password_reset.self_service",
+                0.59,
+                include_keyword_match_count=0,
+            ),
+        ]
+    )
+
+    assert result.decision == Decision.fallback
+    assert result.intent_id is None
+    assert result.route_key is None
+    assert result.decision_state is not None
+    assert result.decision_state["decision_reason"] == "outside_catalog_scope"
+
+
+def test_keyword_supported_single_candidate_still_clarifies_below_threshold() -> None:
+    result = DecisionComposer(
+        ThresholdConfig(preset="balanced", threshold=0.8, clarify_margin=0.08)
+    ).compose(
+        [
+            CandidateScore(
+                "it_api_timeout",
+                "API Timeout",
+                "IT",
+                "it.api_timeout.manual_lookup",
+                0.79,
+                include_keyword_match_count=1,
+            ),
+        ]
+    )
+
+    assert result.decision == Decision.clarify
+    assert result.clarify is not None
+    assert result.clarify.reason == "below_threshold"
+    assert result.intent_id is None
+    assert result.route_key is None
+
+
+def test_two_viable_keywordless_candidates_still_clarify_when_close() -> None:
+    result = DecisionComposer(
+        ThresholdConfig(preset="balanced", threshold=0.8, clarify_margin=0.08)
+    ).compose(
+        [
+            CandidateScore(
+                "it_api_timeout",
+                "API Timeout",
+                "IT",
+                "it.api_timeout.manual_lookup",
+                0.78,
+                include_keyword_match_count=0,
+            ),
+            CandidateScore(
+                "it_password_reset",
+                "Password reset",
+                "IT",
+                "it.password_reset.self_service",
+                0.76,
+                include_keyword_match_count=0,
+            ),
+        ]
+    )
+
+    assert result.decision == Decision.clarify
+    assert result.clarify is not None
+    assert result.clarify.reason == "top_candidates_close"
+    assert [candidate.intent_id for candidate in result.clarify.candidates] == [
+        "it_api_timeout",
+        "it_password_reset",
+    ]
+
+
 def test_unauthorized_when_top_candidate_is_outside_scope() -> None:
     result = DecisionComposer(
         ThresholdConfig(preset="balanced", threshold=0.8, clarify_margin=0.08),
@@ -396,6 +475,44 @@ def test_routing_engine_returns_off_topic_before_scoring() -> None:
     assert result.fallback_policy is not None
     assert result.fallback_policy.recommended_action == "handoff_to_default_channel"
     assert semantic_search_called is False
+
+
+def test_routing_engine_falls_back_when_single_semantic_candidate_lacks_catalog_keyword_signal() -> None:
+    engine = RoutingEngine(
+        risk_policy=_AllowAllRiskPolicy(),
+        candidate_loader=lambda _service_id, _release: [
+            IntentCandidate(
+                intent_id="it_password_reset",
+                display_name="Password reset",
+                domain="IT",
+                route_key="it.password_reset.self_service",
+                include_keywords=("비밀번호", "계정 잠금", "password"),
+            )
+        ],
+        semantic_search=lambda _query, _candidates, _release: {
+            "it_password_reset": SemanticMatch(positive_scores=[0.59], negative_scores=[]),
+        },
+        composer=DecisionComposer(ThresholdConfig(preset="balanced")),
+    )
+
+    result = engine.route(
+        RouteInput(
+            query="회의실 예약 변경 방법을 알려주세요",
+            service_id="svc-a",
+            route_scope=RouteScope(allowed_intents=[], allowed_route_keys=[]),
+            release=ActiveReleaseContext(
+                release_version="rel-1",
+                off_topic_policy=ServiceOffTopicPolicy(enabled=False, keywords=[], message=""),
+            ),
+        )
+    )
+
+    assert result.decision == Decision.fallback
+    assert result.decision_state is not None
+    assert result.decision_state["decision_reason"] == "outside_catalog_scope"
+    assert result.decision_state["ranking"][0]["score_breakdown"][
+        "include_keyword_match_count"
+    ] == 0
 
 
 def test_routing_engine_treats_empty_scope_as_unrestricted() -> None:
