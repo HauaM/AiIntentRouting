@@ -6,17 +6,31 @@ ROOT = Path(__file__).resolve().parents[2]
 CHECKLIST = ROOT / "docs/ops/pilot-launch-readiness-checklist.md"
 RUNBOOK = ROOT / "docs/ops/intent-routing-pilot-runbook.md"
 CHECKLIST_PATH = "docs/ops/pilot-launch-readiness-checklist.md"
+GO_NO_GO_TEMPLATE_PATH = "docs/ops/pilot-go-no-go-decision-template.md"
+GO_NO_GO_DECISION_RECORD_PATH = (
+    "var/evidence/${SERVICE_ID}/pilot-go-no-go-decision.md"
+)
 DRY_FILL_COPY = (
     "Copy docs/ops/pilot-handoff-release-ticket-template.md to "
     "var/evidence/${SERVICE_ID}/release-ticket.md."
 )
-DRY_FILL_FIELDS = (
-    "Fill the release ticket with evidence paths, hashes, statuses, reviewer "
-    "names, approval IDs, and go gate summary only."
+DRY_FILL_FIELD_MARKERS = (
+    "evidence paths",
+    "hashes",
+    "statuses",
+    "reviewer names",
+    "approval IDs",
+    "go gate summary only",
 )
-DRY_FILL_FORBIDDEN_CONTENT = (
-    "Do not paste screenshot contents, workflow export contents, raw query text, "
-    "API keys, bearer tokens, KEK material, encrypted DEKs, or ciphertext."
+DRY_FILL_FORBIDDEN_MARKERS = (
+    "screenshot contents",
+    "workflow export contents",
+    "raw query text",
+    "API keys",
+    "bearer tokens",
+    "KEK material",
+    "encrypted DEKs",
+    "ciphertext",
 )
 DRY_FILL_REVIEWER_COMMANDS = "Run the reviewer commands."
 DRY_FILL_DECISION_LINK = "Link the release ticket from pilot-go-no-go-decision.md."
@@ -37,6 +51,20 @@ FORBIDDEN_RELEASE_MARKER_SCAN_PARTS = (
 
 def _compact(text: str) -> str:
     return " ".join(text.split())
+
+
+def _section(text: str, start_heading: str, end_heading: str) -> str:
+    start = text.index(start_heading)
+    end = text.index(end_heading, start + len(start_heading))
+    return text[start:end]
+
+
+def _assert_go_no_go_decision_record_criteria(text: str) -> None:
+    assert GO_NO_GO_TEMPLATE_PATH in text
+    assert GO_NO_GO_DECISION_RECORD_PATH in text
+    assert "release-ticket.md" in text
+    assert "no secrets" in text
+    assert "no raw query text" in text
 
 
 def _write_checklist_copy_without_intentional_forbidden_scan(
@@ -67,7 +95,15 @@ def _write_checklist_copy_without_intentional_forbidden_scan(
 
 def test_pilot_launch_readiness_checklist_contains_required_contract() -> None:
     text = CHECKLIST.read_text(encoding="utf-8")
-    compact_text = _compact(text)
+    release_ticket_section = _compact(
+        _section(text, "## Release Ticket Review", "## Go/No Go Decision")
+    )
+    go_no_go_section = _compact(
+        _section(text, "## Go/No Go Decision", "## Failure Handling")
+    )
+    failure_section = _compact(
+        _section(text, "## Failure Handling", "## Files That Must Not Be Committed")
+    )
 
     for expected in (
         CHECKLIST_PATH,
@@ -80,6 +116,8 @@ def test_pilot_launch_readiness_checklist_contains_required_contract() -> None:
         "Dify condition owner",
         "release-ticket.md",
         "var/evidence/${SERVICE_ID}/release-ticket.md",
+        GO_NO_GO_TEMPLATE_PATH,
+        GO_NO_GO_DECISION_RECORD_PATH,
         DRY_FILL_REVIEWER_COMMANDS,
         "evidence links only",
         "BGE evidence status",
@@ -111,36 +149,49 @@ def test_pilot_launch_readiness_checklist_contains_required_contract() -> None:
 
     for expected in (
         DRY_FILL_COPY,
-        DRY_FILL_FIELDS,
-        DRY_FILL_FORBIDDEN_CONTENT,
         DRY_FILL_DECISION_LINK,
         "no screenshot contents",
         "no workflow export contents",
-        "go requires BGE measured-pass before closed-network pilot traffic",
+    ):
+        assert expected in release_ticket_section
+
+    for expected in DRY_FILL_FIELD_MARKERS + DRY_FILL_FORBIDDEN_MARKERS:
+        assert expected in release_ticket_section
+
+    for marker_group in (
+        ("BGE measured-pass", "closed-network pilot traffic"),
         (
-            "Conditional Go with pending-host-access requires exception "
-            "approval ID, exception owner, expiration before pilot traffic, "
-            "and next measurement date"
+            "Conditional Go",
+            "pending-host-access",
+            "exception approval ID",
+            "exception owner",
+            "expiration before pilot traffic",
+            "next measurement date",
         ),
-        "measured-fail blocks pilot launch until corrected evidence passes",
+        ("measured-fail", "pilot launch", "corrected evidence passes"),
         (
-            "Do not convert a failed measurement into Conditional Go. Keep the "
-            "decision as No Go until the evidence is corrected, regenerated, "
-            "and accepted as measured-pass."
+            "Rollback or bypass evidence",
+            "approval ID",
+            "exact commit SHA",
+            "workflow_dispatch rerun URL",
+            "artifact review result",
+            "final branch protection state",
         ),
         (
-            "Rollback or bypass evidence must include approval ID, exact commit "
-            "SHA, workflow_dispatch rerun URL, artifact review result, and "
-            "final branch protection state."
-        ),
-        "approval ID, exact commit SHA, workflow_dispatch rerun URL",
-        "final branch protection state",
-        (
-            "go requires either CSV baseline freeze approval or a "
-            "policy-approved refresh approval"
+            "CSV baseline freeze approval",
+            "policy-approved refresh approval",
         ),
     ):
-        assert expected in compact_text
+        for marker in marker_group:
+            assert marker in go_no_go_section
+
+    for marker in (
+        "failed measurement",
+        "Conditional Go",
+        "No Go",
+        "accepted as measured-pass",
+    ):
+        assert marker in failure_section
 
 
 def test_pilot_launch_readiness_checklist_contains_required_sections() -> None:
@@ -156,7 +207,7 @@ def test_pilot_launch_readiness_checklist_contains_required_sections() -> None:
         "## Branch Protection Closure",
         "## CSV Baseline Freeze Closure",
         "## Release Ticket Review",
-        "## Go/No-Go Decision",
+        "## Go/No Go Decision",
         "## Failure Handling",
         "## Files That Must Not Be Committed",
     ):
@@ -168,11 +219,12 @@ def test_pilot_release_ticket_dry_fill_order_is_documented_in_runbook() -> None:
 
     for expected in (
         DRY_FILL_COPY,
-        DRY_FILL_FIELDS,
-        DRY_FILL_FORBIDDEN_CONTENT,
         DRY_FILL_REVIEWER_COMMANDS,
         DRY_FILL_DECISION_LINK,
     ):
+        assert expected in text
+
+    for expected in DRY_FILL_FIELD_MARKERS + DRY_FILL_FORBIDDEN_MARKERS:
         assert expected in text
 
 
@@ -202,6 +254,34 @@ def test_pilot_release_ticket_reviewer_commands_are_documented_in_runbook() -> N
     text = RUNBOOK.read_text(encoding="utf-8")
 
     _assert_reviewer_commands_are_documented(text)
+
+
+def test_pilot_launch_readiness_checklist_documents_go_no_go_record_link_criteria() -> None:
+    text = CHECKLIST.read_text(encoding="utf-8")
+
+    _assert_go_no_go_decision_record_criteria(text)
+
+
+def test_pilot_launch_readiness_checklist_documents_conditional_go_policy() -> None:
+    text = CHECKLIST.read_text(encoding="utf-8")
+    compact_text = _compact(text)
+
+    for expected in (
+        "blocked gate",
+        "condition owner",
+        "approval ID",
+        "expiry",
+        "next review date",
+        "launch boundary impact",
+    ):
+        assert expected in text
+
+    for expected in (
+        "Traffic across a blocked boundary",
+        "remains blocked",
+        "accepted evidence is attached",
+    ):
+        assert expected in compact_text
 
 
 def test_pilot_launch_readiness_checklist_is_secret_scan_safe(tmp_path: Path) -> None:

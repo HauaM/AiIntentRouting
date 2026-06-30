@@ -16,6 +16,9 @@ go/no-go decision record.
 
 The filled release ticket path is var/evidence/${SERVICE_ID}/release-ticket.md.
 The pilot go/no-go decision record path is var/evidence/${SERVICE_ID}/pilot-go-no-go-decision.md.
+Use docs/ops/pilot-go-no-go-decision-template.md for the final decision record.
+Save the completed copy as var/evidence/${SERVICE_ID}/pilot-go-no-go-decision.md.
+The decision record links release-ticket.md and must contain no secrets or raw query text.
 
 Launch closure must keep evidence references only: no secrets, no raw query text,
 and no pasted runtime payload material.
@@ -28,7 +31,7 @@ and no pasted runtime payload material.
 4. Capture authorized branch protection evidence for main and CI / verify.
 5. Record CSV baseline freeze approval or policy-approved refresh approval.
 6. Dry-fill the release ticket and run secret-scan review commands.
-7. Write the pilot go/no-go decision record.
+7. Write the pilot go/no-go decision record from docs/ops/pilot-go-no-go-decision-template.md.
 
 Do not skip this order. Earlier evidence may feed later approvals, and the final
 pilot go/no-go decision record must reflect every unresolved condition.
@@ -189,10 +192,14 @@ second rg prints no matches
 The release ticket must be evidence links only: no screenshot contents, no
 workflow export contents, no secrets, and no raw query text.
 
-## Go/No-Go Decision
+## Go/No Go Decision
 
 Write the pilot go/no-go decision record after release ticket review. Allowed
 decision values are Go, Conditional Go, and No Go.
+
+Use docs/ops/pilot-go-no-go-decision-template.md for the final decision record.
+Save the completed copy as var/evidence/${SERVICE_ID}/pilot-go-no-go-decision.md.
+The decision record links release-ticket.md and must contain no secrets or raw query text.
 
 Go requires accepted evidence for local rehearsal, Dify UI dry-run,
 closed-network BGE, branch protection, CSV baseline freeze, release ticket
@@ -211,8 +218,17 @@ Conditional Go with pending-host-access requires exception approval ID,
 exception owner, expiration before pilot traffic, and next measurement date.
 measured-fail blocks pilot launch until corrected evidence passes.
 
-Conditional Go is allowed only when each remaining condition has an owner, an
-approval ID, and a blocking impact recorded in the go/no-go decision record.
+Conditional Go is allowed only when each remaining condition records:
+
+- blocked gate
+- condition owner
+- approval ID
+- expiry
+- next review date
+- launch boundary impact
+
+Traffic across a blocked boundary remains blocked until accepted evidence is
+attached.
 
 No Go is required when a required evidence item is missing, failed, unsafe to
 attach, or not approved by the responsible owner.

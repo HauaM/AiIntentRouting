@@ -20,6 +20,8 @@ Use `docs/ops/pilot-handoff-release-ticket-template.md` for the final pilot
 handoff and release ticket after the manifest, BGE evidence, branch protection,
 Dify UI dry-run, CSV baseline comparison, and security rehearsal evidence are
 ready.
+Use `docs/ops/pilot-go-no-go-decision-template.md` for the final decision record
+after the release ticket review is complete.
 The wrapper calls the readiness and evidence tools, writes a manifest, and runs
 the evidence `secret scan`; no destructive security operation is executed by the wrapper.
 
@@ -196,6 +198,14 @@ Expected:
 first rg prints the required evidence references
 second rg prints no matches
 ```
+
+## Go/No Go Decision Dry-Fill Review
+
+After release ticket review, copy `docs/ops/pilot-go-no-go-decision-template.md`
+to `var/evidence/${SERVICE_ID}/pilot-go-no-go-decision.md` and choose Go,
+No Go, or Conditional Go. The completed decision record links
+`release-ticket.md`, records blocked gates and owners, and contains no secrets
+and no raw query text.
 
 ## Secret Scan Policy
 

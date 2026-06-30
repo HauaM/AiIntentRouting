@@ -11,6 +11,13 @@ Template path:
 Filled ticket path:
 `var/evidence/${SERVICE_ID}/release-ticket.md`
 
+Final decision record:
+`docs/ops/pilot-go-no-go-decision-template.md`
+
+Use docs/ops/pilot-go-no-go-decision-template.md for the final decision record.
+Save the completed copy as var/evidence/${SERVICE_ID}/pilot-go-no-go-decision.md.
+The decision record links release-ticket.md and must contain no secrets or raw query text.
+
 ## Release Scope
 
 - service_id:
@@ -163,11 +170,12 @@ status summaries, hashes, reviewers, approval IDs, and go gate summary text.
 - Mitigation:
 - Decision impact:
 
-## Go/No-Go Decision
+## Go/No Go Decision
 
-- go/no-go:
+- Decision value: Go / No Go / Conditional Go
 - Decision timestamp:
 - Decision owner:
+- Decision template: docs/ops/pilot-go-no-go-decision-template.md
 - Gate summary:
 - Conditions:
 
@@ -193,7 +201,7 @@ Required go gates:
   exception owner, expiration before pilot traffic, and next measurement date.
 - measured-fail blocks pilot launch until corrected evidence passes.
 - Admin UI excluded from Sprint 6.
-- ticket must not contain secrets or raw query text.
+- ticket must contain no secrets and no raw query text.
 
 ## Approvals
 
