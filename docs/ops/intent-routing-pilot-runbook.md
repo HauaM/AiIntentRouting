@@ -7,6 +7,9 @@ when the rehearsal manifest points to a specific failed step.
 Use `docs/ops/pilot-evidence-bundle-checklist.md` as the Sprint 6 review standard
 before attaching local rehearsal evidence. Treat this runbook as
 diagnostic when a checklist or manifest step fails.
+Use `docs/ops/pilot-launch-readiness-checklist.md` as the Sprint 7 launch
+closure checklist after the Sprint 6 bundle review; it closes evidence,
+approval ownership, and the pilot go/no-go decision.
 Use `docs/ops/pilot-handoff-release-ticket-template.md` for the final pilot
 handoff and release ticket after the evidence bundle review passes.
 
@@ -161,6 +164,9 @@ Run these manually before Dify handoff:
 
 ## Release Readiness Checklist
 
+- Sprint 7 launch closure is tracked in
+  `docs/ops/pilot-launch-readiness-checklist.md`; the items below remain local
+  runbook diagnostics and do not replace Sprint 6 bundle review.
 - [ ] Completed copy of `docs/ops/pilot-handoff-release-ticket-template.md` references all required evidence and contains no secrets or raw query text.
 - [ ] `.env.example` uses `RAW_TEXT_KEK_ID` and `RAW_TEXT_KEK_BASE64`.
 - [ ] `docker compose up -d postgres` succeeds.

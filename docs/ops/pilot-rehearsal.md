@@ -8,6 +8,9 @@ bundle to the pilot approval record.
 Use `docs/ops/pilot-evidence-bundle-checklist.md` as the Sprint 6 review standard
 before attaching a local evidence bundle. Use the older runbooks for
 diagnostic commands when one rehearsal step fails.
+Use `docs/ops/pilot-launch-readiness-checklist.md` as the Sprint 7 launch
+closure checklist after the Sprint 6 bundle review; it records final evidence
+ownership and the pilot go/no-go decision instead of replacing bundle review.
 Use `docs/pilot/csv-baseline-refresh-policy.md` as the source of truth before
 approving or rolling back any checked-in CSV baseline refresh.
 Use `docs/ops/bge-m3-evidence-template.md` as the closed-network BGE-M3 evidence
