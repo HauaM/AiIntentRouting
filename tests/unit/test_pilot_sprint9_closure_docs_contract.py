@@ -71,10 +71,19 @@ def test_sprint9_release_ticket_records_gate_statuses() -> None:
             "051856591452adeb96ec45d785ee679f018942948e5f2a87dda8531176566441"
         ),
         "Dify UI dry-run: blocked",
-        "BGE closed-network: blocked",
-        "/models/bge-m3",
+        "BGE closed-network: measured-pass",
+        "BGE catalog scope protection PR: https://github.com/HauaM/AiIntentRouting/pull/10",
+        "BGE PR head commit: 9eee8728d620414b41ba93a1e34544a3b2286569",
+        "BGE PR merge commit: 9cdf90b4b1d6ecaed4635c54de8433a2b9f394f8",
+        "BGE PR CI verify: PASS",
+        "BGE measured final_status: PASS",
+        (
+            "BGE measured manifest JSON SHA256: "
+            "605cd1899057bce080da52863ee21d0e9c322cd94809ef4874e28debebe3ffdb"
+        ),
         "Branch protection: blocked",
         "CSV baseline freeze: blocked",
+        "CSV comparison PASS after PR #10",
         "Runtime evidence is not committed",
         "Decision value: No Go",
     ):
@@ -92,14 +101,16 @@ def test_sprint9_decision_rules_force_no_go_for_blocked_required_gates() -> None
         "Dify UI dry-run: blocked",
         "Branch protection: blocked",
         "CSV baseline freeze: blocked",
-        "BGE closed-network: blocked",
+        "BGE closed-network: measured-pass",
+        "BGE bounded exception approval ID: not required",
         "final_status: PASS",
-        "/models/bge-m3",
         "No pilot traffic approved",
         "Conditional Go is not allowed",
         "Admin UI implementation: excluded",
     ):
         assert expected in text
+
+    assert "BGE closed-network: blocked" not in text
 
 
 def test_sprint9_closure_docs_are_secret_safe_and_admin_ui_handbook_free(
