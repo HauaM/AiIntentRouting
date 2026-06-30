@@ -47,6 +47,31 @@ def test_pilot_catalog_has_route_key_and_example_contract() -> None:
         assert intent.include_keywords
 
 
+def test_pilot_catalog_keeps_bge_positive_calibration_examples() -> None:
+    catalog = load_pilot_catalog(CATALOG)
+    examples_by_intent = {
+        intent.intent_id: set(intent.positive_examples) for intent in catalog.intents
+    }
+
+    assert {
+        "업무 API timeout 알림이 반복됩니다",
+        "배치 API 응답 지연을 확인해 주세요",
+    } <= examples_by_intent["it_api_timeout"]
+    assert {
+        "사번 계정 잠금 때문에 포털 접속이 안 됩니다",
+        "내 계정 잠금 해제 진행 상태를 알고 싶습니다",
+    } <= examples_by_intent["it_password_reset"]
+    assert {
+        "외부 근무 중 VPN 접속 오류가 납니다",
+        "신규 노트북에서 VPN 연결이 실패합니다",
+    } <= examples_by_intent["it_vpn_access"]
+
+    all_positive_examples = {
+        example for examples in examples_by_intent.values() for example in examples
+    }
+    assert "문서 보관함 권한 신청 방법을 알려주세요" not in all_positive_examples
+
+
 def test_pilot_catalog_rejects_unknown_threshold_preset(tmp_path: Path) -> None:
     catalog_data = json.loads(CATALOG.read_text(encoding="utf-8"))
     catalog_data["threshold_preset"] = "loose"
@@ -138,3 +163,32 @@ def test_tiered_pilot_cases_have_required_coverage_and_no_obvious_secrets() -> N
         }
         for risk_type in RISK_TYPES:
             assert risk_type in risk_memos
+
+
+def test_pilot_readme_documents_unregistered_work_fallback_protection() -> None:
+    readme = (ROOT / "docs/pilot/README.md").read_text(encoding="utf-8")
+    section = _markdown_section(readme, "## 미등록 업무 Fallback 보호")
+
+    assert "case_type=fallback" in section
+    assert "회의실 예약" in section
+    assert "새 Intent와 positive example을 추가" in section
+    assert "negative example을 추가" in section
+    assert "case_type=fallback`으로 유지" in section
+    for internal_term in (
+        "scoring guard",
+        "threshold",
+        "embedding",
+        "score",
+        "scoring",
+        "숫자 기준",
+        "임계값",
+    ):
+        assert internal_term not in section
+
+
+def _markdown_section(markdown: str, heading: str) -> str:
+    start = markdown.index(heading)
+    next_heading = markdown.find("\n## ", start + len(heading))
+    if next_heading == -1:
+        return markdown[start:]
+    return markdown[start:next_heading]

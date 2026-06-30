@@ -18,7 +18,9 @@
       "positive_examples": [
         "API timeout 500 에러가 납니다",
         "gateway timeout 때문에 업무 API가 실패합니다",
-        "서버 응답 지연과 500 오류를 확인해 주세요"
+        "서버 응답 지연과 500 오류를 확인해 주세요",
+        "업무 API timeout 알림이 반복됩니다",
+        "배치 API 응답 지연을 확인해 주세요"
       ],
       "negative_examples": [
         "비밀번호 초기화가 필요합니다",
@@ -36,7 +38,9 @@
       "positive_examples": [
         "비밀번호 초기화가 필요합니다",
         "password reset 경로를 알려주세요",
-        "계정 잠금 해제를 요청합니다"
+        "계정 잠금 해제를 요청합니다",
+        "사번 계정 잠금 때문에 포털 접속이 안 됩니다",
+        "내 계정 잠금 해제 진행 상태를 알고 싶습니다"
       ],
       "negative_examples": [
         "API timeout 500 에러가 납니다",
@@ -54,7 +58,9 @@
       "positive_examples": [
         "VPN 접속 신청을 하고 싶습니다",
         "원격 근무용 VPN 권한이 필요합니다",
-        "사내망 VPN 접속이 안 됩니다"
+        "사내망 VPN 접속이 안 됩니다",
+        "외부 근무 중 VPN 접속 오류가 납니다",
+        "신규 노트북에서 VPN 연결이 실패합니다"
       ],
       "negative_examples": [
         "API timeout 500 에러가 납니다",
