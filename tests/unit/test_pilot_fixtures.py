@@ -138,3 +138,32 @@ def test_tiered_pilot_cases_have_required_coverage_and_no_obvious_secrets() -> N
         }
         for risk_type in RISK_TYPES:
             assert risk_type in risk_memos
+
+
+def test_pilot_readme_documents_unregistered_work_fallback_protection() -> None:
+    readme = (ROOT / "docs/pilot/README.md").read_text(encoding="utf-8")
+    section = _markdown_section(readme, "## 미등록 업무 Fallback 보호")
+
+    assert "case_type=fallback" in section
+    assert "회의실 예약" in section
+    assert "새 Intent와 positive example을 추가" in section
+    assert "negative example을 추가" in section
+    assert "case_type=fallback`으로 유지" in section
+    for internal_term in (
+        "scoring guard",
+        "threshold",
+        "embedding",
+        "score",
+        "scoring",
+        "숫자 기준",
+        "임계값",
+    ):
+        assert internal_term not in section
+
+
+def _markdown_section(markdown: str, heading: str) -> str:
+    start = markdown.index(heading)
+    next_heading = markdown.find("\n## ", start + len(heading))
+    if next_heading == -1:
+        return markdown[start:]
+    return markdown[start:next_heading]
