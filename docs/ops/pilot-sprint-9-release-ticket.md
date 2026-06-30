@@ -38,12 +38,33 @@ Runtime evidence is not committed. Evidence links only.
 - BGE measured manifest JSON SHA256: 605cd1899057bce080da52863ee21d0e9c322cd94809ef4874e28debebe3ffdb.
 - BGE measured manifest Markdown SHA256: 1d2afc114cbc1f0d45cd8aa8876d493d1b2112a1ecc10cbf25fd16a8eeb2b12a.
 
+## Dify HTTP Caller Evidence
+
+- Dify integration status: accepted by HTTP smoke matrix.
+- Dify approval ID: DIFY-HTTP-SMOKE-SPRINT9-20260701-001.
+- Approval actor: pilot-test-manager.
+- Actor roles: system_admin.
+- Review timestamp: 2026-07-01, Asia/Seoul.
+- Evidence path: var/evidence/it-helpdesk-pilot-bge-scope-protection-20260630/rehearsal/dify/dify-smoke-matrix.md.
+- Boundary: Dify must remain a pass-through HTTP caller for `/v1/intent-route`.
+
+## CSV Freeze Approval
+
+- CSV baseline freeze: approved.
+- Freeze approval ID: CSV-FREEZE-SPRINT9-20260701-001.
+- Approval actor: pilot-test-manager.
+- Actor roles: system_admin.
+- Release owner: pilot-test-manager.
+- QA/security reviewer: pilot-test-manager.
+- Review timestamp: 2026-07-01, Asia/Seoul.
+- Refresh status: refresh not approved.
+- Comparison result: CSV baseline comparison PASS.
+- Accepted behavior change: none.
+
 ## Blocked Gates
 
-- Dify UI dry-run: blocked. Missing UI access, workflow version identifier, reviewer, and sanitized evidence reference.
 - BGE closed-network: measured-pass. PR #10 resolved the BGE catalog scope and positive-case calibration blockers without lowering thresholds or refreshing the baseline.
 - Branch protection: blocked. REST branch protection capture returned HTTP 403, GraphQL returned no active branch protection rules, and no valid protection snapshot exists.
-- CSV baseline freeze: blocked. CSV comparison PASS after PR #10, but approval ID, release owner, QA/security reviewer, and timestamp are missing.
 
 ## Evidence Links Only
 
@@ -56,4 +77,4 @@ Runtime evidence is not committed. Evidence links only.
 
 - Decision value: No Go.
 - No pilot traffic approved.
-- Conditional Go is not allowed because required non-BGE gates remain blocked.
+- Conditional Go is not allowed because branch protection remains blocked.

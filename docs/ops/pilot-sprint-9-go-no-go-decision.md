@@ -27,35 +27,46 @@ Decision value: No Go
 - BGE measured manifest JSON SHA256: 605cd1899057bce080da52863ee21d0e9c322cd94809ef4874e28debebe3ffdb.
 - BGE measured manifest Markdown SHA256: 1d2afc114cbc1f0d45cd8aa8876d493d1b2112a1ecc10cbf25fd16a8eeb2b12a.
 - BGE CSV baseline comparison SHA256: 07bf2eb12c1efc7ef624834628b5396fe8358562925916d08f9b7fa20ce7a1e3.
+- Dify HTTP caller acceptance ID: DIFY-HTTP-SMOKE-SPRINT9-20260701-001.
+- CSV freeze approval ID: CSV-FREEZE-SPRINT9-20260701-001.
+- Approval actor: pilot-test-manager.
+- Actor roles: system_admin.
+- Approval timestamp: 2026-07-01, Asia/Seoul.
 
-## Blocked Gates
+## Accepted Gates
 
-- Dify UI dry-run: blocked.
-- Dify owner: not assigned.
-- Dify approval ID: not provided.
-- Dify missing items: UI access, workflow version identifier, reviewer, sanitized evidence reference.
+- Dify integration: accepted by HTTP smoke matrix.
+- Dify approval ID: DIFY-HTTP-SMOKE-SPRINT9-20260701-001.
+- Dify approval actor: pilot-test-manager.
+- Dify missing items: none when Dify remains a pass-through HTTP caller.
 - BGE closed-network: measured-pass.
 - BGE bounded exception approval ID: not required.
 - BGE missing items: none for local measured-pass evidence.
+- CSV baseline freeze: approved.
+- CSV freeze approval ID: CSV-FREEZE-SPRINT9-20260701-001.
+- CSV release owner: pilot-test-manager.
+- CSV QA/security reviewer: pilot-test-manager.
+- CSV refresh status: refresh not approved.
+- CSV comparison result: PASS.
+
+## Blocked Gates
+
 - Branch protection: blocked.
 - Branch protection owner: not assigned.
 - Branch protection approval ID: not provided.
 - Branch protection missing items: active protection rule, valid protection snapshot, structured verification output.
-- CSV baseline freeze: blocked.
-- CSV freeze approval ID: not provided.
-- CSV release owner: not assigned.
-- CSV QA/security reviewer: not assigned.
 
 ## Decision Rule Result
 
-- Go is not allowed because Dify UI dry-run, branch protection, and CSV freeze approval are blocked.
-- Conditional Go is not allowed because Dify, branch protection, and CSV freeze approval are non-BGE required gates and remain blocked.
+- Go is not allowed because branch protection remains blocked.
+- Conditional Go is not allowed because branch protection is a non-BGE required gate and remains blocked.
 - BGE is no longer the blocker after PR #10, and no BGE bounded exception is required.
+- Dify integration and CSV baseline freeze are no longer blockers after the Sprint 9 July 1 approval records.
 
 ## Launch Boundary
 
 - No pilot traffic approved.
-- Dify traffic remains blocked until approved UI dry-run evidence exists.
+- Dify HTTP caller evidence is accepted, but launch traffic remains blocked by branch protection.
 - Closed-network BGE evidence is measured-pass, but launch traffic remains blocked by the remaining non-BGE gates.
 - Runtime evidence is not committed; only sanitized official records are committed.
 
