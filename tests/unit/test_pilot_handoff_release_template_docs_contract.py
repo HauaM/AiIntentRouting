@@ -80,6 +80,8 @@ def test_pilot_handoff_release_ticket_template_documents_required_gates() -> Non
         ),
         "go requires CSV baseline comparison PASS",
         "go requires branch protection evidence for main",
+        "go requires authorized branch protection evidence for main",
+        "operator-not-permitted does not satisfy pilot go/no-go",
         "Admin UI excluded from Sprint 6",
         "ticket must not contain secrets or raw query text",
     ):
@@ -93,6 +95,11 @@ def test_pilot_handoff_release_ticket_template_documents_required_gates() -> Non
             "and next measurement date"
         ),
         "measured-fail blocks pilot launch until corrected evidence passes",
+        (
+            "rollback or bypass evidence must include approval ID, exact commit "
+            "SHA, workflow_dispatch rerun URL, artifact review result, and "
+            "final branch protection state"
+        ),
     ):
         assert gate in compact_text
 

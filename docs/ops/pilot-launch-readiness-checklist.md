@@ -25,7 +25,7 @@ and no pasted runtime payload material.
 1. Regenerate or review local rehearsal evidence.
 2. Complete Dify UI dry-run evidence and record the Dify workflow version identifier.
 3. Complete closed-network BGE measured evidence or record pending-host-access exception approval.
-4. Capture branch protection evidence for main and CI / verify.
+4. Capture authorized branch protection evidence for main and CI / verify.
 5. Record CSV baseline freeze approval or policy-approved refresh approval.
 6. Dry-fill the release ticket and run secret-scan review commands.
 7. Write the pilot go/no-go decision record.
@@ -96,7 +96,15 @@ Capture branch protection evidence for `main` and CI / verify:
 
 - Record the source of the rule or ruleset evidence.
 - Confirm required status checks include CI / verify.
+- Capture main-protection.json from an authorized operator shell and record
+  branch protection capture verified from the structured JSON verification.
+- Treat operator-not-permitted as an evidence request only;
+  operator-not-permitted does not satisfy pilot go/no-go.
+- Confirm go requires authorized branch protection evidence for main.
 - Confirm direct pushes and unreviewed changes are blocked by policy.
+- For rollback or bypass evidence, record approval ID, exact commit SHA,
+  workflow_dispatch rerun URL, artifact review result, and final branch
+  protection state.
 - Attach only references or sanitized review notes to the release ticket.
 
 If branch protection evidence is missing, keep the launch decision as No Go or
@@ -120,7 +128,8 @@ Dry-fill `release-ticket.md` only after the closure items above have evidence:
 - Record local rehearsal regeneration or approved reuse.
 - Record Dify UI dry-run evidence and Dify workflow version identifier.
 - Record BGE evidence status and any pending-host-access exception approval.
-- Record branch protection evidence for `main` and CI / verify.
+- Record authorized branch protection evidence for `main`, CI / verify,
+  main-protection.json, and branch protection capture verified.
 - Record CSV baseline freeze approval or policy-approved refresh approval.
 - Run the documented secret-scan review commands and record that they printed no
   findings.
@@ -136,6 +145,11 @@ decision values are Go, Conditional Go, and No Go.
 Go requires accepted evidence for local rehearsal, Dify UI dry-run,
 closed-network BGE, branch protection, CSV baseline freeze, release ticket
 secret-scan review, and approval ownership.
+Branch protection go requires authorized branch protection evidence for main.
+operator-not-permitted does not satisfy pilot go/no-go.
+Rollback or bypass evidence must include approval ID, exact commit SHA,
+workflow_dispatch rerun URL, artifact review result, and final branch
+protection state.
 
 Closed-network go requires BGE measured-pass before closed-network pilot traffic.
 Conditional Go with pending-host-access requires exception approval ID,

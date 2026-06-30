@@ -50,6 +50,27 @@ In this payload, `"strict": true` is the API equivalent of
 `Require branches to be up to date before merging`, and the `contexts` entry is
 the required `CI / verify` status check.
 
+## Apply And Rollback Evidence Capture
+
+Use the completed copy of `docs/ops/branch-protection-evidence-template.md` for
+authorized operator capture, operator-not-permitted evidence request, apply
+evidence, and rollback evidence.
+
+1. Confirm the target branch is main.
+2. Apply or confirm required status check CI / verify with strict: true.
+3. Capture main-protection.json using gh api from an authorized operator shell.
+4. Run the structured JSON verification snippet.
+5. Record PR merge block evidence.
+6. Record pilot-e2e-evidence artifact review.
+7. For rollback or bypass, record approval ID, exact commit SHA,
+   workflow_dispatch rerun URL, artifact review result, and final restored
+   state.
+8. Link the completed evidence copy from release-ticket.md and
+   pilot-go-no-go-decision.md.
+
+For final closure, restore or confirm final branch protection state before the
+release ticket and pilot go/no-go decision record are approved.
+
 ## Evidence Check
 
 After applying the rule, verify the latest pull request run:
@@ -64,8 +85,10 @@ Record the rule snapshot, required check verification, merge block verification,
 artifact review, rollback or bypass details, and final state in
 `docs/ops/branch-protection-evidence-template.md`.
 
-If the implementer does not have repository admin permission, create an evidence request using docs/ops/branch-protection-evidence-template.md and mark the rule snapshot as operator-not-permitted.
-operator-not-permitted does not satisfy pilot go/no-go until an authorized operator attaches the rule snapshot.
+operator-not-permitted may record an evidence request, but it does not satisfy
+pilot go/no-go.
+An authorized operator must attach main-protection.json or explicitly approve a
+blocked Conditional Go with owner and deadline.
 
 Manual capture command, for an authorized operator only:
 
@@ -113,9 +136,7 @@ PY
 Expected:
 
 ```text
-CI / verify appears as a required status check
-strict is true
-enforce_admins is true, or enforce_admins.enabled is true, when repository policy requires admin enforcement
+branch protection capture verified
 ```
 
 ## branch protection rollback

@@ -7,6 +7,28 @@ evidence files.
 
 Template path: `docs/ops/branch-protection-evidence-template.md`
 
+## Capture Metadata
+
+- Evidence type: apply / verify / rollback / operator-not-permitted
+- Authorized operator:
+- Operator permission result: authorized / operator-not-permitted
+- Rule snapshot path:
+  `var/evidence/${SERVICE_ID}/branch-protection/main-protection.json`
+- Verification output: branch protection capture verified
+- Final state reviewer:
+- Release ticket path: var/evidence/${SERVICE_ID}/release-ticket.md
+- Go/no-go decision path: var/evidence/${SERVICE_ID}/pilot-go-no-go-decision.md
+
+Use this section for authorized operator capture, apply evidence, rollback
+evidence, or an operator-not-permitted evidence request.
+
+## Operator Permission Policy
+
+operator-not-permitted may record an evidence request, but it does not satisfy
+pilot go/no-go.
+An authorized operator must attach main-protection.json or explicitly approve a
+blocked Conditional Go with owner and deadline.
+
 ## Rule Snapshot
 
 - Branch: `main`
@@ -78,9 +100,7 @@ PY
 Expected:
 
 ```text
-CI / verify appears as a required status check
-strict is true
-enforce_admins is true, or enforce_admins.enabled is true, when repository policy requires admin enforcement
+branch protection capture verified
 ```
 
 ## Required Check Verification
@@ -123,10 +143,9 @@ enforce_admins is true, or enforce_admins.enabled is true, when repository polic
 
 ## Final State
 
-- Branch protection restored or confirmed:
+- restore or confirm final branch protection state:
 - `CI / verify` required on `main`:
 - `strict: true` confirmed:
 - `contexts: ["CI / verify"]` confirmed:
-- final branch protection state:
 - Operator:
 - Timestamp:

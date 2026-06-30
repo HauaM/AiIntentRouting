@@ -29,6 +29,11 @@ def test_pilot_launch_readiness_checklist_contains_required_contract() -> None:
         "measured-pass",
         "pending-host-access exception approval",
         "branch protection evidence",
+        "authorized branch protection evidence for main",
+        "operator-not-permitted does not satisfy pilot go/no-go",
+        "main-protection.json",
+        "branch protection capture verified",
+        "artifact review result",
         "CI / verify",
         "CSV baseline freeze approval",
         "local rehearsal regeneration",
@@ -53,6 +58,13 @@ def test_pilot_launch_readiness_checklist_contains_required_contract() -> None:
             "decision as No Go until the evidence is corrected, regenerated, "
             "and accepted as measured-pass."
         ),
+        (
+            "Rollback or bypass evidence must include approval ID, exact commit "
+            "SHA, workflow_dispatch rerun URL, artifact review result, and "
+            "final branch protection state."
+        ),
+        "approval ID, exact commit SHA, workflow_dispatch rerun URL",
+        "final branch protection state",
     ):
         assert expected in compact_text
 

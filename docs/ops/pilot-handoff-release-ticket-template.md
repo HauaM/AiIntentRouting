@@ -80,9 +80,20 @@ Gate: measured-fail blocks pilot launch until corrected evidence passes.
 - branch protection evidence:
 - Protected branch:
 - Required check evidence:
+- Evidence type: apply / verify / rollback / operator-not-permitted
+- Authorized operator:
+- Operator permission result: authorized / operator-not-permitted
+- Rule snapshot path: var/evidence/${SERVICE_ID}/branch-protection/main-protection.json
+- Verification output: branch protection capture verified
+- Final branch protection state:
 - Reviewer or approval evidence:
 
 Gate: go requires branch protection evidence for main.
+Gate: go requires authorized branch protection evidence for main.
+Gate: operator-not-permitted does not satisfy pilot go/no-go.
+Gate: rollback or bypass evidence must include approval ID, exact commit SHA,
+workflow_dispatch rerun URL, artifact review result, and final branch
+protection state.
 
 ## CSV Baseline Evidence
 
@@ -111,6 +122,7 @@ Security gate: ticket must not contain secrets or raw query text.
 - Steps:
 - Expected restoration point:
 - Evidence to collect after rollback:
+- Branch protection rollback or bypass evidence:
 
 ## Open Risks
 
@@ -138,6 +150,11 @@ Required go gates:
 - blocked Dify evidence requires a condition owner and approval ID before Conditional Go.
 - go requires CSV baseline comparison PASS.
 - go requires branch protection evidence for main.
+- go requires authorized branch protection evidence for main.
+- operator-not-permitted does not satisfy pilot go/no-go.
+- rollback or bypass evidence must include approval ID, exact commit SHA,
+  workflow_dispatch rerun URL, artifact review result, and final branch
+  protection state.
 - go requires BGE measured-pass before closed-network pilot traffic.
 - Conditional Go with pending-host-access requires exception approval ID,
   exception owner, expiration before pilot traffic, and next measurement date.
