@@ -4,6 +4,11 @@ ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / "docs/pilot/csv-baseline-refresh-policy.md"
 README = ROOT / "docs/pilot/README.md"
 PILOT_REHEARSAL = ROOT / "docs/ops/pilot-rehearsal.md"
+FREEZE_TEMPLATE_PATH = "docs/pilot/csv-baseline-freeze-approval-template.md"
+
+
+def _compact(value: str) -> str:
+    return " ".join(value.split())
 
 
 def _bash_block_after_heading(text: str, heading: str) -> str:
@@ -30,6 +35,7 @@ def test_csv_baseline_refresh_policy_documents_required_contract() -> None:
         "CSV diff",
         "catalog diff",
         "threshold policy diff",
+        FREEZE_TEMPLATE_PATH,
         "approval ID",
         "risk_pass_rate",
         "compare_csv_baseline.py freeze",
@@ -38,6 +44,16 @@ def test_csv_baseline_refresh_policy_documents_required_contract() -> None:
         "Baseline JSON must not contain raw query text or secret-bearing fields.",
     ):
         assert expected in text
+
+    assert _compact(
+        "When the baseline is intentionally kept frozen for pilot launch, "
+        f"complete {FREEZE_TEMPLATE_PATH} and link the completed copy "
+        "from release-ticket.md."
+    ) in _compact(text)
+    assert _compact(
+        "Refresh remains blocked unless the policy-approved approval ID "
+        "and reviewed diff evidence are attached."
+    ) in _compact(text)
 
 
 def test_csv_baseline_refresh_policy_pins_freeze_command_block() -> None:
@@ -77,10 +93,11 @@ def test_pilot_readme_declares_policy_source_of_truth_for_regression_gate() -> N
     assert (
         "docs/pilot/csv-baseline-refresh-policy.md"
     ) in text
-    assert (
-        "is the source of truth for "
-        "the CSV Baseline Regression Gate"
-    ) in text
+    assert _compact(
+        "is the source of truth for the CSV Baseline Regression Gate"
+    ) in _compact(text)
+    assert FREEZE_TEMPLATE_PATH in text
+    assert "launch approval evidence" in text
 
 
 def test_pilot_rehearsal_runbook_links_csv_baseline_refresh_policy() -> None:

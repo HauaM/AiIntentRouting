@@ -14,6 +14,7 @@ def test_dify_dry_run_rehearsal_doc_covers_operator_contract() -> None:
 
     for expected in (
         "Dify workflow version identifier",
+        'export STATE_PATH="var/pilot/${SERVICE_ID}/pilot.state.secret.json"',
         "intent_routing_api_key secret variable",
         "workflow_run_id",
         "Timeout: 8 seconds",
@@ -39,6 +40,11 @@ def test_dify_dry_run_rehearsal_doc_covers_operator_contract() -> None:
     ):
         assert expected in text
 
+    assert (
+        'export STATE_PATH="var/evidence/${SERVICE_ID}/pilot.state.secret.json"'
+        not in text
+    )
+
 
 def test_dify_checklists_link_dry_run_rehearsal_and_metadata() -> None:
     combined = "\n".join(
@@ -58,6 +64,9 @@ def test_dify_checklists_link_dry_run_rehearsal_and_metadata() -> None:
         "and evidence path.",
         "Screenshots and workflow exports must show masked values only.",
         "Do not paste screenshot/export contents into pilot-rehearsal-manifest.md.",
+        "go requires Dify UI dry-run evidence reviewer approval.",
+        "go requires the Dify UI evidence path to be linked from release-ticket.md.",
+        "blocked Dify evidence requires a condition owner and approval ID before Conditional Go.",
         "pilot-rehearsal-manifest.md",
         "dify-smoke-matrix.json",
         "dify-smoke-matrix.md",
@@ -78,7 +87,16 @@ def test_dify_dry_run_evidence_template_covers_ui_contract() -> None:
     for expected in (
         "docs/integrations/dify-dry-run-evidence-template.md",
         "Dify workflow version identifier",
+        "var/evidence/${SERVICE_ID}/dify-ui/dify-dry-run-evidence.md",
+        "release-ticket.md",
+        "pilot-go-no-go-decision.md",
+        "operator result must be pass, fail, or blocked",
+        "Dify UI evidence reviewer",
+        "masked screenshot or sanitized workflow export",
+        "do not attach unmasked screenshots",
         "masked screenshot or workflow export path",
+        "Condition owner, if blocked",
+        "Follow-up approval ID, if blocked",
         "intent_routing_api_key secret variable",
         "workflow_run_id",
         "Timeout: 8 seconds",

@@ -8,6 +8,9 @@ bundle to the pilot approval record.
 Use `docs/ops/pilot-evidence-bundle-checklist.md` as the Sprint 6 review standard
 before attaching a local evidence bundle. Use the older runbooks for
 diagnostic commands when one rehearsal step fails.
+Use `docs/ops/pilot-launch-readiness-checklist.md` as the Sprint 7 launch
+closure checklist after the Sprint 6 bundle review; it records final evidence
+ownership and the pilot go/no-go decision instead of replacing bundle review.
 Use `docs/pilot/csv-baseline-refresh-policy.md` as the source of truth before
 approving or rolling back any checked-in CSV baseline refresh.
 Use `docs/ops/bge-m3-evidence-template.md` as the closed-network BGE-M3 evidence
@@ -17,6 +20,8 @@ Use `docs/ops/pilot-handoff-release-ticket-template.md` for the final pilot
 handoff and release ticket after the manifest, BGE evidence, branch protection,
 Dify UI dry-run, CSV baseline comparison, and security rehearsal evidence are
 ready.
+Use `docs/ops/pilot-go-no-go-decision-template.md` for the final decision record
+after the release ticket review is complete.
 The wrapper calls the readiness and evidence tools, writes a manifest, and runs
 the evidence `secret scan`; no destructive security operation is executed by the wrapper.
 
@@ -118,9 +123,14 @@ Closed-network acceptance:
 Record closed-network BGE evidence status as `measured-pass`, `measured-fail`,
 or `pending-host-access` in `docs/ops/bge-m3-evidence-template.md`.
 `pending-host-access` can close a local documentation sprint only when the
-closed-network host is not yet available, but it is not acceptable for actual
-pilot go/no-go. Pilot handoff requires `measured-pass` for package preflight,
-benchmark, closed-network rehearsal, and secret scan.
+closed-network host is not yet available. It requires a pending-host-access
+exception approval with an exception approval ID, exception owner, expiration
+before pilot traffic, and next measurement date. pending-host-access may support
+documentation closure, but it blocks closed-network pilot traffic. Pilot handoff
+requires `measured-pass` for package preflight, benchmark, closed-network
+rehearsal, and secret scan.
+Conditional Go with pending-host-access must state that Dify or closed-network
+traffic remains blocked until measured-pass evidence is attached.
 
 Expected closed-network measured results:
 
@@ -136,7 +146,8 @@ Expected closed-network measured results:
 
 If the closed-network host is unavailable, fill the template status as
 `pending-host-access`, attach it to the release ticket, and keep pilot go/no-go
-blocked.
+blocked. Conditional Go cannot send closed-network pilot traffic until
+measured-pass is attached.
 
 ## Evidence Bundle Layout
 
@@ -187,6 +198,14 @@ Expected:
 first rg prints the required evidence references
 second rg prints no matches
 ```
+
+## Go/No Go Decision Dry-Fill Review
+
+After release ticket review, copy `docs/ops/pilot-go-no-go-decision-template.md`
+to `var/evidence/${SERVICE_ID}/pilot-go-no-go-decision.md` and choose Go,
+No Go, or Conditional Go. The completed decision record links
+`release-ticket.md`, records blocked gates and owners, and contains no secrets
+and no raw query text.
 
 ## Secret Scan Policy
 

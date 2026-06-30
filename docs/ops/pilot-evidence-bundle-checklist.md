@@ -3,6 +3,9 @@
 Use this checklist as the Sprint 6 review standard for a local rehearsal
 evidence bundle. The lower-level runbooks are diagnostic references when a step
 fails; reviewers should approve only the final clean bundle described here.
+After this Sprint 6 bundle review passes, use
+`docs/ops/pilot-launch-readiness-checklist.md` for Sprint 7 launch closure,
+release ticket dry-fill, and the pilot go/no-go decision.
 
 ## Local Evidence Generation
 

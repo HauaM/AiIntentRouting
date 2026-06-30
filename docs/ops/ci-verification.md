@@ -84,8 +84,12 @@ Use `docs/ops/branch-protection-evidence-template.md` to record the rule
 snapshot, required check verification, artifact review, rollback or temporary
 bypass record, and final branch protection state.
 
-If the implementer does not have repository admin permission, create an evidence request using docs/ops/branch-protection-evidence-template.md and mark the rule snapshot as operator-not-permitted.
-operator-not-permitted does not satisfy pilot go/no-go until an authorized operator attaches the rule snapshot.
+If the implementer does not have repository admin permission, create an
+operator-not-permitted evidence request using
+`docs/ops/branch-protection-evidence-template.md`.
+operator-not-permitted does not satisfy pilot go/no-go.
+An authorized operator must attach main-protection.json or explicitly approve a
+blocked Conditional Go with owner and deadline.
 
 ## Artifact Policy
 

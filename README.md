@@ -32,6 +32,7 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 
    The rehearsal performs the Sprint 4 e2e smoke, Dify smoke matrix, CSV baseline comparison, ops evidence export, and recursive secret scan, then writes `pilot-rehearsal-manifest.json` and `pilot-rehearsal-manifest.md`.
    Use `docs/ops/pilot-evidence-bundle-checklist.md` as the Sprint 6 review standard before attaching evidence; the lower-level commands below are diagnostic only when a checklist step fails.
+   Use `docs/ops/pilot-launch-readiness-checklist.md` for Sprint 7 launch closure after the Sprint 6 bundle review; it records the final evidence and go/no-go decision rather than replacing the bundle checklist.
 
 6. Use the lower-level Sprint 4 e2e smoke only for diagnosis:
    `uv run python scripts/run_pilot_e2e_smoke.py --base-url http://127.0.0.1:8000 --admin-token ${ADMIN_BOOTSTRAP_TOKEN} --service-id ${SERVICE_ID} --environment ${INTENT_ROUTING_ENVIRONMENT} --state-path ${STATE_PATH} --csv-tier standard --required-preset balanced --out-dir var/evidence/${SERVICE_ID}/rehearsal/e2e`
@@ -52,6 +53,7 @@ API-only Intent Routing Service for closed-network financial-sector Dify integra
 - CI verification: `docs/ops/ci-verification.md`
 - Branch protection required checks: `docs/ops/branch-protection.md`
 - Pilot evidence bundle checklist: `docs/ops/pilot-evidence-bundle-checklist.md`
+- Pilot launch readiness checklist: `docs/ops/pilot-launch-readiness-checklist.md`
 - Pilot handoff and release ticket template: `docs/ops/pilot-handoff-release-ticket-template.md`
 - Pilot rehearsal operations: `docs/ops/pilot-rehearsal.md`
 - Pilot runbook: `docs/ops/intent-routing-pilot-runbook.md`

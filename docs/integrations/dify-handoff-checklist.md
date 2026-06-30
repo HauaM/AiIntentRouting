@@ -50,10 +50,19 @@ Pilot handoff release ticket template: `docs/ops/pilot-handoff-release-ticket-te
 - [ ] Dify workflow version identifier recorded through `--dify-workflow-version`.
 - [ ] Dify UI evidence path recorded through `--dify-ui-evidence-path`; do not inline screenshot/export content into Markdown.
 - [ ] Completed copy of `docs/integrations/dify-dry-run-evidence-template.md`.
+- [ ] Dify UI dry-run evidence reviewer approval recorded.
+- [ ] Dify UI evidence path linked from `release-ticket.md`.
+- [ ] Condition owner and approval ID recorded when Dify evidence is blocked.
 - [ ] Release ticket copy based on `docs/ops/pilot-handoff-release-ticket-template.md`.
 - [ ] The rehearsal wrapper records only the Dify workflow version identifier and evidence path.
 - [ ] Screenshots and workflow exports must show masked values only.
 - [ ] Do not paste screenshot/export contents into pilot-rehearsal-manifest.md.
+
+## Release Gates
+
+- go requires Dify UI dry-run evidence reviewer approval.
+- go requires the Dify UI evidence path to be linked from release-ticket.md.
+- blocked Dify evidence requires a condition owner and approval ID before Conditional Go.
 
 ## Manual UI Checks
 
