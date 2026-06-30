@@ -47,6 +47,31 @@ def test_pilot_catalog_has_route_key_and_example_contract() -> None:
         assert intent.include_keywords
 
 
+def test_pilot_catalog_keeps_bge_positive_calibration_examples() -> None:
+    catalog = load_pilot_catalog(CATALOG)
+    examples_by_intent = {
+        intent.intent_id: set(intent.positive_examples) for intent in catalog.intents
+    }
+
+    assert {
+        "업무 API timeout 알림이 반복됩니다",
+        "배치 API 응답 지연을 확인해 주세요",
+    } <= examples_by_intent["it_api_timeout"]
+    assert {
+        "사번 계정 잠금 때문에 포털 접속이 안 됩니다",
+        "내 계정 잠금 해제 진행 상태를 알고 싶습니다",
+    } <= examples_by_intent["it_password_reset"]
+    assert {
+        "외부 근무 중 VPN 접속 오류가 납니다",
+        "신규 노트북에서 VPN 연결이 실패합니다",
+    } <= examples_by_intent["it_vpn_access"]
+
+    all_positive_examples = {
+        example for examples in examples_by_intent.values() for example in examples
+    }
+    assert "문서 보관함 권한 신청 방법을 알려주세요" not in all_positive_examples
+
+
 def test_pilot_catalog_rejects_unknown_threshold_preset(tmp_path: Path) -> None:
     catalog_data = json.loads(CATALOG.read_text(encoding="utf-8"))
     catalog_data["threshold_preset"] = "loose"
