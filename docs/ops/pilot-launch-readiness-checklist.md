@@ -54,11 +54,16 @@ show no secrets and no raw query text.
 Complete Dify UI dry-run evidence after local rehearsal review:
 
 - Confirm the Dify workflow version identifier is recorded.
+- Confirm the Dify UI dry-run evidence reviewer approved the completed evidence.
+- Confirm Dify evidence linked from release ticket points to the completed
+  service evidence path.
 - Confirm Dify UI dry-run evidence references are attached or linked in the
   release ticket without screenshots or exports committed to the repository.
 - Confirm request headers, service ID, app ID, key ID, and request ID are
   documented by reference only.
 - Confirm Dify decision evidence matches the pilot route expectations.
+- If blocked, record the Dify condition owner and approval ID before
+  Conditional Go.
 
 If the Dify UI dry-run is incomplete, the go/no-go decision must be No Go or
 Conditional Go with an owner, approval ID, blocking impact, and explicit closure

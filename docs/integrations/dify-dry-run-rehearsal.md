@@ -79,6 +79,22 @@ branches against `dify-smoke-matrix.md` and Dify branch settings. `408`, `5xx`,
 and `timeout` must use no automatic retry loop; show a fixed fallback or human
 handoff instead.
 
+## Release Closure Order
+
+1. Copy `docs/integrations/dify-dry-run-evidence-template.md` to
+   `var/evidence/${SERVICE_ID}/dify-ui/dify-dry-run-evidence.md`.
+2. Complete every decision branch and error branch row.
+3. Record the Dify workflow version identifier.
+4. Run `scripts/run_pilot_rehearsal.py` with `--dify-workflow-version` and
+   `--dify-ui-evidence-path`.
+5. Confirm `pilot-rehearsal-manifest.md` records only the version identifier
+   and evidence path.
+6. Copy the Dify evidence path and reviewer into
+   `var/evidence/${SERVICE_ID}/release-ticket.md`; if blocked, also copy the
+   condition owner and follow-up approval ID.
+7. Copy the Dify status into
+   `var/evidence/${SERVICE_ID}/pilot-go-no-go-decision.md`.
+
 ## Workflow Version And Evidence
 
 Record the `Dify workflow version identifier` or export identifier after the
@@ -128,4 +144,4 @@ Attach these files to the pilot handoff ticket or release folder:
 - The masked screenshot/export file path recorded in the manifest.
 - The recorded `Dify workflow version identifier`.
 - Completed service-specific copy saved under
-  `var/evidence/${SERVICE_ID}/dify-ui/`.
+  `var/evidence/${SERVICE_ID}/dify-ui/dify-dry-run-evidence.md`.

@@ -45,10 +45,18 @@ Gates:
 
 - Dify workflow version identifier:
 - Dify UI evidence path:
+- Dify UI dry-run evidence reviewer:
+- Dify evidence linked from release ticket: yes / no; the Dify UI evidence path
+  points to the completed service evidence file.
+- Dify condition owner, if blocked:
+- Follow-up approval ID, if blocked:
 - Dify smoke matrix evidence:
 - Operator handoff checklist status:
 
 Gate: go requires Dify UI evidence path and workflow version identifier.
+Gate: go requires Dify UI dry-run evidence reviewer approval.
+Gate: go requires the Dify UI evidence path to be linked from release-ticket.md.
+Gate: blocked Dify evidence requires a condition owner and approval ID before Conditional Go.
 
 ## Closed-Network BGE Evidence
 
@@ -117,6 +125,9 @@ Required go gates:
 - go requires local rehearsal final_status PASS.
 - go requires local rehearsal secret_scan.passed true.
 - go requires Dify UI evidence path and workflow version identifier.
+- go requires Dify UI dry-run evidence reviewer approval.
+- go requires the Dify UI evidence path to be linked from release-ticket.md.
+- blocked Dify evidence requires a condition owner and approval ID before Conditional Go.
 - go requires CSV baseline comparison PASS.
 - go requires branch protection evidence for main.
 - go requires BGE measured-pass before closed-network pilot traffic.

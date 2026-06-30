@@ -1,7 +1,8 @@
 # Dify Dry-Run Evidence Template
 
 Use this file as `docs/integrations/dify-dry-run-evidence-template.md` and save
-the completed copy under `var/evidence/${SERVICE_ID}/dify-ui/`. The manual Dify
+the completed copy as
+`var/evidence/${SERVICE_ID}/dify-ui/dify-dry-run-evidence.md`. The manual Dify
 UI dry-run procedure is documented for operators; do not execute it from this
 template.
 
@@ -55,6 +56,7 @@ template.
 
 - Screenshots and workflow exports must show masked values only.
 - Record the masked screenshot or workflow export path:
+- Allowed path type: masked screenshot or sanitized workflow export.
 - Confirm no raw token, API key, secret value, or unmasked key id appears in the
   evidence file.
 - Confirm the `intent_routing_api_key secret variable` remains masked
@@ -69,6 +71,13 @@ template.
 ## Evidence Paths
 
 - Dify UI evidence path:
+- Use var/evidence/${SERVICE_ID}/dify-ui/dify-dry-run-evidence.md for the
+  completed copy.
+- Evidence may be a masked screenshot, a sanitized workflow export, or both when
+  the reviewer allows both forms.
+- Evidence paths must state: do not attach unmasked screenshots, raw API keys,
+  raw secret variable values, raw query text, or workflow exports containing
+  secret material.
 - API smoke matrix JSON:
 - API smoke matrix Markdown:
 - Rehearsal manifest: `pilot-rehearsal-manifest.md`
@@ -84,6 +93,13 @@ template.
 
 ## Approval
 
+- Operator result: pass / fail / blocked
+- The operator result must be pass, fail, or blocked.
+- Dify UI evidence reviewer:
+- Release ticket path: var/evidence/${SERVICE_ID}/release-ticket.md
+- Go/no-go decision path: var/evidence/${SERVICE_ID}/pilot-go-no-go-decision.md
+- Condition owner, if blocked:
+- Follow-up approval ID, if blocked:
 - Operator approval:
 - Reviewer approval:
 - Secret scan passes:
