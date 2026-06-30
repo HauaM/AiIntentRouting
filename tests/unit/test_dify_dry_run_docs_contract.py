@@ -14,6 +14,7 @@ def test_dify_dry_run_rehearsal_doc_covers_operator_contract() -> None:
 
     for expected in (
         "Dify workflow version identifier",
+        'export STATE_PATH="var/pilot/${SERVICE_ID}/pilot.state.secret.json"',
         "intent_routing_api_key secret variable",
         "workflow_run_id",
         "Timeout: 8 seconds",
@@ -38,6 +39,11 @@ def test_dify_dry_run_rehearsal_doc_covers_operator_contract() -> None:
         "release_version",
     ):
         assert expected in text
+
+    assert (
+        'export STATE_PATH="var/evidence/${SERVICE_ID}/pilot.state.secret.json"'
+        not in text
+    )
 
 
 def test_dify_checklists_link_dry_run_rehearsal_and_metadata() -> None:

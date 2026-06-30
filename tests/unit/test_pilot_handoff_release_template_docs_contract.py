@@ -125,7 +125,7 @@ def test_pilot_handoff_release_ticket_template_documents_required_gates() -> Non
         ("branch protection evidence", "main"),
         ("authorized branch protection evidence", "main"),
         ("operator-not-permitted", "pilot go/no-go"),
-        ("Admin UI excluded", "Sprint 6"),
+        ("Admin UI excluded", "Sprint 7"),
         ("ticket", "no secrets", "raw query text"),
         ("BGE measured-pass", "closed-network pilot traffic"),
         (

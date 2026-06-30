@@ -1,6 +1,6 @@
 # Pilot Handoff And Release Ticket Template
 
-Use this template for the Sprint 6 pilot handoff and release ticket. It may be
+Use this template for the Sprint 7 pilot handoff and release ticket. It may be
 copied to an evidence directory as `release-ticket.md`, so keep the filled copy
 limited to evidence references, hashes, decisions, and approvals. The ticket
 must contain no secrets and no raw query text.
@@ -24,7 +24,7 @@ The decision record links release-ticket.md and must contain no secrets or raw q
 - environment:
 - release_version:
 - Pilot boundary:
-- Admin UI excluded from Sprint 6:
+- Admin UI excluded from Sprint 7:
 - Included operator surfaces:
 - Excluded operator surfaces:
 
@@ -200,7 +200,7 @@ Required go gates:
 - Conditional Go with pending-host-access requires exception approval ID,
   exception owner, expiration before pilot traffic, and next measurement date.
 - measured-fail blocks pilot launch until corrected evidence passes.
-- Admin UI excluded from Sprint 6.
+- Admin UI excluded from Sprint 7.
 - ticket must contain no secrets and no raw query text.
 
 ## Approvals

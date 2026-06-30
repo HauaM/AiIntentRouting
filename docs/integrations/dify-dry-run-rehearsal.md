@@ -12,7 +12,7 @@ Set the target service and API endpoint before opening Dify:
 
 ```bash
 export SERVICE_ID="it-helpdesk-pilot"
-export STATE_PATH="var/evidence/${SERVICE_ID}/pilot.state.secret.json"
+export STATE_PATH="var/pilot/${SERVICE_ID}/pilot.state.secret.json"
 export TARGET_URL="http://intent-routing.internal/v1/intent-route"
 ```
 
