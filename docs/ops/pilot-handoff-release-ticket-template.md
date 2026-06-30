@@ -8,6 +8,9 @@ must contain no secrets and no raw query text.
 Template path:
 `docs/ops/pilot-handoff-release-ticket-template.md`
 
+Filled ticket path:
+`var/evidence/${SERVICE_ID}/release-ticket.md`
+
 ## Release Scope
 
 - service_id:
@@ -130,6 +133,28 @@ Security gate: ticket must not contain secrets or raw query text.
 - Expected restoration point:
 - Evidence to collect after rollback:
 - Branch protection rollback or bypass evidence:
+
+## Evidence Closure Review
+
+- Release ticket path: var/evidence/${SERVICE_ID}/release-ticket.md
+- Release ticket reviewer:
+- Reviewer command source: docs/ops/pilot-launch-readiness-checklist.md
+- Runbook command source: docs/ops/intent-routing-pilot-runbook.md
+- Required evidence reference scan result:
+- Forbidden marker scan result:
+- Evidence links only: yes / no
+- No screenshot contents: yes / no
+- No workflow export contents: yes / no
+- No secrets or raw query text: yes / no
+- Go/no-go decision record: var/evidence/${SERVICE_ID}/pilot-go-no-go-decision.md
+- Conditional Go conditions:
+- Blocked gates:
+- Owner:
+- Approval ID:
+
+Run reviewer commands from the checklist; do not copy command text into release-ticket.md.
+The release ticket reviewer records command outcomes, evidence links only,
+status summaries, hashes, reviewers, approval IDs, and go gate summary text.
 
 ## Open Risks
 

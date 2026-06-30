@@ -22,6 +22,24 @@ def test_pilot_handoff_release_ticket_template_contains_required_contract() -> N
         "commit SHA",
         "PR URL",
         "CI / verify",
+        "var/evidence/${SERVICE_ID}/release-ticket.md",
+        "Reviewer command source: docs/ops/pilot-launch-readiness-checklist.md",
+        "Runbook command source: docs/ops/intent-routing-pilot-runbook.md",
+        "Required evidence reference scan result:",
+        "Forbidden marker scan result:",
+        "release ticket reviewer",
+        "Evidence links only: yes / no",
+        "No screenshot contents: yes / no",
+        "No workflow export contents: yes / no",
+        "No secrets or raw query text: yes / no",
+        (
+            "Go/no-go decision record: "
+            "var/evidence/${SERVICE_ID}/pilot-go-no-go-decision.md"
+        ),
+        "Conditional Go conditions",
+        "Blocked gates",
+        "Owner:",
+        "Approval ID:",
         "local rehearsal manifest",
         "manifest sha256",
         "Dify workflow version identifier",
@@ -62,6 +80,7 @@ def test_pilot_handoff_release_ticket_template_contains_required_sections() -> N
         "## CSV Baseline Evidence",
         "## Security And Incident Rehearsal Evidence",
         "## Rollback Plan",
+        "## Evidence Closure Review",
         "## Open Risks",
         "## Go/No-Go Decision",
         "## Approvals",
@@ -112,6 +131,40 @@ def test_pilot_handoff_release_ticket_template_documents_required_gates() -> Non
         ),
     ):
         assert gate in compact_text
+
+
+def test_pilot_handoff_release_ticket_template_references_reviewer_command_sources() -> None:
+    text = TEMPLATE.read_text(encoding="utf-8")
+
+    for expected in (
+        "Run reviewer commands from the checklist; do not copy command text "
+        "into release-ticket.md.",
+        "Reviewer command source: docs/ops/pilot-launch-readiness-checklist.md",
+        "Runbook command source: docs/ops/intent-routing-pilot-runbook.md",
+        "Required evidence reference scan result:",
+        "Forbidden marker scan result:",
+    ):
+        assert expected in text
+
+
+def test_pilot_handoff_release_ticket_template_omits_copy_unsafe_commands() -> None:
+    text = TEMPLATE.read_text(encoding="utf-8")
+
+    for forbidden in (
+        "rg -n 'PASS|CI / verify",
+        "rg -n 'Bearer |Authorization: Bearer",
+        "RAW_TEXT_KEK_BASE64",
+        "RAW_TEXT_LEGACY_KEKS_JSON",
+        "api_key=",
+        "intent_routing_api_key",
+        "query_raw",
+        "text_raw",
+        "encrypted_dek",
+        "ciphertext",
+        "irt_live_",
+        "irt_secret",
+    ):
+        assert forbidden not in text
 
 
 def test_pilot_handoff_release_ticket_template_is_secret_scan_safe(

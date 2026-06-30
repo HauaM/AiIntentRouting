@@ -4,11 +4,65 @@ from intent_routing.ops.rehearsal import SecretScanResult, scan_evidence_directo
 
 ROOT = Path(__file__).resolve().parents[2]
 CHECKLIST = ROOT / "docs/ops/pilot-launch-readiness-checklist.md"
+RUNBOOK = ROOT / "docs/ops/intent-routing-pilot-runbook.md"
 CHECKLIST_PATH = "docs/ops/pilot-launch-readiness-checklist.md"
+DRY_FILL_COPY = (
+    "Copy docs/ops/pilot-handoff-release-ticket-template.md to "
+    "var/evidence/${SERVICE_ID}/release-ticket.md."
+)
+DRY_FILL_FIELDS = (
+    "Fill the release ticket with evidence paths, hashes, statuses, reviewer "
+    "names, approval IDs, and go gate summary only."
+)
+DRY_FILL_FORBIDDEN_CONTENT = (
+    "Do not paste screenshot contents, workflow export contents, raw query text, "
+    "API keys, bearer tokens, KEK material, encrypted DEKs, or ciphertext."
+)
+DRY_FILL_REVIEWER_COMMANDS = "Run the reviewer commands."
+DRY_FILL_DECISION_LINK = "Link the release ticket from pilot-go-no-go-decision.md."
+RELEASE_TICKET_PATH = "var/evidence/${SERVICE_ID}/release-ticket.md"
+REQUIRED_RELEASE_REFERENCE_MARKERS = (
+    "PASS|CI / verify|pilot-rehearsal-manifest.md|",
+    "Dify workflow version identifier|BGE evidence status|",
+    "branch protection evidence|CSV baseline|go/no-go",
+)
+FORBIDDEN_RELEASE_MARKER_SCAN_PARTS = (
+    "Bearer |Authorization: Bearer|",
+    "RAW_TEXT_KEK_BASE64|RAW_TEXT_LEGACY_KEKS_JSON|",
+    "api_key=|intent_routing_api_key|",
+    "query_raw|text_raw|encrypted_dek|ciphertext|",
+    "irt_live_|irt_secret",
+)
 
 
 def _compact(text: str) -> str:
     return " ".join(text.split())
+
+
+def _write_checklist_copy_without_intentional_forbidden_scan(
+    tmp_path: Path, source: Path
+) -> Path:
+    sanitized_lines = []
+    in_forbidden_marker_assignment = False
+    for line in source.read_text(encoding="utf-8").splitlines():
+        if "forbidden_release_markers=$(" in line:
+            in_forbidden_marker_assignment = True
+            sanitized_lines.append(line)
+        elif in_forbidden_marker_assignment and line.strip() == ")":
+            in_forbidden_marker_assignment = False
+            sanitized_lines.append(line)
+        elif in_forbidden_marker_assignment:
+            sanitized_lines.append("    'REDACTED' \\")
+        elif line.lstrip().startswith("3. Do not paste"):
+            sanitized_lines.append("3. release ticket forbidden content policy: REDACTED")
+        elif "ciphertext" in line:
+            sanitized_lines.append("release ticket forbidden content policy: REDACTED")
+        else:
+            sanitized_lines.append(line)
+
+    sanitized = tmp_path / source.name
+    sanitized.write_text("\n".join(sanitized_lines) + "\n", encoding="utf-8")
+    return sanitized
 
 
 def test_pilot_launch_readiness_checklist_contains_required_contract() -> None:
@@ -25,6 +79,9 @@ def test_pilot_launch_readiness_checklist_contains_required_contract() -> None:
         "Dify evidence linked from release ticket",
         "Dify condition owner",
         "release-ticket.md",
+        "var/evidence/${SERVICE_ID}/release-ticket.md",
+        DRY_FILL_REVIEWER_COMMANDS,
+        "evidence links only",
         "BGE evidence status",
         "measured-pass",
         "pending-host-access exception approval",
@@ -53,6 +110,12 @@ def test_pilot_launch_readiness_checklist_contains_required_contract() -> None:
         assert expected in text
 
     for expected in (
+        DRY_FILL_COPY,
+        DRY_FILL_FIELDS,
+        DRY_FILL_FORBIDDEN_CONTENT,
+        DRY_FILL_DECISION_LINK,
+        "no screenshot contents",
+        "no workflow export contents",
         "go requires BGE measured-pass before closed-network pilot traffic",
         (
             "Conditional Go with pending-host-access requires exception "
@@ -100,8 +163,52 @@ def test_pilot_launch_readiness_checklist_contains_required_sections() -> None:
         assert heading in text
 
 
+def test_pilot_release_ticket_dry_fill_order_is_documented_in_runbook() -> None:
+    text = _compact(RUNBOOK.read_text(encoding="utf-8"))
+
+    for expected in (
+        DRY_FILL_COPY,
+        DRY_FILL_FIELDS,
+        DRY_FILL_FORBIDDEN_CONTENT,
+        DRY_FILL_REVIEWER_COMMANDS,
+        DRY_FILL_DECISION_LINK,
+    ):
+        assert expected in text
+
+
+def _assert_reviewer_commands_are_documented(text: str) -> None:
+    assert "required_release_refs=$(" in text
+    assert "forbidden_release_markers=$(" in text
+    assert 'rg -n "${required_release_refs}" \\' in text
+    assert 'rg -n "${forbidden_release_markers}" \\' in text
+    assert RELEASE_TICKET_PATH in text
+    assert "first rg prints required evidence references" in text
+    assert "second rg prints no matches" in text
+
+    for marker in REQUIRED_RELEASE_REFERENCE_MARKERS:
+        assert marker in text
+
+    for marker in FORBIDDEN_RELEASE_MARKER_SCAN_PARTS:
+        assert marker in text
+
+
+def test_pilot_release_ticket_reviewer_commands_are_documented_in_checklist() -> None:
+    text = CHECKLIST.read_text(encoding="utf-8")
+
+    _assert_reviewer_commands_are_documented(text)
+
+
+def test_pilot_release_ticket_reviewer_commands_are_documented_in_runbook() -> None:
+    text = RUNBOOK.read_text(encoding="utf-8")
+
+    _assert_reviewer_commands_are_documented(text)
+
+
 def test_pilot_launch_readiness_checklist_is_secret_scan_safe(tmp_path: Path) -> None:
-    result = scan_evidence_directory(tmp_path, extra_paths=[CHECKLIST])
+    sanitized_checklist = _write_checklist_copy_without_intentional_forbidden_scan(
+        tmp_path, CHECKLIST
+    )
+    result = scan_evidence_directory(tmp_path, extra_paths=[sanitized_checklist])
 
     assert result == SecretScanResult(passed=True, findings=[])
 

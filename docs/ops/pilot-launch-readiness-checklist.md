@@ -135,6 +135,15 @@ Any unexplained baseline drift blocks go.
 
 Dry-fill `release-ticket.md` only after the closure items above have evidence:
 
+1. Copy docs/ops/pilot-handoff-release-ticket-template.md to
+   var/evidence/${SERVICE_ID}/release-ticket.md.
+2. Fill the release ticket with evidence paths, hashes, statuses, reviewer
+   names, approval IDs, and go gate summary only.
+3. Do not paste screenshot contents, workflow export contents, raw query text,
+   API keys, bearer tokens, KEK material, encrypted DEKs, or ciphertext.
+4. Run the reviewer commands.
+5. Link the release ticket from pilot-go-no-go-decision.md.
+
 - Record local rehearsal regeneration or approved reuse.
 - Record Dify UI dry-run evidence and Dify workflow version identifier.
 - Record BGE evidence status and any pending-host-access exception approval.
@@ -146,8 +155,39 @@ Dry-fill `release-ticket.md` only after the closure items above have evidence:
 - Run the documented secret-scan review commands and record that they printed no
   findings.
 
-The release ticket must contain references only. It must contain no secrets and
-no raw query text.
+Reviewer commands:
+
+```bash
+required_release_refs=$(
+  printf '%s' \
+    'PASS|CI / verify|pilot-rehearsal-manifest.md|' \
+    'Dify workflow version identifier|BGE evidence status|' \
+    'branch protection evidence|CSV baseline|go/no-go'
+)
+rg -n "${required_release_refs}" \
+  var/evidence/${SERVICE_ID}/release-ticket.md
+
+forbidden_release_markers=$(
+  printf '%s' \
+    'Bearer |Authorization: Bearer|' \
+    'RAW_TEXT_KEK_BASE64|RAW_TEXT_LEGACY_KEKS_JSON|' \
+    'api_key=|intent_routing_api_key|' \
+    'query_raw|text_raw|encrypted_dek|ciphertext|' \
+    'irt_live_|irt_secret'
+)
+rg -n "${forbidden_release_markers}" \
+  var/evidence/${SERVICE_ID}/release-ticket.md
+```
+
+Expected:
+
+```text
+first rg prints required evidence references
+second rg prints no matches
+```
+
+The release ticket must be evidence links only: no screenshot contents, no
+workflow export contents, no secrets, and no raw query text.
 
 ## Go/No-Go Decision
 
