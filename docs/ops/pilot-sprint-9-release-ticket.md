@@ -23,12 +23,27 @@ Runtime evidence is not committed. Evidence links only.
 - Manifest Markdown SHA256: 051856591452adeb96ec45d785ee679f018942948e5f2a87dda8531176566441.
 - Reviewer checks: JSON format pass, no local secret state in rehearsal evidence, forbidden marker scan no matches.
 
+## BGE Reassessment Evidence
+
+- BGE catalog scope protection PR: https://github.com/HauaM/AiIntentRouting/pull/10.
+- BGE PR head commit: 9eee8728d620414b41ba93a1e34544a3b2286569.
+- BGE PR merge commit: 9cdf90b4b1d6ecaed4635c54de8433a2b9f394f8.
+- BGE PR CI verify: PASS.
+- BGE measured evidence root: var/evidence/it-helpdesk-pilot-bge-scope-protection-20260630/rehearsal.
+- BGE measured final_status: PASS.
+- BGE package preflight: PASS.
+- BGE benchmark: PASS.
+- BGE Dify smoke matrix: PASS.
+- BGE CSV baseline comparison: PASS.
+- BGE measured manifest JSON SHA256: 605cd1899057bce080da52863ee21d0e9c322cd94809ef4874e28debebe3ffdb.
+- BGE measured manifest Markdown SHA256: 1d2afc114cbc1f0d45cd8aa8876d493d1b2112a1ecc10cbf25fd16a8eeb2b12a.
+
 ## Blocked Gates
 
 - Dify UI dry-run: blocked. Missing UI access, workflow version identifier, reviewer, and sanitized evidence reference.
-- BGE closed-network: blocked. Missing `/models/bge-m3`, model SHA, measured-pass, and bounded exception approval.
-- Branch protection: blocked. API capture returned HTTP 403/operator-not-permitted, and no valid protection snapshot exists.
-- CSV baseline freeze: blocked. CSV comparison PASS, but approval ID, release owner, QA/security reviewer, and timestamp are missing.
+- BGE closed-network: measured-pass. PR #10 resolved the BGE catalog scope and positive-case calibration blockers without lowering thresholds or refreshing the baseline.
+- Branch protection: blocked. REST branch protection capture returned HTTP 403, GraphQL returned no active branch protection rules, and no valid protection snapshot exists.
+- CSV baseline freeze: blocked. CSV comparison PASS after PR #10, but approval ID, release owner, QA/security reviewer, and timestamp are missing.
 
 ## Evidence Links Only
 
