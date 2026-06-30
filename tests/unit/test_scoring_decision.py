@@ -209,6 +209,66 @@ def test_keyword_supported_single_candidate_still_clarifies_below_threshold() ->
     assert result.route_key is None
 
 
+def test_weak_close_keywordless_candidates_fall_back_as_outside_catalog_scope() -> None:
+    result = DecisionComposer(
+        ThresholdConfig(preset="balanced", threshold=0.8, clarify_margin=0.08)
+    ).compose(
+        [
+            CandidateScore(
+                "it_vpn_access",
+                "VPN Access",
+                "IT",
+                "it.vpn_access.ticket_create",
+                0.59,
+                include_keyword_match_count=0,
+            ),
+            CandidateScore(
+                "it_password_reset",
+                "Password reset",
+                "IT",
+                "it.password_reset.self_service",
+                0.58,
+                include_keyword_match_count=0,
+            ),
+        ]
+    )
+
+    assert result.decision == Decision.fallback
+    assert result.intent_id is None
+    assert result.route_key is None
+    assert result.decision_state is not None
+    assert result.decision_state["decision_reason"] == "outside_catalog_scope"
+
+
+def test_keyword_supported_weak_close_candidates_still_clarify() -> None:
+    result = DecisionComposer(
+        ThresholdConfig(preset="balanced", threshold=0.8, clarify_margin=0.08)
+    ).compose(
+        [
+            CandidateScore(
+                "it_vpn_access",
+                "VPN Access",
+                "IT",
+                "it.vpn_access.ticket_create",
+                0.59,
+                include_keyword_match_count=1,
+            ),
+            CandidateScore(
+                "it_password_reset",
+                "Password reset",
+                "IT",
+                "it.password_reset.self_service",
+                0.58,
+                include_keyword_match_count=0,
+            ),
+        ]
+    )
+
+    assert result.decision == Decision.clarify
+    assert result.clarify is not None
+    assert result.clarify.reason == "top_candidates_close"
+
+
 def test_two_viable_keywordless_candidates_still_clarify_when_close() -> None:
     result = DecisionComposer(
         ThresholdConfig(preset="balanced", threshold=0.8, clarify_margin=0.08)

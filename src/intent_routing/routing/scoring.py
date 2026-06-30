@@ -220,18 +220,12 @@ class DecisionComposer:
             for candidate in ranked
             if candidate.confidence >= self.threshold_config.min_candidate_score
         ]
-        if len(viable_candidates) >= 2 and margin < self.threshold_config.clarify_margin:
-            return self._clarify(
-                reason="top_candidates_close",
-                top_candidate=top_candidate,
-                margin=margin,
-                candidates=viable_candidates,
-                ranked=ranked,
-            )
-
+        weak_candidate_ceiling = min(
+            self.threshold_config.resolved_threshold,
+            self.threshold_config.min_candidate_score + self.threshold_config.clarify_margin,
+        )
         if (
-            len(viable_candidates) == 1
-            and top_candidate.confidence < self.threshold_config.resolved_threshold
+            top_candidate.confidence < weak_candidate_ceiling
             and top_candidate.include_keyword_match_count == 0
         ):
             return self._fallback(
@@ -239,6 +233,15 @@ class DecisionComposer:
                 margin=margin,
                 ranked=ranked,
                 reason="outside_catalog_scope",
+            )
+
+        if len(viable_candidates) >= 2 and margin < self.threshold_config.clarify_margin:
+            return self._clarify(
+                reason="top_candidates_close",
+                top_candidate=top_candidate,
+                margin=margin,
+                candidates=viable_candidates,
+                ranked=ranked,
             )
 
         if (
