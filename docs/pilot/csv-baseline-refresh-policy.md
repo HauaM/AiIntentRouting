@@ -18,6 +18,15 @@ allowed_new_reviews remains 0.
 
 Baseline JSON must not contain raw query text or secret-bearing fields.
 
+## Pilot Launch Freeze Approval
+
+When the baseline is intentionally kept frozen for pilot launch, complete
+docs/pilot/csv-baseline-freeze-approval-template.md and link the completed copy
+from release-ticket.md.
+
+Refresh remains blocked unless the policy-approved approval ID and reviewed diff
+evidence are attached.
+
 ## When Refresh Is Allowed
 
 Refresh is allowed only when a reviewer intentionally accepts changed pilot

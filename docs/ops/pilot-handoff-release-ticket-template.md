@@ -100,9 +100,16 @@ protection state.
 - CSV baseline comparison:
 - Baseline file:
 - Comparison report:
+- CSV baseline freeze approval:
+- Freeze approval template: docs/pilot/csv-baseline-freeze-approval-template.md
+- Refresh status: refresh not approved / policy-approved refresh attached
+- Freeze approval ID:
+- Release owner:
+- QA or security reviewer:
 - Approved refresh reference, if applicable:
 
 Gate: go requires CSV baseline comparison PASS.
+Gate: go requires either CSV baseline freeze approval or a policy-approved refresh approval.
 
 ## Security And Incident Rehearsal Evidence
 
@@ -149,6 +156,7 @@ Required go gates:
 - go requires the Dify UI evidence path to be linked from release-ticket.md.
 - blocked Dify evidence requires a condition owner and approval ID before Conditional Go.
 - go requires CSV baseline comparison PASS.
+- go requires either CSV baseline freeze approval or a policy-approved refresh approval.
 - go requires branch protection evidence for main.
 - go requires authorized branch protection evidence for main.
 - operator-not-permitted does not satisfy pilot go/no-go.

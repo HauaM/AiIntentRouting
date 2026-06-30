@@ -114,10 +114,20 @@ Conditional Go with explicit approval and impact.
 
 Record CSV baseline freeze approval before final launch review:
 
+- Complete docs/pilot/csv-baseline-freeze-approval-template.md when the
+  checked-in baseline remains frozen for pilot launch.
 - Confirm the checked-in baseline is the approved pilot baseline.
-- Record CSV baseline freeze approval in the release ticket.
+- Confirm CSV baseline comparison PASS.
+- CSV baseline freeze approval:
+- Record Refresh status: refresh not approved / policy-approved refresh attached.
+- Freeze approval ID:
+- Release owner:
+- QA or security reviewer:
 - If the baseline changed, record the policy-approved refresh approval instead.
 - Confirm the launch candidate did not bypass the required balanced gate.
+
+Gate: go requires CSV baseline comparison PASS.
+Gate: go requires either CSV baseline freeze approval or a policy-approved refresh approval.
 
 Any unexplained baseline drift blocks go.
 
@@ -130,7 +140,9 @@ Dry-fill `release-ticket.md` only after the closure items above have evidence:
 - Record BGE evidence status and any pending-host-access exception approval.
 - Record authorized branch protection evidence for `main`, CI / verify,
   main-protection.json, and branch protection capture verified.
-- Record CSV baseline freeze approval or policy-approved refresh approval.
+- Record CSV baseline freeze approval from
+  docs/pilot/csv-baseline-freeze-approval-template.md or policy-approved refresh
+  approval.
 - Run the documented secret-scan review commands and record that they printed no
   findings.
 
@@ -150,6 +162,9 @@ operator-not-permitted does not satisfy pilot go/no-go.
 Rollback or bypass evidence must include approval ID, exact commit SHA,
 workflow_dispatch rerun URL, artifact review result, and final branch
 protection state.
+CSV go requires CSV baseline comparison PASS.
+CSV go requires either CSV baseline freeze approval or a policy-approved refresh
+approval.
 
 Closed-network go requires BGE measured-pass before closed-network pilot traffic.
 Conditional Go with pending-host-access requires exception approval ID,

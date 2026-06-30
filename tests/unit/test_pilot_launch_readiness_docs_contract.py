@@ -36,6 +36,13 @@ def test_pilot_launch_readiness_checklist_contains_required_contract() -> None:
         "artifact review result",
         "CI / verify",
         "CSV baseline freeze approval",
+        "CSV baseline freeze approval:",
+        "docs/pilot/csv-baseline-freeze-approval-template.md",
+        "CSV baseline comparison PASS",
+        "Refresh status: refresh not approved / policy-approved refresh attached",
+        "Freeze approval ID:",
+        "Release owner:",
+        "QA or security reviewer:",
         "local rehearsal regeneration",
         "pilot go/no-go decision record",
         "Conditional Go",
@@ -65,6 +72,10 @@ def test_pilot_launch_readiness_checklist_contains_required_contract() -> None:
         ),
         "approval ID, exact commit SHA, workflow_dispatch rerun URL",
         "final branch protection state",
+        (
+            "go requires either CSV baseline freeze approval or a "
+            "policy-approved refresh approval"
+        ),
     ):
         assert expected in compact_text
 

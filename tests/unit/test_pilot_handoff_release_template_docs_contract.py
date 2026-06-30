@@ -33,6 +33,12 @@ def test_pilot_handoff_release_ticket_template_contains_required_contract() -> N
         "BGE evidence status",
         "branch protection evidence",
         "CSV baseline comparison",
+        "docs/pilot/csv-baseline-freeze-approval-template.md",
+        "CSV baseline freeze approval",
+        "Refresh status: refresh not approved / policy-approved refresh attached",
+        "Freeze approval ID",
+        "Release owner",
+        "QA or security reviewer",
         "rollback plan",
         "go/no-go",
         "Admin UI excluded",
@@ -79,6 +85,10 @@ def test_pilot_handoff_release_ticket_template_documents_required_gates() -> Non
             "before Conditional Go"
         ),
         "go requires CSV baseline comparison PASS",
+        (
+            "go requires either CSV baseline freeze approval or a "
+            "policy-approved refresh approval"
+        ),
         "go requires branch protection evidence for main",
         "go requires authorized branch protection evidence for main",
         "operator-not-permitted does not satisfy pilot go/no-go",
