@@ -121,9 +121,14 @@ Closed-network acceptance:
 Record closed-network BGE evidence status as `measured-pass`, `measured-fail`,
 or `pending-host-access` in `docs/ops/bge-m3-evidence-template.md`.
 `pending-host-access` can close a local documentation sprint only when the
-closed-network host is not yet available, but it is not acceptable for actual
-pilot go/no-go. Pilot handoff requires `measured-pass` for package preflight,
-benchmark, closed-network rehearsal, and secret scan.
+closed-network host is not yet available. It requires a pending-host-access
+exception approval with an exception approval ID, exception owner, expiration
+before pilot traffic, and next measurement date. pending-host-access may support
+documentation closure, but it blocks closed-network pilot traffic. Pilot handoff
+requires `measured-pass` for package preflight, benchmark, closed-network
+rehearsal, and secret scan.
+Conditional Go with pending-host-access must state that Dify or closed-network
+traffic remains blocked until measured-pass evidence is attached.
 
 Expected closed-network measured results:
 
@@ -139,7 +144,8 @@ Expected closed-network measured results:
 
 If the closed-network host is unavailable, fill the template status as
 `pending-host-access`, attach it to the release ticket, and keep pilot go/no-go
-blocked.
+blocked. Conditional Go cannot send closed-network pilot traffic until
+measured-pass is attached.
 
 ## Evidence Bundle Layout
 

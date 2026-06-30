@@ -76,13 +76,19 @@ Record BGE evidence status before closed-network pilot traffic:
 - `measured-pass` means package preflight, benchmark, closed-network rehearsal,
   offline runtime, and secret scan are complete and accepted.
 - `measured-fail` blocks go until the failure is corrected and evidence is
-  regenerated.
+  regenerated. measured-fail blocks pilot launch until corrected evidence
+  passes.
 - `pending-host-access` may be carried only with pending-host-access exception
   approval, an owner, an approval ID, and a blocking impact in the pilot
   go/no-go decision record.
 
-Go requires BGE measured-pass before real closed-network traffic. Conditional Go
-may cover only documented access timing, not a failed measurement.
+Gate: go requires BGE measured-pass before closed-network pilot traffic.
+Gate: Conditional Go with pending-host-access requires exception approval ID,
+exception owner, expiration before pilot traffic, and next measurement date.
+
+Conditional Go may cover only documented access timing, not a failed
+measurement. It must state that Dify or closed-network traffic remains blocked
+until measured-pass evidence is attached.
 
 ## Branch Protection Closure
 
@@ -131,7 +137,13 @@ Go requires accepted evidence for local rehearsal, Dify UI dry-run,
 closed-network BGE, branch protection, CSV baseline freeze, release ticket
 secret-scan review, and approval ownership.
 
-Conditional Go is allowed only when each remaining condition has an owner, an approval ID, and a blocking impact recorded in the go/no-go decision record.
+Closed-network go requires BGE measured-pass before closed-network pilot traffic.
+Conditional Go with pending-host-access requires exception approval ID,
+exception owner, expiration before pilot traffic, and next measurement date.
+measured-fail blocks pilot launch until corrected evidence passes.
+
+Conditional Go is allowed only when each remaining condition has an owner, an
+approval ID, and a blocking impact recorded in the go/no-go decision record.
 
 No Go is required when a required evidence item is missing, failed, unsafe to
 attach, or not approved by the responsible owner.
@@ -147,8 +159,8 @@ When a closure item fails:
 - Update the release ticket and pilot go/no-go decision record with the latest
   status and owner.
 
-Do not convert a failed measurement into Conditional Go unless the approved
-policy explicitly allows the exception and the record names the blocking impact.
+Do not convert a failed measurement into Conditional Go. Keep the decision as
+No Go until the evidence is corrected, regenerated, and accepted as measured-pass.
 
 ## Files That Must Not Be Committed
 

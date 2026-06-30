@@ -7,8 +7,13 @@ CHECKLIST = ROOT / "docs/ops/pilot-launch-readiness-checklist.md"
 CHECKLIST_PATH = "docs/ops/pilot-launch-readiness-checklist.md"
 
 
+def _compact(text: str) -> str:
+    return " ".join(text.split())
+
+
 def test_pilot_launch_readiness_checklist_contains_required_contract() -> None:
     text = CHECKLIST.read_text(encoding="utf-8")
+    compact_text = _compact(text)
 
     for expected in (
         CHECKLIST_PATH,
@@ -34,6 +39,22 @@ def test_pilot_launch_readiness_checklist_contains_required_contract() -> None:
         "no raw query text",
     ):
         assert expected in text
+
+    for expected in (
+        "go requires BGE measured-pass before closed-network pilot traffic",
+        (
+            "Conditional Go with pending-host-access requires exception "
+            "approval ID, exception owner, expiration before pilot traffic, "
+            "and next measurement date"
+        ),
+        "measured-fail blocks pilot launch until corrected evidence passes",
+        (
+            "Do not convert a failed measurement into Conditional Go. Keep the "
+            "decision as No Go until the evidence is corrected, regenerated, "
+            "and accepted as measured-pass."
+        ),
+    ):
+        assert expected in compact_text
 
 
 def test_pilot_launch_readiness_checklist_contains_required_sections() -> None:

@@ -18,9 +18,39 @@ Allowed status values:
 `pending-host-access blocks pilot go/no-go.`
 `pilot handoff requires measured-pass for package preflight, benchmark, closed-network rehearsal, and secret scan.`
 
+`pending-host-access exception approval` is the only allowed documentation
+closure path when the approved closed-network host is not available.
+pending-host-access requires an exception approval ID, an owner, and a next
+measurement date.
+pending-host-access may support documentation closure, but it blocks
+closed-network pilot traffic.
+Conditional Go with pending-host-access must state that Dify or closed-network
+traffic remains blocked until measured-pass evidence is attached.
+The exception owner must confirm the exception expires before pilot traffic and
+that the next measurement date is scheduled.
+
 If the closed-network host is unavailable, fill this record with
 `pending-host-access`, attach it to the release ticket, and mark pilot go/no-go
 as blocked until measured closed-network evidence is available.
+
+## Pending Host Access Exception
+
+Use this section only when the approved closed-network host is not yet available.
+It records the pending-host-access exception approval without authorizing Dify
+or closed-network pilot traffic.
+
+- Exception approval ID:
+- Exception owner:
+- Approved by:
+- Approval timestamp:
+- Expires before pilot traffic: yes
+- Next measurement date:
+- Decision impact: Conditional Go cannot send closed-network pilot traffic until
+  measured-pass is attached.
+
+The exception approval ID, exception owner, expiration before pilot traffic, and
+next measurement date must be copied into the release ticket and pilot go/no-go
+decision record.
 
 ## Package Approval Record
 
@@ -148,7 +178,9 @@ Common failure responses:
 - `secret_scan.passed is true` is not satisfied: remove unsafe evidence at the
   source, rerun the rehearsal, and attach only clean evidence.
 - Host unavailable: use `pending-host-access`, attach this record to the release
-  ticket, and keep pilot go/no-go blocked.
+  ticket, record the exception approval ID, exception owner, expiration before
+  pilot traffic, and next measurement date, and keep closed-network pilot
+  traffic blocked.
 
 ## Pilot Go/No-Go
 
@@ -163,3 +195,5 @@ Pilot go requires:
 documents that the local documentation sprint could close before host access was
 available; pilot traffic remains blocked until measured closed-network evidence
 passes.
+Conditional Go cannot send closed-network pilot traffic until measured-pass is
+attached.

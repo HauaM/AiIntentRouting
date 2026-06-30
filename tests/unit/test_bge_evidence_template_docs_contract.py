@@ -9,10 +9,15 @@ from intent_routing.ops.rehearsal import (
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _compact(text: str) -> str:
+    return " ".join(text.split())
+
+
 def test_bge_m3_evidence_template_documents_closed_network_contract() -> None:
     text = (ROOT / "docs/ops/bge-m3-evidence-template.md").read_text(
         encoding="utf-8"
     )
+    compact_text = _compact(text)
 
     for expected in (
         "docs/ops/bge-m3-evidence-template.md",
@@ -34,9 +39,35 @@ def test_bge_m3_evidence_template_documents_closed_network_contract() -> None:
         "measured-pass",
         "measured-fail",
         "pending-host-access",
+        "pending-host-access exception approval",
+        "exception approval ID",
+        "exception owner",
+        "expires before pilot traffic",
+        "next measurement date",
         "pending-host-access blocks pilot go/no-go",
     ):
         assert expected in text
+
+    for expected in (
+        (
+            "pending-host-access requires an exception approval ID, an owner, "
+            "and a next measurement date."
+        ),
+        (
+            "pending-host-access may support documentation closure, but it "
+            "blocks closed-network pilot traffic."
+        ),
+        (
+            "Conditional Go with pending-host-access must state that Dify or "
+            "closed-network traffic remains blocked until measured-pass "
+            "evidence is attached."
+        ),
+        (
+            "Decision impact: Conditional Go cannot send closed-network pilot "
+            "traffic until measured-pass is attached."
+        ),
+    ):
+        assert expected in compact_text
 
 
 def test_bge_m3_evidence_template_is_secret_scan_safe(tmp_path: Path) -> None:

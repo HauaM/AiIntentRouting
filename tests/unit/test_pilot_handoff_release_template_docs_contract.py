@@ -7,6 +7,10 @@ TEMPLATE = ROOT / "docs/ops/pilot-handoff-release-ticket-template.md"
 TEMPLATE_PATH = "docs/ops/pilot-handoff-release-ticket-template.md"
 
 
+def _compact(text: str) -> str:
+    return " ".join(text.split())
+
+
 def test_pilot_handoff_release_ticket_template_contains_required_contract() -> None:
     text = TEMPLATE.read_text(encoding="utf-8")
 
@@ -61,6 +65,7 @@ def test_pilot_handoff_release_ticket_template_contains_required_sections() -> N
 
 def test_pilot_handoff_release_ticket_template_documents_required_gates() -> None:
     text = TEMPLATE.read_text(encoding="utf-8")
+    compact_text = _compact(text)
 
     for gate in (
         "go requires CI / verify pass",
@@ -69,14 +74,27 @@ def test_pilot_handoff_release_ticket_template_documents_required_gates() -> Non
         "go requires Dify UI evidence path and workflow version identifier",
         "go requires Dify UI dry-run evidence reviewer approval",
         "go requires the Dify UI evidence path to be linked from release-ticket.md",
-        "blocked Dify evidence requires a condition owner and approval ID before Conditional Go",
+        (
+            "blocked Dify evidence requires a condition owner and approval ID "
+            "before Conditional Go"
+        ),
         "go requires CSV baseline comparison PASS",
         "go requires branch protection evidence for main",
-        "go requires BGE measured-pass before closed-network pilot traffic",
         "Admin UI excluded from Sprint 6",
         "ticket must not contain secrets or raw query text",
     ):
         assert gate in text
+
+    for gate in (
+        "go requires BGE measured-pass before closed-network pilot traffic",
+        (
+            "Conditional Go with pending-host-access requires exception "
+            "approval ID, exception owner, expiration before pilot traffic, "
+            "and next measurement date"
+        ),
+        "measured-fail blocks pilot launch until corrected evidence passes",
+    ):
+        assert gate in compact_text
 
 
 def test_pilot_handoff_release_ticket_template_is_secret_scan_safe(

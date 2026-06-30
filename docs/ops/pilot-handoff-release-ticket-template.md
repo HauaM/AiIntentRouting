@@ -64,8 +64,16 @@ Gate: blocked Dify evidence requires a condition owner and approval ID before Co
 - Package preflight evidence:
 - Benchmark evidence:
 - Closed-network rehearsal evidence:
+- Exception approval ID, if pending-host-access:
+- Exception owner, if pending-host-access:
+- Expires before pilot traffic:
+- Next measurement date:
+- Decision impact:
 
 Gate: go requires BGE measured-pass before closed-network pilot traffic.
+Gate: Conditional Go with pending-host-access requires exception approval ID,
+exception owner, expiration before pilot traffic, and next measurement date.
+Gate: measured-fail blocks pilot launch until corrected evidence passes.
 
 ## Branch Protection Evidence
 
@@ -131,6 +139,9 @@ Required go gates:
 - go requires CSV baseline comparison PASS.
 - go requires branch protection evidence for main.
 - go requires BGE measured-pass before closed-network pilot traffic.
+- Conditional Go with pending-host-access requires exception approval ID,
+  exception owner, expiration before pilot traffic, and next measurement date.
+- measured-fail blocks pilot launch until corrected evidence passes.
 - Admin UI excluded from Sprint 6.
 - ticket must not contain secrets or raw query text.
 
