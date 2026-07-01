@@ -32,7 +32,7 @@
 - Local rehearsal: pass. Current launch candidate rehearsal ran against isolated Postgres on 127.0.0.1:55434 and API on 127.0.0.1:8002.
 - Dify integration: accepted by HTTP smoke matrix. Dify is used as a plain HTTP caller for `/v1/intent-route`; the Dify smoke matrix PASS is accepted in place of a separate UI dry-run.
 - BGE closed-network: measured-pass. PR #10 closed the BGE catalog-scope blocker; package preflight, benchmark, pilot e2e, Dify smoke matrix, CSV baseline comparison, ops evidence export, and secret scan all passed in closed-network mode.
-- Branch protection: blocked. GitHub REST branch protection returned HTTP 403 and GraphQL returned no active branch protection rules; PR #10 CI/merge evidence does not replace a valid protection snapshot.
+- Branch protection: accepted. Repository visibility is public, authorized operator access is available, `main` protection requires the GitHub Actions `verify` check displayed as `CI / verify`, `strict: true` is enabled, and `enforce_admins` is enabled.
 - CSV baseline freeze: approved. CSV comparison is PASS after PR #10 and the `pilot-test-manager` role account approved keeping the checked-in baseline frozen.
 
 ## Dify HTTP Caller Acceptance
@@ -57,13 +57,28 @@
 - Comparison result: CSV baseline comparison PASS.
 - Accepted behavior change: none.
 
+## Branch Protection Acceptance
+
+- Branch protection approval ID: BRANCH-PROTECTION-SPRINT9-20260701-001.
+- Authorized operator: HauaM.
+- Operator permission result: authorized.
+- Repository visibility: public.
+- Review timestamp: 2026-07-01, Asia/Seoul.
+- Rule snapshot path: var/evidence/it-helpdesk-pilot-sprint9-go-reassessment/branch-protection/main-protection.json.
+- Rule snapshot SHA256: b66b29244c88978eb155eb03e15debad59e9ff87e4ed2e01571753664977255e.
+- Verification output: branch protection capture verified.
+- Required status check: `verify` API context, displayed in GitHub as `CI / verify`.
+- Branch protection settings: `strict: true`, `enforce_admins: true`.
+- Rollback or temporary bypass used: no.
+- Final branch protection state: confirmed.
+
 ## Decision Boundary
 
-- Decision value: No Go.
-- Pilot traffic approved: no.
-- Dify HTTP caller evidence is accepted, but pilot traffic remains blocked by branch protection.
+- Decision value: Go.
+- Pilot traffic approved: yes.
+- Dify HTTP caller evidence is accepted.
 - BGE bounded exception is not required after PR #10 because measured-pass evidence exists.
-- Conditional Go is not allowed because branch protection is still blocked.
+- Conditional Go is not required because all required gates have accepted evidence.
 
 ## Official Closure Links
 
@@ -73,4 +88,4 @@
 
 ## Required Follow-Up Before Any Go
 
-- Use an authorized operator to capture branch protection and produce structured verification output.
+- None. All required gates have accepted evidence for the Sprint 9 launch decision.

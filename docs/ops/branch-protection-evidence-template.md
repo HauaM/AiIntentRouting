@@ -33,12 +33,13 @@ blocked Conditional Go with owner and deadline.
 
 - Branch: `main`
 - Required check: `CI / verify`
+- API required check context: `verify`
 - GitHub UI settings:
   - `Require status checks to pass before merging`
   - `Require branches to be up to date before merging`
 - Contract shorthand:
   - `strict: true`
-  - `contexts: ["CI / verify"]`
+  - `checks: [{"context": "verify", "app_id": 15368}]`
   - `enforce_admins: true`
 - Operator status: `<authorized | operator-not-permitted>`
 
@@ -48,7 +49,12 @@ Required rule value:
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["CI / verify"]
+    "checks": [
+      {
+        "context": "verify",
+        "app_id": 15368
+      }
+    ]
   },
   "enforce_admins": true
 }
@@ -83,8 +89,8 @@ for check in required_status_checks.get("checks") or []:
         for value in (check.get("context"), check.get("name"))
         if isinstance(value, str)
     )
-if "CI / verify" not in contexts:
-    raise SystemExit("CI / verify is not a required status check")
+if "CI / verify" not in contexts and "verify" not in contexts:
+    raise SystemExit("CI / verify or verify is not a required status check")
 
 enforce_admins = protection.get("enforce_admins")
 admins_enabled = enforce_admins is True or (
@@ -145,7 +151,8 @@ branch protection capture verified
 
 - restore or confirm final branch protection state:
 - `CI / verify` required on `main`:
+- API required check context `verify` confirmed:
 - `strict: true` confirmed:
-- `contexts: ["CI / verify"]` confirmed:
+- `checks: [{"context": "verify", "app_id": 15368}]` confirmed:
 - Operator:
 - Timestamp:
