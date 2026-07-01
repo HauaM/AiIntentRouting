@@ -2,7 +2,7 @@
 ## Intent Routing Service — Admin Console
 
 > **대상**: Claude Code
-> **현재 상태**: API-only MVP / Sprint 5 파일럿 리허설 단계
+> **현재 상태**: API-only MVP / Sprint 9 Go reassessment 완료. 공식 판정은 Go이며 Admin UI implementation은 excluded.
 > **Admin UI 구현 단계**: Phase 0(Read-first) → Phase 1(Write) → Phase 2(Governed, 🔮 Future)
 > **전제**: 모든 Admin API는 `/admin/v1/services/{service_id}/...` 경로를 사용합니다.
 
@@ -17,7 +17,6 @@ pnpm create umi@latest intent-routing-console
 
 # 추가 패키지
 pnpm add @ant-design/pro-components @ant-design/charts
-pnpm add @tanstack/react-query axios
 pnpm add @orioncactus/pretendard   # CDN 금지 — 로컬 설치
 pnpm add -D openapi-typescript
 ```
@@ -252,7 +251,44 @@ export async function fetchRuntimeLogs(serviceId: string, limit = 100) {
 
 ---
 
-## 6. 화면별 핵심 패턴
+## 6. 데이터 패칭 / 상태관리 패턴 (React Query 미사용)
+
+이 콘솔은 React Query를 별도로 사용하지 않습니다. Umi Max의 `request`, ProComponents의 내장 `request` 패턴, React local state, Umi `useModel`/`initialState` 조합으로 구현합니다.
+
+| 용도 | 권장 패턴 |
+|---|---|
+| 목록 화면 | `ProTable`의 `request` prop + `ActionType` `actionRef` |
+| mutation 후 재조회 | `actionRef.current?.reload()` |
+| Dashboard/상세 패널 | `useEffect` + `request` + local loading/error state |
+| 전역 actor/service/env | Umi `initialState` 또는 `useModel` |
+| 폼 상태 | `ProForm`/`Form` 내장 상태 |
+| 클라이언트 필터/페이지네이션 | 현재 API가 배열을 반환하므로 서비스 함수에서 변환 |
+
+```typescript
+import { ActionType, ProTable } from '@ant-design/pro-components';
+import { message } from 'antd';
+import { useRef } from 'react';
+
+const actionRef = useRef<ActionType>();
+
+<ProTable
+  actionRef={actionRef}
+  columns={columns}
+  request={(params) => listIntents(serviceId, params)}
+/>;
+
+const handleApprove = async (exampleId: string) => {
+  await approveExample(serviceId, exampleId);
+  message.success('승인되었습니다.');
+  actionRef.current?.reload();
+};
+```
+
+`service_id`, `window_hours`, `limit` 같은 조회 기준이 바뀌면 React Query cache invalidation이 아니라 ProTable `params` 변경, `actionRef.current?.reload()`, 또는 `useEffect` dependency 변경으로 다시 조회합니다.
+
+---
+
+## 7. 화면별 핵심 패턴
 
 ### Phase 0 — Runtime Logs (마스킹)
 
@@ -331,7 +367,7 @@ const handleRawQueryView = () => {
 
 ---
 
-## 7. 폐쇄망 체크리스트
+## 8. 폐쇄망 체크리스트
 
 | 항목 | 조치 |
 |---|---|
@@ -345,7 +381,7 @@ const handleRawQueryView = () => {
 
 ---
 
-## 8. 구현 순서
+## 9. 구현 순서
 
 ### Phase 0 (Read-first) — 먼저 구현
 1. Umi 초기화 + `.npmrc` + ConfigProvider 네이비 토큰
@@ -373,12 +409,12 @@ const handleRawQueryView = () => {
 
 ---
 
-## 9. 주의사항
+## 10. 주의사항
 
 - **raw query는 서버에서 마스킹된 값만 표시.** 프론트 마스킹 로직 구현 금지.
 - **Audit Logs에 수정/삭제 버튼 없음.** `toolBarRender={() => false}` 필수.
 - **Destructive action은 반드시 `Modal.confirm`.** 1-클릭 실행 금지.
 - **Phase 2 기능은 UI에 진입점만 두고 미구현 안내 처리.** 가짜 구현 금지.
-- **service_id 또는 기간(window_hours/limit) 전환 시 전체 캐시 무효화** (`queryClient.invalidateQueries()`).
+- **React Query는 사용하지 않음.** service_id 또는 기간(window_hours/limit) 전환 시 ProTable `params`, `actionRef.current?.reload()`, 또는 `useEffect` dependency로 재조회.
 - **env 쿼리 파라미터는 현재 admin API에 없음.** env 전역 필터가 필요하면 Phase 2 API contract에서 확정.
 - **`X-Service-Scope` 헤더 누락 시** API 403. 전역 Context에서 반드시 주입.
