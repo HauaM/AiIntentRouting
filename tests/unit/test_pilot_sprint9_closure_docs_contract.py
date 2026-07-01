@@ -80,37 +80,43 @@ def test_sprint9_release_ticket_records_gate_statuses() -> None:
             "BGE measured manifest JSON SHA256: "
             "605cd1899057bce080da52863ee21d0e9c322cd94809ef4874e28debebe3ffdb"
         ),
+        "Branch protection: accepted",
+        "Branch protection approval ID: BRANCH-PROTECTION-SPRINT9-20260701-001",
+        "Verification output: branch protection capture verified",
+        "Rule snapshot SHA256: b66b29244c88978eb155eb03e15debad59e9ff87e4ed2e01571753664977255e",
         "Dify integration status: accepted by HTTP smoke matrix",
         "Dify approval ID: DIFY-HTTP-SMOKE-SPRINT9-20260701-001",
         "CSV baseline freeze: approved",
         "Freeze approval ID: CSV-FREEZE-SPRINT9-20260701-001",
         "Approval actor: pilot-test-manager",
         "Actor roles: system_admin",
-        "Branch protection: blocked",
         "Runtime evidence is not committed",
-        "Decision value: No Go",
+        "Decision value: Go",
     ):
         assert expected in text
 
 
-def test_sprint9_decision_rules_force_no_go_for_blocked_required_gates() -> None:
+def test_sprint9_decision_rules_allow_go_when_required_gates_are_accepted() -> None:
     text = _read(DECISION_DOC)
 
-    assert text.count("Decision value: No Go") == 1
-    assert "Decision value: Go" not in text
+    assert text.count("Decision value: Go") == 1
+    assert "Decision value: No Go" not in text
     assert "Decision value: Conditional Go" not in text
 
     for expected in (
         "Dify integration: accepted by HTTP smoke matrix",
         "Dify approval ID: DIFY-HTTP-SMOKE-SPRINT9-20260701-001",
-        "Branch protection: blocked",
+        "Branch protection: accepted",
+        "Branch protection approval ID: BRANCH-PROTECTION-SPRINT9-20260701-001",
+        "Branch protection required status check: `verify` API context",
+        "Branch protection verification output: branch protection capture verified",
         "CSV baseline freeze: approved",
         "CSV freeze approval ID: CSV-FREEZE-SPRINT9-20260701-001",
         "BGE closed-network: measured-pass",
         "BGE bounded exception approval ID: not required",
         "final_status: PASS",
-        "No pilot traffic approved",
-        "Conditional Go is not allowed",
+        "Pilot traffic approved",
+        "Conditional Go is not required",
         "Admin UI implementation: excluded",
     ):
         assert expected in text
@@ -118,6 +124,7 @@ def test_sprint9_decision_rules_force_no_go_for_blocked_required_gates() -> None
     assert "BGE closed-network: blocked" not in text
     assert "Dify UI dry-run: blocked" not in text
     assert "CSV baseline freeze: blocked" not in text
+    assert "Branch protection: blocked" not in text
 
 
 def test_sprint9_closure_docs_are_secret_safe_and_admin_ui_handbook_free(

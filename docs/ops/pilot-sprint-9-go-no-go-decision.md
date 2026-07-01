@@ -2,7 +2,7 @@
 
 ## Decision
 
-Decision value: No Go
+Decision value: Go
 
 - Date/timezone: 2026-06-30, Asia/Seoul.
 - Decision scope: Sprint 9 Go reassessment after Sprint 8 No Go closure.
@@ -29,6 +29,14 @@ Decision value: No Go
 - BGE CSV baseline comparison SHA256: 07bf2eb12c1efc7ef624834628b5396fe8358562925916d08f9b7fa20ce7a1e3.
 - Dify HTTP caller acceptance ID: DIFY-HTTP-SMOKE-SPRINT9-20260701-001.
 - CSV freeze approval ID: CSV-FREEZE-SPRINT9-20260701-001.
+- Branch protection approval ID: BRANCH-PROTECTION-SPRINT9-20260701-001.
+- Branch protection operator: HauaM.
+- Branch protection permission result: authorized.
+- Branch protection repository visibility: public.
+- Branch protection snapshot path: var/evidence/it-helpdesk-pilot-sprint9-go-reassessment/branch-protection/main-protection.json.
+- Branch protection snapshot SHA256: b66b29244c88978eb155eb03e15debad59e9ff87e4ed2e01571753664977255e.
+- Branch protection verification output: branch protection capture verified.
+- Branch protection review timestamp: 2026-07-01, Asia/Seoul.
 - Approval actor: pilot-test-manager.
 - Actor roles: system_admin.
 - Approval timestamp: 2026-07-01, Asia/Seoul.
@@ -48,26 +56,31 @@ Decision value: No Go
 - CSV QA/security reviewer: pilot-test-manager.
 - CSV refresh status: refresh not approved.
 - CSV comparison result: PASS.
+- Branch protection: accepted.
+- Branch protection approval ID: BRANCH-PROTECTION-SPRINT9-20260701-001.
+- Branch protection required status check: `verify` API context, displayed in GitHub as `CI / verify`.
+- Branch protection settings: `strict: true`, `enforce_admins: true`.
+- Branch protection review timestamp: 2026-07-01, Asia/Seoul.
+- Branch protection missing items: none.
 
 ## Blocked Gates
 
-- Branch protection: blocked.
-- Branch protection owner: not assigned.
-- Branch protection approval ID: not provided.
-- Branch protection missing items: active protection rule, valid protection snapshot, structured verification output.
+- None.
 
 ## Decision Rule Result
 
-- Go is not allowed because branch protection remains blocked.
-- Conditional Go is not allowed because branch protection is a non-BGE required gate and remains blocked.
+- Go is allowed because local rehearsal, Dify integration, BGE closed-network, branch protection, CSV baseline freeze, and release ticket evidence all have accepted records.
+- Conditional Go is not required because no required gate remains blocked.
 - BGE is no longer the blocker after PR #10, and no BGE bounded exception is required.
 - Dify integration and CSV baseline freeze are no longer blockers after the Sprint 9 July 1 approval records.
+- Branch protection is no longer a blocker after the Sprint 9 July 1 authorized capture.
 
 ## Launch Boundary
 
-- No pilot traffic approved.
-- Dify HTTP caller evidence is accepted, but launch traffic remains blocked by branch protection.
-- Closed-network BGE evidence is measured-pass, but launch traffic remains blocked by the remaining non-BGE gates.
+- Pilot traffic approved.
+- Dify HTTP caller evidence is accepted.
+- Closed-network BGE evidence is measured-pass.
+- Branch protection evidence is accepted.
 - Runtime evidence is not committed; only sanitized official records are committed.
 
 ## Official Links

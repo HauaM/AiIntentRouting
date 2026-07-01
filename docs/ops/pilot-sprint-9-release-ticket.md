@@ -25,6 +25,7 @@ Runtime evidence is not committed. Evidence links only.
 
 ## BGE Reassessment Evidence
 
+- BGE closed-network: measured-pass.
 - BGE catalog scope protection PR: https://github.com/HauaM/AiIntentRouting/pull/10.
 - BGE PR head commit: 9eee8728d620414b41ba93a1e34544a3b2286569.
 - BGE PR merge commit: 9cdf90b4b1d6ecaed4635c54de8433a2b9f394f8.
@@ -61,10 +62,25 @@ Runtime evidence is not committed. Evidence links only.
 - Comparison result: CSV baseline comparison PASS.
 - Accepted behavior change: none.
 
+## Branch Protection Evidence
+
+- Branch protection: accepted.
+- Branch protection approval ID: BRANCH-PROTECTION-SPRINT9-20260701-001.
+- Authorized operator: HauaM.
+- Operator permission result: authorized.
+- Repository visibility: public.
+- Review timestamp: 2026-07-01, Asia/Seoul.
+- Rule snapshot path: var/evidence/it-helpdesk-pilot-sprint9-go-reassessment/branch-protection/main-protection.json.
+- Rule snapshot SHA256: b66b29244c88978eb155eb03e15debad59e9ff87e4ed2e01571753664977255e.
+- Verification output: branch protection capture verified.
+- Required status check: `verify` API context, displayed in GitHub as `CI / verify`.
+- Branch protection settings: `strict: true`, `enforce_admins: true`.
+- Rollback or temporary bypass used: no.
+- Final branch protection state: confirmed.
+
 ## Blocked Gates
 
-- BGE closed-network: measured-pass. PR #10 resolved the BGE catalog scope and positive-case calibration blockers without lowering thresholds or refreshing the baseline.
-- Branch protection: blocked. REST branch protection capture returned HTTP 403, GraphQL returned no active branch protection rules, and no valid protection snapshot exists.
+- None.
 
 ## Evidence Links Only
 
@@ -75,6 +91,6 @@ Runtime evidence is not committed. Evidence links only.
 
 ## Go Reassessment
 
-- Decision value: No Go.
-- No pilot traffic approved.
-- Conditional Go is not allowed because branch protection remains blocked.
+- Decision value: Go.
+- Pilot traffic approved.
+- Conditional Go is not required because all required gates have accepted evidence.

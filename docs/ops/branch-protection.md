@@ -6,7 +6,8 @@ Protect `main` so every merge requires the GitHub Actions `CI / verify` job to
 pass. The workflow runs on `pull_request`, `push` to `main`, and
 `workflow_dispatch`; branch protection uses the `pull_request` check before merge
 and `workflow_dispatch` is the operator path for rerunning the same commit during
-rollback or bypass review.
+rollback or bypass review. In the GitHub UI this job is shown as `CI / verify`;
+the branch protection API captures the required check context as `verify`.
 
 ## GitHub UI Path
 
@@ -38,7 +39,12 @@ Safe payload shape:
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["CI / verify"]
+    "checks": [
+      {
+        "context": "verify",
+        "app_id": 15368
+      }
+    ]
   },
   "enforce_admins": true,
   "required_pull_request_reviews": null,
@@ -47,8 +53,8 @@ Safe payload shape:
 ```
 
 In this payload, `"strict": true` is the API equivalent of
-`Require branches to be up to date before merging`, and the `contexts` entry is
-the required `CI / verify` status check.
+`Require branches to be up to date before merging`, and the `checks` entry is
+the required GitHub Actions `verify` check displayed in the UI as `CI / verify`.
 
 ## Apply And Rollback Evidence Capture
 
@@ -119,8 +125,8 @@ for check in required_status_checks.get("checks") or []:
         for value in (check.get("context"), check.get("name"))
         if isinstance(value, str)
     )
-if "CI / verify" not in contexts:
-    raise SystemExit("CI / verify is not a required status check")
+if "CI / verify" not in contexts and "verify" not in contexts:
+    raise SystemExit("CI / verify or verify is not a required status check")
 
 enforce_admins = protection.get("enforce_admins")
 admins_enabled = enforce_admins is True or (

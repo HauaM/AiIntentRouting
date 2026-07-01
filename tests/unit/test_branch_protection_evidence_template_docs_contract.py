@@ -21,7 +21,7 @@ def test_branch_protection_evidence_template_includes_required_terms() -> None:
         "Require status checks to pass before merging",
         "Require branches to be up to date before merging",
         "strict: true",
-        'contexts: ["CI / verify"]',
+        'checks: [{"context": "verify", "app_id": 15368}]',
         "workflow_dispatch",
         "temporary bypass approval",
         "rollback approval ID",
@@ -94,6 +94,7 @@ def test_branch_protection_capture_verification_uses_structured_json_check() -> 
             "contexts",
             "checks",
             "CI / verify",
+            "verify",
             "enforce_admins",
             "enabled",
         ):
