@@ -30,18 +30,40 @@
 ## Gate Summary
 
 - Local rehearsal: pass. Current launch candidate rehearsal ran against isolated Postgres on 127.0.0.1:55434 and API on 127.0.0.1:8002.
-- Dify UI dry-run: blocked. No Dify UI access, workflow version identifier, reviewer, or sanitized screenshot/export path was available.
+- Dify integration: accepted by HTTP smoke matrix. Dify is used as a plain HTTP caller for `/v1/intent-route`; the Dify smoke matrix PASS is accepted in place of a separate UI dry-run.
 - BGE closed-network: measured-pass. PR #10 closed the BGE catalog-scope blocker; package preflight, benchmark, pilot e2e, Dify smoke matrix, CSV baseline comparison, ops evidence export, and secret scan all passed in closed-network mode.
 - Branch protection: blocked. GitHub REST branch protection returned HTTP 403 and GraphQL returned no active branch protection rules; PR #10 CI/merge evidence does not replace a valid protection snapshot.
-- CSV baseline freeze: blocked. CSV baseline comparison is PASS after PR #10, but freeze approval ID, release owner, QA/security reviewer, and review timestamp are not provided.
+- CSV baseline freeze: approved. CSV comparison is PASS after PR #10 and the `pilot-test-manager` role account approved keeping the checked-in baseline frozen.
+
+## Dify HTTP Caller Acceptance
+
+- Approval ID: DIFY-HTTP-SMOKE-SPRINT9-20260701-001.
+- Approval actor: pilot-test-manager.
+- Actor roles: system_admin.
+- Review timestamp: 2026-07-01, Asia/Seoul.
+- Accepted evidence: BGE measured Dify smoke matrix PASS at var/evidence/it-helpdesk-pilot-bge-scope-protection-20260630/rehearsal/dify/dify-smoke-matrix.md.
+- Boundary: Dify must remain a pass-through HTTP caller and must not rewrite request body fields, required headers, or decision values.
+
+## CSV Freeze Approval
+
+- Freeze approval ID: CSV-FREEZE-SPRINT9-20260701-001.
+- Approval actor: pilot-test-manager.
+- Actor roles: system_admin.
+- Release owner: pilot-test-manager.
+- QA/security reviewer: pilot-test-manager.
+- Review timestamp: 2026-07-01, Asia/Seoul.
+- Refresh status: refresh not approved.
+- Freeze decision: keep docs/pilot/it-helpdesk-pilot-baseline.json frozen.
+- Comparison result: CSV baseline comparison PASS.
+- Accepted behavior change: none.
 
 ## Decision Boundary
 
 - Decision value: No Go.
 - Pilot traffic approved: no.
-- No pilot traffic may be routed through Dify until approved UI dry-run evidence exists.
+- Dify HTTP caller evidence is accepted, but pilot traffic remains blocked by branch protection.
 - BGE bounded exception is not required after PR #10 because measured-pass evidence exists.
-- Conditional Go is not allowed because Dify UI dry-run, branch protection, and CSV freeze approval are still blocked.
+- Conditional Go is not allowed because branch protection is still blocked.
 
 ## Official Closure Links
 
@@ -51,6 +73,4 @@
 
 ## Required Follow-Up Before Any Go
 
-- Assign Dify owner and reviewer, capture workflow version identifier, and attach sanitized evidence reference.
 - Use an authorized operator to capture branch protection and produce structured verification output.
-- Provide CSV freeze approval ID, release owner, QA/security reviewer, and review timestamp.

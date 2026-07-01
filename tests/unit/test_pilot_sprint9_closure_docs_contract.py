@@ -70,7 +70,6 @@ def test_sprint9_release_ticket_records_gate_statuses() -> None:
             "Manifest Markdown SHA256: "
             "051856591452adeb96ec45d785ee679f018942948e5f2a87dda8531176566441"
         ),
-        "Dify UI dry-run: blocked",
         "BGE closed-network: measured-pass",
         "BGE catalog scope protection PR: https://github.com/HauaM/AiIntentRouting/pull/10",
         "BGE PR head commit: 9eee8728d620414b41ba93a1e34544a3b2286569",
@@ -81,9 +80,13 @@ def test_sprint9_release_ticket_records_gate_statuses() -> None:
             "BGE measured manifest JSON SHA256: "
             "605cd1899057bce080da52863ee21d0e9c322cd94809ef4874e28debebe3ffdb"
         ),
+        "Dify integration status: accepted by HTTP smoke matrix",
+        "Dify approval ID: DIFY-HTTP-SMOKE-SPRINT9-20260701-001",
+        "CSV baseline freeze: approved",
+        "Freeze approval ID: CSV-FREEZE-SPRINT9-20260701-001",
+        "Approval actor: pilot-test-manager",
+        "Actor roles: system_admin",
         "Branch protection: blocked",
-        "CSV baseline freeze: blocked",
-        "CSV comparison PASS after PR #10",
         "Runtime evidence is not committed",
         "Decision value: No Go",
     ):
@@ -98,9 +101,11 @@ def test_sprint9_decision_rules_force_no_go_for_blocked_required_gates() -> None
     assert "Decision value: Conditional Go" not in text
 
     for expected in (
-        "Dify UI dry-run: blocked",
+        "Dify integration: accepted by HTTP smoke matrix",
+        "Dify approval ID: DIFY-HTTP-SMOKE-SPRINT9-20260701-001",
         "Branch protection: blocked",
-        "CSV baseline freeze: blocked",
+        "CSV baseline freeze: approved",
+        "CSV freeze approval ID: CSV-FREEZE-SPRINT9-20260701-001",
         "BGE closed-network: measured-pass",
         "BGE bounded exception approval ID: not required",
         "final_status: PASS",
@@ -111,6 +116,8 @@ def test_sprint9_decision_rules_force_no_go_for_blocked_required_gates() -> None
         assert expected in text
 
     assert "BGE closed-network: blocked" not in text
+    assert "Dify UI dry-run: blocked" not in text
+    assert "CSV baseline freeze: blocked" not in text
 
 
 def test_sprint9_closure_docs_are_secret_safe_and_admin_ui_handbook_free(
