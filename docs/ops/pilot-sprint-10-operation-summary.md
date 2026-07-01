@@ -5,9 +5,10 @@
 - Date/timezone: 2026-07-01, Asia/Seoul.
 - Initial Stage 0 operation-start HEAD: `f186297b1a9a0960f95eeacc85ddd47a06029000`.
 - BGE Stage 0 and Stage 1 operation-start HEAD: `3b1e6c2e3fa6b33685d8e2b88555a2a5f146658e`.
+- Stage 2 preflight HEAD: `85fcdaf35460caf4fa1946bf005d8886fc097374`.
 - Service identifier: `it-helpdesk-pilot-sprint10-operation-monitoring`.
-- Summary scope: Stage 0 pre-window and Stage 1 operator traffic.
-- Recommendation value: continue limited pilot to Stage 2 planning.
+- Summary scope: Stage 0 pre-window, Stage 1 operator traffic, and Stage 2 preflight.
+- Recommendation value: continue limited pilot to the Stage 2A fallback window.
 - Admin UI implementation: excluded.
 - Runtime evidence committed: no.
 
@@ -17,7 +18,8 @@
 | --- | ---: | ---: | --- |
 | 0 pre-window | 0 | 0 | completed |
 | 1 operator traffic | 10 | 10 | completed |
-| 2 limited user traffic | 50 | 0 | not started |
+| 2 preflight | 0 | 0 | completed |
+| 2 limited user traffic | 50 | 0 | held for fallback window |
 | 3 one-business-day traffic | 100 | 0 | not started |
 
 Stage 1 was initially held because the first local Stage 0 run used
@@ -25,6 +27,12 @@ Stage 1 was initially held because the first local Stage 0 run used
 `/home/haua/workspace/models/embedded/bge-m3`, and the Stage 0 BGE package,
 benchmark, readiness, and ops evidence were regenerated before Stage 1 traffic.
 Stage 1 was capped at 10 internal operator requests and did not exceed the cap.
+
+Stage 2 preflight completed after the primary-window cutoff. The primary window
+required preflight completion by 2026-07-01 13:00 Asia/Seoul, but preflight was
+captured at 2026-07-01 13:19 Asia/Seoul. Stage 2A traffic was not opened. Use
+the fallback window, 2026-07-02 10:30-14:30 Asia/Seoul, and rerun final
+readiness immediately before sending Stage 2A requests.
 
 ## Readiness And Release
 
@@ -42,10 +50,13 @@ Stage 1 was capped at 10 internal operator requests and did not exceed the cap.
   `7a680f2c38c16cfee81e29cfc04320271c95496c9b4ec119a6672672535019d3`.
 - BGE embedding dimension: 1024.
 - BGE benchmark p95: 2862 ms for the local 50-query benchmark.
+- Stage 2 preflight active release model version: `emb-bge-m3-local`.
+- Stage 2 preflight readiness: ready.
 
 ## Monitoring Snapshot
 
 - Runtime request count: 10.
+- Stage 2 preflight request count: 0.
 - Runtime error count: 0.
 - Latency p50: 227 ms.
 - Latency p95: 252 ms.
@@ -63,11 +74,15 @@ Stage 1 was capped at 10 internal operator requests and did not exceed the cap.
   local operator window because Dify is an HTTP caller for `/v1/intent-route`.
 - Dify Stage 1 result: direct HTTP-shape operator requests were used; no Dify
   workflow export, screenshot, or external workflow payload was committed.
+- Dify Stage 2 preflight result: no Stage 2 traffic was sent; Dify remains an
+  HTTP caller boundary for `/v1/intent-route`.
 - BGE Sprint 9 accepted status: measured-pass.
 - BGE Stage 0 local runtime observation: the active model version was
   `emb-bge-m3-local`.
 - BGE Stage 1 result: completed with BGE-M3 active, error count 0, and runtime
   p95 below the 2000 ms stop threshold.
+- BGE Stage 2 preflight result: BGE-M3 package SHA matched, active release
+  model was `emb-bge-m3-local`, and preflight request count remained 0.
 
 ## Branch Protection
 
@@ -88,6 +103,8 @@ Runtime evidence remains local under ignored paths.
 | `var/evidence/it-helpdesk-pilot-sprint10-operation-monitoring/stage0-bge/bge-benchmark/bge-m3-benchmark.json` | `afee437a935b5a49ec3b99dadf01bff6e3d4fc3b6f19218ee38701826c03efce` |
 | `var/evidence/it-helpdesk-pilot-sprint10-operation-monitoring/stage0-bge/ops/ops-evidence.json` | `2bcb8ec519008825b119a79cb80f158ff6a67458912d797cf1730ec90da63d80` |
 | `var/evidence/it-helpdesk-pilot-sprint10-operation-monitoring/stage1-operator/ops-final/ops-evidence.json` | `cd262f69c0bd83c61969b37f23a558c65a521a4a883f6456c1e08daa029776bf` |
+| `var/evidence/it-helpdesk-pilot-sprint10-operation-monitoring/stage2/preflight/bge-package/bge-m3-package.json` | `b64bc76cea7d2416f3a92b9a7e41e7e7e34b882d34154f9e235c5308f910652e` |
+| `var/evidence/it-helpdesk-pilot-sprint10-operation-monitoring/stage2/preflight/ops/ops-evidence.json` | `d10ccbcc69099e1291fd275b0789fb1657374d94cd263b22fe7c1452c95ea227` |
 
 ## Secret-Safety Boundary
 
