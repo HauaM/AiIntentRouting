@@ -1,0 +1,30 @@
+{
+  "name": "intent-routing-console",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Sprint 11 Admin UI Phase 0 console for AiIntentRouting.",
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "max dev",
+    "dev:local": "HOST=127.0.0.1 PORT=30140 ADMIN_API_PROXY=http://127.0.0.1:30141 max dev",
+    "build": "max build",
+    "typecheck": "max setup && tsc --noEmit",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@ant-design/charts": "^2.6.7",
+    "@ant-design/icons": "^6.3.2",
+    "@ant-design/pro-components": "^2.8.10",
+    "@umijs/max": "^4.6.69",
+    "antd": "5.29.3",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "typescript": "^5.9.3",
+    "vitest": "^0.34.6"
+  }
+}
