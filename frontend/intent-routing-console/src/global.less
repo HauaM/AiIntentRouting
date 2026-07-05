@@ -1,0 +1,100 @@
+html,
+body,
+#root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: #f4f6f8;
+  color: #1c2733;
+}
+
+.admin-page-content {
+  margin-top: 12px;
+}
+
+.admin-page-content .ant-alert,
+.admin-page-content .ant-card,
+.admin-page-content .ant-table,
+.admin-page-content .ant-table-wrapper,
+.admin-page-content .ant-table-container,
+.admin-page-content .ant-table-cell,
+.admin-page-content .ant-statistic {
+  color-scheme: light;
+}
+
+.admin-page-content .ant-card {
+  background: #ffffff;
+  color: #1c2733;
+}
+
+.admin-page-content .ant-card-head {
+  background: #ffffff;
+  color: #1c2733;
+}
+
+.admin-page-content .ant-card-head-title,
+.admin-page-content .ant-statistic-title {
+  color: #334155;
+}
+
+.admin-page-content .ant-statistic-content,
+.admin-page-content .ant-table,
+.admin-page-content .ant-table-cell {
+  color: #1c2733;
+}
+
+.service-scope-bar {
+  min-height: 46px;
+  border: 1px solid #e6eaef;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.text-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.muted-small {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.masked-query {
+  color: #334155;
+}
+
+.row-risk td {
+  background: #fff1f0;
+}
+
+.future-feature-notice-compact {
+  padding: 12px 16px;
+}
+
+.audit-result-recorded {
+  border-color: #c7d7c1;
+  background: #f1f7ed;
+  color: #315c2b;
+}
+
+@media (max-width: 640px) {
+  .service-scope-bar,
+  .toolbar-line {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

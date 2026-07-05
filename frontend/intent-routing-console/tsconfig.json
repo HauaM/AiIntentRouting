@@ -1,0 +1,7 @@
+{
+  "extends": "./src/.umi/tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"]
+  },
+  "exclude": ["dist", "node_modules"]
+}
