@@ -2,13 +2,16 @@
 
 ## Status
 
-- Date/timezone: 2026-07-01, Asia/Seoul.
+- Date/timezone: 2026-07-01 to 2026-07-02, Asia/Seoul.
 - Initial Stage 0 operation-start HEAD: `f186297b1a9a0960f95eeacc85ddd47a06029000`.
 - BGE Stage 0 and Stage 1 operation-start HEAD: `3b1e6c2e3fa6b33685d8e2b88555a2a5f146658e`.
 - Stage 2 preflight HEAD: `85fcdaf35460caf4fa1946bf005d8886fc097374`.
+- Stage 2A fallback-window check HEAD:
+  `7102708fcdc0784d57f4e217cd634f723f447526`.
 - Service identifier: `it-helpdesk-pilot-sprint10-operation-monitoring`.
-- Summary scope: Stage 0 pre-window, Stage 1 operator traffic, and Stage 2 preflight.
-- Recommendation value: continue limited pilot to the Stage 2A fallback window.
+- Summary scope: Stage 0 pre-window, Stage 1 operator traffic, Stage 2
+  preflight, and Stage 2A fallback-window readiness check.
+- Recommendation value: hold.
 - Admin UI implementation: excluded.
 - Runtime evidence committed: no.
 
@@ -19,7 +22,8 @@
 | 0 pre-window | 0 | 0 | completed |
 | 1 operator traffic | 10 | 10 | completed |
 | 2 preflight | 0 | 0 | completed |
-| 2 limited user traffic | 50 | 0 | held for fallback window |
+| 2A fallback-window readiness | 15 | 0 | held |
+| 2 limited user traffic | 50 | 0 | held |
 | 3 one-business-day traffic | 100 | 0 | not started |
 
 Stage 1 was initially held because the first local Stage 0 run used
@@ -34,9 +38,15 @@ captured at 2026-07-01 13:19 Asia/Seoul. Stage 2A traffic was not opened. Use
 the fallback window, 2026-07-02 10:30-14:30 Asia/Seoul, and rerun final
 readiness immediately before sending Stage 2A requests.
 
+Stage 2A fallback-window readiness was attempted on 2026-07-02, Asia/Seoul.
+BGE package verification and branch protection capture passed, but the
+operator-managed runtime at `http://127.0.0.1:8002` was not reachable and the
+operator shell did not provide the required admin token and database URL for
+ops evidence export. Stage 2A traffic was not opened.
+
 ## Readiness And Release
 
-- Readiness status: ready.
+- Stage 2 preflight readiness status: ready.
 - Database check: ok.
 - Alembic check: ok.
 - pgvector check: ok.
@@ -52,11 +62,15 @@ readiness immediately before sending Stage 2A requests.
 - BGE benchmark p95: 2862 ms for the local 50-query benchmark.
 - Stage 2 preflight active release model version: `emb-bge-m3-local`.
 - Stage 2 preflight readiness: ready.
+- Stage 2A fallback-window runtime readiness: not reachable on port 8002.
+- Stage 2A pre-traffic ops evidence export: not run because required operator
+  environment variables were missing.
 
 ## Monitoring Snapshot
 
 - Runtime request count: 10.
 - Stage 2 preflight request count: 0.
+- Stage 2A request count: 0.
 - Runtime error count: 0.
 - Latency p50: 227 ms.
 - Latency p95: 252 ms.
@@ -66,6 +80,7 @@ readiness immediately before sending Stage 2A requests.
 - Top route keys: `it.api_timeout.manual_lookup` 3,
   `it.vpn_access.ticket_create` 3, `it.password_reset.self_service` 2.
 - Rollback used: no.
+- Stage 2A rollback used: no, because traffic was not opened.
 
 ## Dify And BGE Status
 
@@ -76,6 +91,8 @@ readiness immediately before sending Stage 2A requests.
   workflow export, screenshot, or external workflow payload was committed.
 - Dify Stage 2 preflight result: no Stage 2 traffic was sent; Dify remains an
   HTTP caller boundary for `/v1/intent-route`.
+- Dify Stage 2A result: no Stage 2A traffic was sent because final readiness
+  did not pass.
 - BGE Sprint 9 accepted status: measured-pass.
 - BGE Stage 0 local runtime observation: the active model version was
   `emb-bge-m3-local`.
@@ -83,6 +100,8 @@ readiness immediately before sending Stage 2A requests.
   p95 below the 2000 ms stop threshold.
 - BGE Stage 2 preflight result: BGE-M3 package SHA matched, active release
   model was `emb-bge-m3-local`, and preflight request count remained 0.
+- BGE Stage 2A pre-traffic result: package SHA matched before traffic, but
+  runtime readiness and ops evidence export did not pass.
 
 ## Branch Protection
 
@@ -105,6 +124,9 @@ Runtime evidence remains local under ignored paths.
 | `var/evidence/it-helpdesk-pilot-sprint10-operation-monitoring/stage1-operator/ops-final/ops-evidence.json` | `cd262f69c0bd83c61969b37f23a558c65a521a4a883f6456c1e08daa029776bf` |
 | `var/evidence/it-helpdesk-pilot-sprint10-operation-monitoring/stage2/preflight/bge-package/bge-m3-package.json` | `b64bc76cea7d2416f3a92b9a7e41e7e7e34b882d34154f9e235c5308f910652e` |
 | `var/evidence/it-helpdesk-pilot-sprint10-operation-monitoring/stage2/preflight/ops/ops-evidence.json` | `d10ccbcc69099e1291fd275b0789fb1657374d94cd263b22fe7c1452c95ea227` |
+| `var/evidence/it-helpdesk-pilot-sprint10-operation-monitoring/stage2/stage2a/pre-traffic/bge-package/bge-m3-package.json` | `b64bc76cea7d2416f3a92b9a7e41e7e7e34b882d34154f9e235c5308f910652e` |
+| `var/evidence/it-helpdesk-pilot-sprint10-operation-monitoring/stage2/stage2a/pre-traffic/bge-package/bge-m3-package.md` | `ef2fd02cfef4e9fc75bd0d27973c7cb13d06a8a5822e76a03cd500c8335ed077` |
+| `var/evidence/it-helpdesk-pilot-sprint10-operation-monitoring/stage2/stage2a/pre-traffic/branch-protection/main-protection.json` | `b66b29244c88978eb155eb03e15debad59e9ff87e4ed2e01571753664977255e` |
 
 ## Secret-Safety Boundary
 
