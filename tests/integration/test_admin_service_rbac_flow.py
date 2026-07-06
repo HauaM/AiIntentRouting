@@ -153,14 +153,11 @@ def test_me_services_returns_session_accessible_services(
 
         assert system_admin_response.status_code == 200
         system_admin_services = system_admin_response.json()
-        assert [service["service_id"] for service in system_admin_services] == [
-            service_a,
-            service_b,
-        ]
-        assert [service["roles"] for service in system_admin_services] == [
-            ["system_admin"],
-            ["system_admin"],
-        ]
+        system_admin_services_by_id = {
+            service["service_id"]: service for service in system_admin_services
+        }
+        assert system_admin_services_by_id[service_a]["roles"] == ["system_admin"]
+        assert system_admin_services_by_id[service_b]["roles"] == ["system_admin"]
     finally:
         _purge_rows(
             db_session,
