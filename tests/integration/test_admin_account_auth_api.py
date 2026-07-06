@@ -1,10 +1,15 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from intent_routing.api.admin_dependencies import get_admin_session
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
+from intent_routing.main import create_app
+from intent_routing.security.admin_sessions import ADMIN_SESSION_COOKIE_NAME
 
 
 def test_admin_account_repository_flow_uses_global_and_service_scoped_roles(
@@ -110,6 +115,127 @@ def test_admin_account_repository_flow_uses_global_and_service_scoped_roles(
         ) is None
     finally:
         _purge_account_auth_rows(db_session, user_id=user_id, service_id=service_id)
+
+
+def test_admin_auth_api_bootstrap_login_me_logout_flow(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = "admin-auth-api-it"
+    email = "Admin.Auth.API@example.com"
+    service_id = "svc-admin-auth-api-it"
+    password = "correct horse battery staple"
+    now = datetime.now(UTC)
+
+    _purge_account_auth_rows(db_session, user_id=user_id, service_id=service_id)
+    _purge_account_auth_rows(
+        db_session,
+        user_id="second-admin-auth-api-it",
+        service_id=service_id,
+    )
+    db_session.execute(
+        text("delete from admin_users where email_normalized = :email_normalized"),
+        {"email_normalized": email.lower()},
+    )
+    db_session.commit()
+
+    app = create_app()
+
+    def override_session():
+        yield db_session
+
+    app.dependency_overrides[get_admin_session] = override_session
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "bootstrap-auth-api-it")
+    client = TestClient(app)
+
+    try:
+        bootstrap_response = client.post(
+            "/admin/v1/auth/bootstrap-admin",
+            headers={"X-Admin-Token": "bootstrap-auth-api-it"},
+            json={
+                "user_id": user_id,
+                "email": email,
+                "display_name": "Admin Auth API",
+                "password": password,
+            },
+        )
+
+        assert bootstrap_response.status_code == 201
+        bootstrap_body = bootstrap_response.json()
+        assert bootstrap_body["user"]["email"] == email
+        assert bootstrap_body["global_roles"] == ["system_admin"]
+        assert "password_hash" not in str(bootstrap_body)
+        assert "token_hash" not in str(bootstrap_body)
+
+        second_bootstrap_response = client.post(
+            "/admin/v1/auth/bootstrap-admin",
+            headers={"X-Admin-Token": "bootstrap-auth-api-it"},
+            json={
+                "user_id": "second-admin-auth-api-it",
+                "email": "second-admin-auth-api@example.com",
+                "display_name": "Second Admin Auth API",
+                "password": password,
+            },
+        )
+
+        assert second_bootstrap_response.status_code == 409
+
+        repository = IntentRoutingRepository(db_session)
+        repository.create_service(
+            service_id=service_id,
+            display_name="Admin Auth API",
+            environment="test",
+            created_by="integration-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.assign_user_service_role(
+            user_id=user_id,
+            service_id=service_id,
+            role="service_operator",
+            assigned_by="integration-test",
+            assigned_at=now,
+        )
+        db_session.commit()
+
+        login_response = client.post(
+            "/admin/v1/auth/login",
+            json={"email": email.upper(), "password": password},
+        )
+
+        assert login_response.status_code == 200
+        assert ADMIN_SESSION_COOKIE_NAME in login_response.cookies
+        set_cookie = login_response.headers["set-cookie"]
+        assert "HttpOnly" in set_cookie
+        assert "SameSite=lax" in set_cookie
+        login_body = login_response.json()
+        assert login_body["user"]["user_id"] == user_id
+        assert login_body["global_roles"] == ["system_admin"]
+        assert login_body["service_roles"] == [
+            {"service_id": service_id, "role": "service_operator"}
+        ]
+        assert password not in str(login_body)
+        assert "password_hash" not in str(login_body)
+        assert "token_hash" not in str(login_body)
+
+        me_response = client.get("/admin/v1/auth/me")
+
+        assert me_response.status_code == 200
+        assert me_response.json()["user"]["user_id"] == user_id
+
+        logout_response = client.post("/admin/v1/auth/logout")
+
+        assert logout_response.status_code == 200
+        assert logout_response.json() == {"success": True}
+        assert ADMIN_SESSION_COOKIE_NAME not in client.cookies
+        assert client.get("/admin/v1/auth/me").status_code == 401
+    finally:
+        _purge_account_auth_rows(db_session, user_id=user_id, service_id=service_id)
+        _purge_account_auth_rows(
+            db_session,
+            user_id="second-admin-auth-api-it",
+            service_id=service_id,
+        )
 
 
 def _purge_account_auth_rows(

@@ -6,6 +6,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from intent_routing.api.admin import router as admin_router
+from intent_routing.api.admin_auth import router as admin_auth_router
 from intent_routing.api.runtime import router as runtime_router
 from intent_routing.db.session import session_scope
 from intent_routing.domain.enums import ErrorCode
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
     app.state.runtime_log_session_factory = session_scope
     app.state.readiness_session_factory = session_scope
     app.include_router(admin_router)
+    app.include_router(admin_auth_router)
     app.include_router(runtime_router)
 
     @app.middleware("http")

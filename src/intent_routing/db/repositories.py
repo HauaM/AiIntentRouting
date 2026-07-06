@@ -141,6 +141,21 @@ class IntentRoutingRepository:
         )
         return self._add_and_flush(models.AdminUserRole(**values))
 
+    def admin_user_role_exists(self, role: str) -> bool:
+        role = _require_allowed_value(
+            role,
+            field_name="admin user role",
+            allowed=GLOBAL_ADMIN_ROLES,
+        )
+        return (
+            self.session.scalar(
+                select(models.AdminUserRole.user_id)
+                .where(models.AdminUserRole.role == role)
+                .limit(1)
+            )
+            is not None
+        )
+
     def list_admin_user_roles(self, user_id: str) -> list[models.AdminUserRole]:
         return list(
             self.session.scalars(

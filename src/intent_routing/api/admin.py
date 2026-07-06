@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from os import environ
@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
+from intent_routing.api.admin_dependencies import get_admin_session
 from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekError
 from intent_routing.db.models import (
     ApiKey,
@@ -29,7 +30,6 @@ from intent_routing.db.repositories import (
     MASKED_RUNTIME_LOG_FIELD_NAMES,
     IntentRoutingRepository,
 )
-from intent_routing.db.session import SessionLocal
 from intent_routing.domain.enums import (
     ApiKeyStatus,
     ErrorCode,
@@ -481,17 +481,6 @@ class RawQueryDecryptResponse(BaseModel):
     query_raw: str
     viewed_by: str
     viewed_at: datetime
-
-
-def get_admin_session() -> Iterator[Session]:
-    session = SessionLocal()
-    try:
-        yield session
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
 
 
 def _trace_id() -> str:

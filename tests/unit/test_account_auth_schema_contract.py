@@ -68,6 +68,7 @@ def test_repository_exposes_account_auth_helpers() -> None:
         "get_admin_user_by_email",
         "update_admin_user_login",
         "assign_admin_user_role",
+        "admin_user_role_exists",
         "list_admin_user_roles",
         "create_admin_session",
         "get_admin_session_by_token_hash",
