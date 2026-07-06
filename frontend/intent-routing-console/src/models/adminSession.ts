@@ -91,6 +91,20 @@ export const getDisplayRoles = (session: AdminSession) => {
   return Array.from(new Set([...session.globalRoles, ...serviceRoles]));
 };
 
+export const hasAnyDisplayRole = (session: AdminSession, roles: string[]) => {
+  const roleSet = new Set(getDisplayRoles(session));
+  return roles.some((role) => roleSet.has(role));
+};
+
+export const canEditCatalog = (session: AdminSession) =>
+  hasAnyDisplayRole(session, ['system_admin', 'service_owner', 'service_developer']);
+
+export const canManageReleases = (session: AdminSession) =>
+  hasAnyDisplayRole(session, ['system_admin']);
+
+export const canManageApiKeys = (session: AdminSession) =>
+  hasAnyDisplayRole(session, ['system_admin']);
+
 export default function useAdminSessionModel() {
   const [session, setSession] = useState<AdminSession>(EMPTY_ADMIN_SESSION);
   const [restoring, setRestoring] = useState(true);

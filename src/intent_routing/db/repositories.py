@@ -117,6 +117,30 @@ class IntentRoutingRepository:
     def get_api_key_by_id(self, key_id: str) -> models.ApiKey | None:
         return self.session.get(models.ApiKey, key_id)
 
+    def list_api_keys(
+        self,
+        *,
+        service_id: str | None = None,
+        environment: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[models.ApiKey]:
+        statement = select(models.ApiKey)
+        if service_id is not None:
+            statement = statement.where(models.ApiKey.service_id == service_id)
+        if environment is not None:
+            statement = statement.where(models.ApiKey.environment == environment)
+        if status is not None:
+            statement = statement.where(models.ApiKey.status == status)
+        return list(
+            self.session.scalars(
+                statement.order_by(
+                    models.ApiKey.created_at.desc(),
+                    models.ApiKey.key_id,
+                ).limit(limit)
+            )
+        )
+
     def create_admin_user(self, **values: Any) -> models.AdminUser:
         values = dict(values)
         email = values.get("email")
@@ -427,6 +451,24 @@ class IntentRoutingRepository:
             .where(models.PolicyVersion.policy_version == policy_version)
         )
 
+    def list_policy_versions(
+        self,
+        service_id: str,
+        *,
+        limit: int = 50,
+    ) -> list[models.PolicyVersion]:
+        return list(
+            self.session.scalars(
+                select(models.PolicyVersion)
+                .where(models.PolicyVersion.service_id == service_id)
+                .order_by(
+                    models.PolicyVersion.created_at.desc(),
+                    models.PolicyVersion.policy_version,
+                )
+                .limit(limit)
+            )
+        )
+
     def create_catalog_version(self, **values: Any) -> models.IntentCatalogVersion:
         return self._add_and_flush(models.IntentCatalogVersion(**values))
 
@@ -441,6 +483,24 @@ class IntentRoutingRepository:
             .where(
                 models.IntentCatalogVersion.intent_catalog_version
                 == intent_catalog_version
+            )
+        )
+
+    def list_catalog_versions(
+        self,
+        service_id: str,
+        *,
+        limit: int = 50,
+    ) -> list[models.IntentCatalogVersion]:
+        return list(
+            self.session.scalars(
+                select(models.IntentCatalogVersion)
+                .where(models.IntentCatalogVersion.service_id == service_id)
+                .order_by(
+                    models.IntentCatalogVersion.created_at.desc(),
+                    models.IntentCatalogVersion.intent_catalog_version,
+                )
+                .limit(limit)
             )
         )
 
@@ -482,6 +542,37 @@ class IntentRoutingRepository:
 
     def get_test_run(self, test_run_id: str) -> models.TestRun | None:
         return self.session.get(models.TestRun, test_run_id)
+
+    def list_test_runs(
+        self,
+        service_id: str,
+        *,
+        gate_passed: bool | None = None,
+        risk_passed: bool | None = None,
+        limit: int = 50,
+    ) -> list[tuple[models.TestRun, models.TestDataset]]:
+        statement = (
+            select(models.TestRun, models.TestDataset)
+            .join(
+                models.TestDataset,
+                models.TestDataset.test_dataset_version
+                == models.TestRun.test_dataset_version,
+            )
+            .where(models.TestRun.service_id == service_id)
+        )
+        if gate_passed is not None:
+            statement = statement.where(models.TestRun.gate_passed.is_(gate_passed))
+        if risk_passed is True:
+            statement = statement.where(models.TestRun.risk_pass_rate == 1)
+        if risk_passed is False:
+            statement = statement.where(models.TestRun.risk_pass_rate != 1)
+        rows = self.session.execute(
+            statement.order_by(
+                models.TestRun.created_at.desc(),
+                models.TestRun.test_run_id,
+            ).limit(limit)
+        ).all()
+        return [(test_run, dataset) for test_run, dataset in rows]
 
     def list_test_results(self, test_run_id: str) -> list[models.TestResult]:
         return list(

@@ -55,10 +55,11 @@ def test_admin_ui_v04_uses_umi_request_without_react_query_or_axios() -> None:
 
     assert "Do not install React Query or axios" in setup_guide
     assert "from '@umijs/max'" in services
-    assert "X-Admin-Token" in setup_guide
-    assert "X-Actor-Id" in setup_guide
-    assert "X-Actor-Roles" in setup_guide
-    assert "X-Service-Scope" in setup_guide
+    assert "withCredentials: true" in setup_guide
+    assert "/auth/login" in setup_guide
+    assert "/auth/me" in setup_guide
+    assert "/me/services" in setup_guide
+    assert "irt_admin_session" in setup_guide
 
     forbidden_implementation_patterns = (
         "@tanstack/react-query",
@@ -72,4 +73,3 @@ def test_admin_ui_v04_uses_umi_request_without_react_query_or_axios() -> None:
     )
     for pattern in forbidden_implementation_patterns:
         assert pattern not in examples
-

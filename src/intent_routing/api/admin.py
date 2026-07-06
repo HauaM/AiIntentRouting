@@ -29,7 +29,9 @@ from intent_routing.db.models import (
     PolicyVersion,
     Release,
     Service,
+    TestDataset,
     TestResult,
+    TestRun,
 )
 from intent_routing.db.repositories import (
     MASKED_RUNTIME_LOG_FIELD_NAMES,
@@ -307,6 +309,15 @@ class CatalogVersionResponse(BaseModel):
     created_at: datetime
 
 
+class CatalogVersionListItemResponse(BaseModel):
+    intent_catalog_version: str
+    service_id: str
+    intent_count: int
+    approved_example_count: int
+    created_by: str
+    created_at: datetime
+
+
 class TestRunCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -328,6 +339,25 @@ class TestRunSummaryResponse(BaseModel):
     gate_passed: bool
     block_reasons: list[str]
     recommendations: list[str]
+
+
+class TestRunListItemResponse(BaseModel):
+    test_run_id: str
+    service_id: str
+    test_dataset_version: str
+    source_filename: str
+    policy_version: str
+    intent_catalog_version: str
+    threshold_preset: str
+    threshold_value: float
+    pass_rate: float
+    review_rate: float
+    risk_pass_rate: float
+    gate_passed: bool
+    block_reasons: list[str]
+    recommendations: list[str]
+    created_by: str
+    created_at: datetime
 
 
 class TestRunResultResponse(BaseModel):
@@ -380,6 +410,33 @@ class ReleaseResponse(BaseModel):
     released_by: str
     released_at: datetime
     rollback_target: str | None
+
+
+class ReleaseCandidateResponse(BaseModel):
+    test_run_id: str
+    service_id: str
+    environment: str
+    policy_version: str
+    intent_catalog_version: str
+    test_dataset_version: str
+    source_filename: str
+    threshold_preset: str
+    pass_rate: float
+    risk_pass_rate: float
+    gate_passed: bool
+    eligible: bool
+    block_reasons: list[str]
+    already_released: bool
+    existing_release_version: str | None
+    created_at: datetime
+
+
+class IntentRouteCandidateResponse(BaseModel):
+    intent_id: str
+    display_name: str
+    route_key: str
+    status: str
+    source: str
 
 
 class RuntimeLogResponse(BaseModel):
@@ -753,6 +810,34 @@ def _catalog_version_response(
     )
 
 
+def _catalog_version_list_item_response(
+    catalog_version: IntentCatalogVersion,
+) -> CatalogVersionListItemResponse:
+    snapshot = catalog_version.snapshot or {}
+    intents = snapshot.get("intents", [])
+    intent_count = len(intents) if isinstance(intents, list) else 0
+    approved_example_count = 0
+    if isinstance(intents, list):
+        for intent in intents:
+            if not isinstance(intent, Mapping):
+                continue
+            examples = intent.get("examples", [])
+            if isinstance(examples, list):
+                approved_example_count += sum(
+                    1
+                    for example in examples
+                    if isinstance(example, Mapping) and example.get("approved") is True
+                )
+    return CatalogVersionListItemResponse(
+        intent_catalog_version=catalog_version.intent_catalog_version,
+        service_id=catalog_version.service_id,
+        intent_count=intent_count,
+        approved_example_count=approved_example_count,
+        created_by=catalog_version.created_by,
+        created_at=catalog_version.created_at,
+    )
+
+
 def _test_run_summary_response(summary: CsvTestRunSummary) -> TestRunSummaryResponse:
     return TestRunSummaryResponse(
         test_run_id=summary.test_run_id,
@@ -765,6 +850,32 @@ def _test_run_summary_response(summary: CsvTestRunSummary) -> TestRunSummaryResp
         gate_passed=summary.gate_passed,
         block_reasons=summary.block_reasons,
         recommendations=summary.recommendations,
+    )
+
+
+def _test_run_list_item_response(
+    test_run: TestRun,
+    dataset: TestDataset,
+    results: list[TestResult],
+) -> TestRunListItemResponse:
+    summary = summarize_test_run(test_run, results)
+    return TestRunListItemResponse(
+        test_run_id=test_run.test_run_id,
+        service_id=test_run.service_id,
+        test_dataset_version=test_run.test_dataset_version,
+        source_filename=dataset.source_filename,
+        policy_version=test_run.policy_version,
+        intent_catalog_version=test_run.intent_catalog_version,
+        threshold_preset=test_run.threshold_preset,
+        threshold_value=float(test_run.threshold_value),
+        pass_rate=float(test_run.pass_rate),
+        review_rate=float(test_run.review_rate),
+        risk_pass_rate=float(test_run.risk_pass_rate),
+        gate_passed=test_run.gate_passed,
+        block_reasons=summary.block_reasons,
+        recommendations=summary.recommendations,
+        created_by=test_run.created_by,
+        created_at=test_run.created_at,
     )
 
 
@@ -1047,6 +1158,28 @@ def create_service(
     )
     session.commit()
     return _service_response(service)
+
+
+@router.get("/api-keys", response_model=list[ApiKeyResponse])
+def list_api_keys(
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    service_id: str | None = None,
+    environment: str | None = None,
+    status: ApiKeyStatus | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[ApiKeyResponse]:
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    return [
+        _api_key_response(api_key)
+        for api_key in repository.list_api_keys(
+            service_id=service_id,
+            environment=environment,
+            status=status.value if status is not None else None,
+            limit=limit,
+        )
+    ]
 
 
 @router.post(
@@ -1345,6 +1478,65 @@ def list_intents(
     return [_intent_response(intent) for intent in repository.list_intents(service_id)]
 
 
+@router.get(
+    "/services/{service_id}/intent-route-candidates",
+    response_model=list[IntentRouteCandidateResponse],
+)
+def list_intent_route_candidates(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    source: str = "current_catalog",
+    environment: str | None = None,
+) -> list[IntentRouteCandidateResponse]:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    service = repository.get_service(service_id)
+    if service is None:
+        _raise_not_found("Service does not exist.")
+    if source == "current_catalog":
+        return [
+            IntentRouteCandidateResponse(
+                intent_id=intent.intent_id,
+                display_name=intent.display_name,
+                route_key=intent.route_key,
+                status=intent.status,
+                source=source,
+            )
+            for intent in repository.list_active_intents(service_id)
+        ]
+    if source == "active_release":
+        release = repository.get_active_release(service_id, environment or service.environment)
+        if release is None:
+            return []
+        catalog_version = repository.get_catalog_version(
+            service_id,
+            release.intent_catalog_version,
+        )
+        if catalog_version is None:
+            return []
+        intents = catalog_version.snapshot.get("intents", [])
+        if not isinstance(intents, list):
+            return []
+        candidates: list[IntentRouteCandidateResponse] = []
+        for intent in intents:
+            if not isinstance(intent, Mapping):
+                continue
+            if intent.get("status") != IntentStatus.active.value:
+                continue
+            candidates.append(
+                IntentRouteCandidateResponse(
+                    intent_id=str(intent.get("intent_id", "")),
+                    display_name=str(intent.get("display_name", "")),
+                    route_key=str(intent.get("route_key", "")),
+                    status=str(intent.get("status", "")),
+                    source=source,
+                )
+            )
+        return candidates
+    _raise_bad_request("source must be current_catalog or active_release")
+
+
 @router.patch(
     "/services/{service_id}/intents/{intent_id}",
     response_model=IntentResponse,
@@ -1490,6 +1682,26 @@ def create_policy_version(
 
 
 @router.get(
+    "/services/{service_id}/policy-versions",
+    response_model=list[PolicyVersionResponse],
+    response_model_exclude_none=True,
+)
+def list_policy_versions(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[PolicyVersionResponse]:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    return [
+        _policy_version_response(policy_version)
+        for policy_version in repository.list_policy_versions(service_id, limit=limit)
+    ]
+
+
+@router.get(
     "/services/{service_id}/policy-versions/{policy_version}",
     response_model=PolicyVersionResponse,
     response_model_exclude_none=True,
@@ -1551,6 +1763,25 @@ def create_catalog_version(
     )
     session.commit()
     return response
+
+
+@router.get(
+    "/services/{service_id}/catalog-versions",
+    response_model=list[CatalogVersionListItemResponse],
+)
+def list_catalog_versions(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[CatalogVersionListItemResponse]:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    return [
+        _catalog_version_list_item_response(catalog_version)
+        for catalog_version in repository.list_catalog_versions(service_id, limit=limit)
+    ]
 
 
 @router.get(
@@ -1684,6 +1915,37 @@ async def create_test_run(
 
 
 @router.get(
+    "/services/{service_id}/test-runs",
+    response_model=list[TestRunListItemResponse],
+)
+def list_test_runs(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    gate_passed: bool | None = None,
+    risk_passed: bool | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[TestRunListItemResponse]:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    rows = repository.list_test_runs(
+        service_id,
+        gate_passed=gate_passed,
+        risk_passed=risk_passed,
+        limit=limit,
+    )
+    return [
+        _test_run_list_item_response(
+            test_run,
+            dataset,
+            repository.list_test_results(test_run.test_run_id),
+        )
+        for test_run, dataset in rows
+    ]
+
+
+@router.get(
     "/services/{service_id}/test-runs/{test_run_id}",
     response_model=TestRunSummaryResponse,
 )
@@ -1796,6 +2058,75 @@ def create_release(
     )
     session.commit()
     return _release_response(release)
+
+
+@router.get(
+    "/services/{service_id}/release-candidates",
+    response_model=list[ReleaseCandidateResponse],
+)
+def list_release_candidates(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    environment: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[ReleaseCandidateResponse]:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    service = repository.get_service(service_id)
+    if service is None:
+        _raise_not_found("Service does not exist.")
+    target_environment = environment or service.environment
+    environment_matches_service = target_environment == service.environment
+    existing_releases = {
+        release.test_run_id: release
+        for release in repository.list_releases(service_id, target_environment)
+    }
+    rows = repository.list_test_runs(service_id, limit=limit)
+    candidates: list[ReleaseCandidateResponse] = []
+    for test_run, dataset in rows:
+        results = repository.list_test_results(test_run.test_run_id)
+        summary = summarize_test_run(test_run, results)
+        existing_release = existing_releases.get(test_run.test_run_id)
+        risk_passed = Decimal(str(test_run.risk_pass_rate)) == Decimal("1.0")
+        block_reasons = list(summary.block_reasons)
+        if not environment_matches_service:
+            block_reasons.append("release environment must match service environment")
+        if not risk_passed:
+            block_reasons.append("risk pass rate must be 100%")
+        if existing_release is not None:
+            block_reasons.append("test run already has a release")
+        eligible = (
+            environment_matches_service
+            and test_run.gate_passed
+            and risk_passed
+            and existing_release is None
+        )
+        candidates.append(
+            ReleaseCandidateResponse(
+                test_run_id=test_run.test_run_id,
+                service_id=test_run.service_id,
+                environment=target_environment,
+                policy_version=test_run.policy_version,
+                intent_catalog_version=test_run.intent_catalog_version,
+                test_dataset_version=test_run.test_dataset_version,
+                source_filename=dataset.source_filename,
+                threshold_preset=test_run.threshold_preset,
+                pass_rate=float(test_run.pass_rate),
+                risk_pass_rate=float(test_run.risk_pass_rate),
+                gate_passed=test_run.gate_passed,
+                eligible=eligible,
+                block_reasons=block_reasons,
+                already_released=existing_release is not None,
+                existing_release_version=(
+                    existing_release.release_version
+                    if existing_release is not None
+                    else None
+                ),
+                created_at=test_run.created_at,
+            )
+        )
+    return candidates
 
 
 @router.get(
