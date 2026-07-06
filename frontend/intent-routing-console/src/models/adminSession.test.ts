@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import type { AdminSession } from './adminSession';
 import {
   EMPTY_ADMIN_SESSION,
+  canEditCatalog,
+  canManageApiKeys,
+  canManageReleases,
   getDisplayRoles,
+  hasAnyDisplayRole,
   isAdminSessionReady,
   normalizeAuthSession,
   selectInitialServiceId,
@@ -87,5 +92,66 @@ describe('admin session model helpers', () => {
       'system_admin',
       'service_developer',
     ]);
+  });
+
+  it('allows service developers to edit the selected service catalog', () => {
+    const session = normalizeAuthSession(
+      { ...currentUser, global_roles: [], service_roles: [] },
+      services,
+      'svc-b',
+    );
+
+    expect(getDisplayRoles(session)).toEqual(['service_developer']);
+    expect(hasAnyDisplayRole(session, ['service_developer'])).toBe(true);
+    expect(canEditCatalog(session)).toBe(true);
+  });
+
+  it('allows service owners to edit the selected service catalog', () => {
+    const session = normalizeAuthSession(
+      { ...currentUser, global_roles: [], service_roles: [] },
+      [{ ...services[0], roles: ['service_owner'] }],
+      'svc-a',
+    );
+
+    expect(getDisplayRoles(session)).toEqual(['service_owner']);
+    expect(canEditCatalog(session)).toBe(true);
+  });
+
+  it('does not allow service operators to edit the catalog', () => {
+    const session = normalizeAuthSession(
+      { ...currentUser, global_roles: [], service_roles: [] },
+      services,
+      'svc-a',
+    );
+
+    expect(getDisplayRoles(session)).toEqual(['service_operator']);
+    expect(canEditCatalog(session)).toBe(false);
+  });
+
+  it('allows system admins to manage releases and API keys', () => {
+    const session = normalizeAuthSession(currentUser, services, 'svc-a');
+
+    expect(canManageReleases(session)).toBe(true);
+    expect(canManageApiKeys(session)).toBe(true);
+  });
+
+  it('does not read legacy Admin header values for role helpers', () => {
+    const session = {
+      ...EMPTY_ADMIN_SESSION,
+      authenticated: true,
+      serviceId: 'svc-a',
+      headers: {
+        'X-Admin-Token': 'legacy-token',
+        'X-Actor-Id': 'legacy-admin',
+        'X-Actor-Roles': 'system_admin,service_developer',
+        'X-Service-Scope': 'svc-a',
+      },
+    } as AdminSession & { headers: Record<string, string> };
+
+    expect(getDisplayRoles(session)).toEqual([]);
+    expect(hasAnyDisplayRole(session, ['system_admin', 'service_developer'])).toBe(false);
+    expect(canEditCatalog(session)).toBe(false);
+    expect(canManageReleases(session)).toBe(false);
+    expect(canManageApiKeys(session)).toBe(false);
   });
 });

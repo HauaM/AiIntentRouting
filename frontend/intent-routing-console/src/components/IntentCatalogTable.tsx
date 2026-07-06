@@ -11,10 +11,19 @@ const statusColor: Record<string, string> = {
 
 type IntentCatalogTableProps = {
   serviceId: string;
+  canEditCatalog: boolean;
   onSelectIntent: (intent: API.Intent) => void;
+  onCreateIntent: () => void;
+  onEditIntent: (intent: API.Intent) => void;
 };
 
-export function IntentCatalogTable({ serviceId, onSelectIntent }: IntentCatalogTableProps) {
+export function IntentCatalogTable({
+  serviceId,
+  canEditCatalog,
+  onSelectIntent,
+  onCreateIntent,
+  onEditIntent,
+}: IntentCatalogTableProps) {
   const actionRef = useRef<ActionType>();
 
   const columns: ProColumns<API.Intent>[] = [
@@ -54,11 +63,16 @@ export function IntentCatalogTable({ serviceId, onSelectIntent }: IntentCatalogT
     {
       title: '',
       valueType: 'option',
-      width: 88,
+      width: 128,
       render: (_, row) => [
         <Button key="detail" type="link" size="small" onClick={() => onSelectIntent(row)}>
           상세
         </Button>,
+        canEditCatalog ? (
+          <Button key="edit" type="link" size="small" onClick={() => onEditIntent(row)}>
+            편집
+          </Button>
+        ) : null,
       ],
     },
   ];
@@ -72,7 +86,15 @@ export function IntentCatalogTable({ serviceId, onSelectIntent }: IntentCatalogT
       pagination={false}
       search={{ labelWidth: 96 }}
       options={{ density: true, fullScreen: false, reload: true, setting: true }}
-      toolBarRender={() => []}
+      toolBarRender={() =>
+        canEditCatalog
+          ? [
+              <Button key="create" type="primary" onClick={onCreateIntent}>
+                Intent 추가
+              </Button>,
+            ]
+          : []
+      }
     />
   );
 }
