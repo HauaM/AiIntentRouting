@@ -38,6 +38,12 @@ MASKED_RUNTIME_LOG_FIELD_NAMES = (
     "created_at",
 )
 
+ADMIN_USER_STATUSES = frozenset({"active", "disabled"})
+GLOBAL_ADMIN_ROLES = frozenset({"system_admin"})
+SERVICE_ADMIN_ROLES = frozenset(
+    {"service_owner", "service_developer", "service_operator", "auditor"}
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ExampleSearchResult:
@@ -45,6 +51,28 @@ class ExampleSearchResult:
     intent_id: str
     example_type: str
     similarity: float
+
+
+@dataclass(frozen=True, slots=True)
+class AdminSessionContextRecord:
+    user: models.AdminUser
+    admin_session: models.AdminSession
+    global_roles: frozenset[str]
+    service_roles: tuple[models.UserServiceRole, ...]
+
+
+def normalize_admin_email(email: str) -> str:
+    normalized = email.strip().lower()
+    if not normalized:
+        raise ValueError("admin user email must not be blank")
+    return normalized
+
+
+def _require_allowed_value(value: object, *, field_name: str, allowed: frozenset[str]) -> str:
+    if not isinstance(value, str) or value not in allowed:
+        allowed_values = ", ".join(sorted(allowed))
+        raise ValueError(f"{field_name} must be one of: {allowed_values}")
+    return value
 
 
 class IntentRoutingRepository:
@@ -67,6 +95,147 @@ class IntentRoutingRepository:
 
     def get_api_key_by_id(self, key_id: str) -> models.ApiKey | None:
         return self.session.get(models.ApiKey, key_id)
+
+    def create_admin_user(self, **values: Any) -> models.AdminUser:
+        values = dict(values)
+        email = values.get("email")
+        if not isinstance(email, str):
+            raise ValueError("admin user email must be provided")
+        values["email"] = email.strip()
+        values["email_normalized"] = normalize_admin_email(email)
+        values["status"] = _require_allowed_value(
+            values.get("status", "active"),
+            field_name="admin user status",
+            allowed=ADMIN_USER_STATUSES,
+        )
+        return self._add_and_flush(models.AdminUser(**values))
+
+    def get_admin_user(self, user_id: str) -> models.AdminUser | None:
+        return self.session.get(models.AdminUser, user_id)
+
+    def get_admin_user_by_email(self, email: str) -> models.AdminUser | None:
+        email_normalized = normalize_admin_email(email)
+        return self.session.scalar(
+            select(models.AdminUser).where(
+                models.AdminUser.email_normalized == email_normalized
+            )
+        )
+
+    def update_admin_user_login(
+        self,
+        user: models.AdminUser,
+        *,
+        last_login_at: datetime,
+    ) -> models.AdminUser:
+        user.last_login_at = last_login_at
+        user.updated_at = last_login_at
+        self.session.flush()
+        return user
+
+    def assign_admin_user_role(self, **values: Any) -> models.AdminUserRole:
+        values = dict(values)
+        values["role"] = _require_allowed_value(
+            values.get("role"),
+            field_name="admin user role",
+            allowed=GLOBAL_ADMIN_ROLES,
+        )
+        return self._add_and_flush(models.AdminUserRole(**values))
+
+    def list_admin_user_roles(self, user_id: str) -> list[models.AdminUserRole]:
+        return list(
+            self.session.scalars(
+                select(models.AdminUserRole)
+                .where(models.AdminUserRole.user_id == user_id)
+                .order_by(models.AdminUserRole.role)
+            )
+        )
+
+    def create_admin_session(self, **values: Any) -> models.AdminSession:
+        return self._add_and_flush(models.AdminSession(**values))
+
+    def get_admin_session_by_token_hash(
+        self,
+        token_hash: str,
+    ) -> models.AdminSession | None:
+        return self.session.scalar(
+            select(models.AdminSession).where(
+                models.AdminSession.token_hash == token_hash
+            )
+        )
+
+    def get_active_admin_session_context(
+        self,
+        token_hash: str,
+        *,
+        now: datetime,
+    ) -> AdminSessionContextRecord | None:
+        if not token_hash.strip():
+            return None
+        admin_session = self.session.scalar(
+            select(models.AdminSession)
+            .join(models.AdminUser)
+            .where(models.AdminSession.token_hash == token_hash)
+            .where(models.AdminSession.revoked_at.is_(None))
+            .where(models.AdminSession.expires_at > now)
+            .where(models.AdminUser.status == "active")
+        )
+        if admin_session is None:
+            return None
+
+        admin_session.last_seen_at = now
+        self.session.flush()
+        return AdminSessionContextRecord(
+            user=admin_session.user,
+            admin_session=admin_session,
+            global_roles=frozenset(
+                role.role for role in self.list_admin_user_roles(admin_session.user_id)
+            ),
+            service_roles=tuple(
+                self.list_service_roles_for_user(admin_session.user_id)
+            ),
+        )
+
+    def revoke_admin_session(
+        self,
+        admin_session: models.AdminSession,
+        *,
+        revoked_at: datetime,
+    ) -> models.AdminSession:
+        admin_session.revoked_at = revoked_at
+        self.session.flush()
+        return admin_session
+
+    def assign_user_service_role(self, **values: Any) -> models.UserServiceRole:
+        values = dict(values)
+        values["role"] = _require_allowed_value(
+            values.get("role"),
+            field_name="user service role",
+            allowed=SERVICE_ADMIN_ROLES,
+        )
+        return self._add_and_flush(models.UserServiceRole(**values))
+
+    def list_user_service_roles(
+        self,
+        user_id: str,
+        service_id: str,
+    ) -> list[models.UserServiceRole]:
+        return list(
+            self.session.scalars(
+                select(models.UserServiceRole)
+                .where(models.UserServiceRole.user_id == user_id)
+                .where(models.UserServiceRole.service_id == service_id)
+                .order_by(models.UserServiceRole.role)
+            )
+        )
+
+    def list_service_roles_for_user(self, user_id: str) -> list[models.UserServiceRole]:
+        return list(
+            self.session.scalars(
+                select(models.UserServiceRole)
+                .where(models.UserServiceRole.user_id == user_id)
+                .order_by(models.UserServiceRole.service_id, models.UserServiceRole.role)
+            )
+        )
 
     def revoke_api_key(
         self,
