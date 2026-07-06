@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -141,7 +142,7 @@ def test_admin_auth_api_bootstrap_login_me_logout_flow(
 
     app = create_app()
 
-    def override_session():
+    def override_session() -> Iterator[Session]:
         yield db_session
 
     app.dependency_overrides[get_admin_session] = override_session

@@ -1,6 +1,8 @@
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from sqlalchemy.orm import Session
 
 from intent_routing.api import admin_dependencies
 from intent_routing.security.admin_auth import (
@@ -65,7 +67,12 @@ def test_session_cookie_takes_precedence_over_trusted_headers(
         def __init__(self, session: FakeSession) -> None:
             self.session = session
 
-        def get_active_admin_session_context(self, token_hash: str, *, now):
+        def get_active_admin_session_context(
+            self,
+            token_hash: str,
+            *,
+            now: object,
+        ) -> SimpleNamespace:
             return SimpleNamespace(
                 user=SimpleNamespace(user_id="session-user"),
                 global_roles=frozenset(),
@@ -82,7 +89,7 @@ def test_session_cookie_takes_precedence_over_trusted_headers(
     fake_session = FakeSession()
 
     context = admin_dependencies.require_admin_context(
-        session=fake_session,
+        session=cast(Session, fake_session),
         admin_session_token="valid-cookie-token",
         admin_token="wrong-header-token",
         actor_id="header-user",
@@ -105,7 +112,7 @@ def test_default_admin_context_rejects_trusted_headers_without_explicit_mode(
 
     with pytest.raises(Exception) as exc:
         admin_dependencies.require_admin_context(
-            session=object(),
+            session=cast(Session, object()),
             admin_session_token=None,
             admin_token="local-admin-token",
             actor_id="header-user",

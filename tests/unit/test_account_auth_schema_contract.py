@@ -22,21 +22,24 @@ def test_account_auth_models_expose_expected_tables_and_constraints() -> None:
     admin_user_roles = models.AdminUserRole.__table__
     user_service_roles = models.UserServiceRole.__table__
 
-    assert set(admin_users.primary_key.columns.keys()) == {"user_id"}
+    assert set(cast(Any, admin_users.primary_key).columns.keys()) == {"user_id"}
     assert _has_unique_constraint(admin_users, ["email"])
     assert _has_unique_constraint(admin_users, ["email_normalized"])
     assert _has_check_constraint(admin_users, "ck_admin_users_status")
     assert admin_users.c.status.server_default is not None
 
-    assert set(admin_sessions.primary_key.columns.keys()) == {"session_id"}
+    assert set(cast(Any, admin_sessions.primary_key).columns.keys()) == {"session_id"}
     assert _has_unique_constraint(admin_sessions, ["token_hash"])
     assert _has_fk(admin_sessions, ["user_id"], "admin_users")
 
-    assert set(admin_user_roles.primary_key.columns.keys()) == {"user_id", "role"}
+    assert set(cast(Any, admin_user_roles.primary_key).columns.keys()) == {
+        "user_id",
+        "role",
+    }
     assert _has_fk(admin_user_roles, ["user_id"], "admin_users")
     assert _has_check_constraint(admin_user_roles, "ck_admin_user_roles_role")
 
-    assert set(user_service_roles.primary_key.columns.keys()) == {
+    assert set(cast(Any, user_service_roles.primary_key).columns.keys()) == {
         "user_id",
         "service_id",
         "role",
@@ -123,7 +126,7 @@ def test_normalize_admin_email_rejects_blank_values() -> None:
         normalize_admin_email("  ")
 
 
-def _has_unique_constraint(table: object, column_names: list[str]) -> bool:
+def _has_unique_constraint(table: Any, column_names: list[str]) -> bool:
     return any(
         isinstance(constraint, UniqueConstraint)
         and list(constraint.columns.keys()) == column_names
@@ -131,7 +134,7 @@ def _has_unique_constraint(table: object, column_names: list[str]) -> bool:
     )
 
 
-def _has_fk(table: object, column_names: list[str], target_table: str) -> bool:
+def _has_fk(table: Any, column_names: list[str], target_table: str) -> bool:
     return any(
         isinstance(constraint, ForeignKeyConstraint)
         and list(constraint.columns.keys()) == column_names
@@ -140,7 +143,7 @@ def _has_fk(table: object, column_names: list[str], target_table: str) -> bool:
     )
 
 
-def _has_check_constraint(table: object, name: str) -> bool:
+def _has_check_constraint(table: Any, name: str) -> bool:
     return any(
         isinstance(constraint, CheckConstraint) and constraint.name == name
         for constraint in table.constraints

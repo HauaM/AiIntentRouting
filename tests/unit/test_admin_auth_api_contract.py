@@ -1,5 +1,7 @@
+from collections.abc import Iterator
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 from starlette.responses import Response
 
@@ -52,7 +54,7 @@ def test_logout_clears_session_cookie_without_db_session() -> None:
 
     app = create_app()
 
-    def override_session():
+    def override_session() -> Iterator[FakeSession]:
         yield FakeSession()
 
     app.dependency_overrides[get_admin_session] = override_session
@@ -70,7 +72,7 @@ def test_logout_clears_session_cookie_without_db_session() -> None:
 
 
 def test_bootstrap_admin_is_blocked_after_initial_system_admin(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class FakeRepository:
         def __init__(self, _session: object) -> None:
@@ -88,7 +90,7 @@ def test_bootstrap_admin_is_blocked_after_initial_system_admin(
 
     app = create_app()
 
-    def override_session():
+    def override_session() -> Iterator[object]:
         yield object()
 
     monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "bootstrap-token")
@@ -109,7 +111,9 @@ def test_bootstrap_admin_is_blocked_after_initial_system_admin(
     assert response.json()["error"]["code"] == "INVALID_REQUEST"
 
 
-def test_session_cookie_can_be_secure_for_deployed_environments(monkeypatch) -> None:
+def test_session_cookie_can_be_secure_for_deployed_environments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("ADMIN_SESSION_COOKIE_SECURE", "true")
     response = Response()
 
@@ -125,11 +129,11 @@ def test_session_cookie_can_be_secure_for_deployed_environments(monkeypatch) -> 
 
 
 def test_me_services_rejects_trusted_headers_without_session_cookie(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app = create_app()
 
-    def override_session():
+    def override_session() -> Iterator[object]:
         yield object()
 
     monkeypatch.setenv("ADMIN_AUTH_MODE", "trusted_headers")
@@ -149,12 +153,14 @@ def test_me_services_rejects_trusted_headers_without_session_cookie(
     assert response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
 
 
-def test_me_services_system_admin_response_uses_session_context(monkeypatch) -> None:
+def test_me_services_system_admin_response_uses_session_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class FakeRepository:
         def __init__(self, _session: object) -> None:
             pass
 
-        def list_services(self):
+        def list_services(self) -> list[SimpleNamespace]:
             return [
                 SimpleNamespace(
                     service_id="svc-a",
@@ -171,7 +177,7 @@ def test_me_services_system_admin_response_uses_session_context(monkeypatch) -> 
         service_roles=(),
     )
 
-    def override_session():
+    def override_session() -> Iterator[object]:
         yield object()
 
     app.dependency_overrides[get_admin_session] = override_session

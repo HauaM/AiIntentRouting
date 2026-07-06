@@ -82,6 +82,8 @@ from intent_routing.versions import releases as release_service
 
 router = APIRouter(prefix="/admin/v1", tags=["admin"])
 
+__all__ = ("get_admin_session", "router")
+
 
 class ServiceCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
