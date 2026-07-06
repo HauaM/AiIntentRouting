@@ -32,6 +32,7 @@ jobs:
       DATABASE_URL: postgresql+psycopg://intent:intent@127.0.0.1:55432/intent_routing
       TEST_DATABASE_URL: postgresql+psycopg://intent:intent@127.0.0.1:55432/intent_routing
       ADMIN_BOOTSTRAP_TOKEN: ci-admin-token
+      ADMIN_AUTH_MODE: trusted_headers
       INTENT_ROUTING_ENVIRONMENT: dev
       RAW_TEXT_KEK_ID: ci-kek-001
       RAW_TEXT_KEK_BASE64: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=

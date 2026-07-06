@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from os import environ
@@ -14,6 +14,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
+from intent_routing.api.admin_dependencies import (
+    admin_context_from_session_record,
+    get_admin_session,
+    require_admin_context,
+    require_admin_session_context,
+)
 from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekError
 from intent_routing.db.models import (
     ApiKey,
@@ -27,9 +33,9 @@ from intent_routing.db.models import (
 )
 from intent_routing.db.repositories import (
     MASKED_RUNTIME_LOG_FIELD_NAMES,
+    AdminSessionContextRecord,
     IntentRoutingRepository,
 )
-from intent_routing.db.session import SessionLocal
 from intent_routing.domain.enums import (
     ApiKeyStatus,
     ErrorCode,
@@ -57,7 +63,6 @@ from intent_routing.ops.metrics import (
 from intent_routing.security.admin_auth import (
     AdminContext,
     raise_admin_forbidden,
-    require_admin_context,
 )
 from intent_routing.security.api_keys import (
     fingerprint_secret,
@@ -76,6 +81,8 @@ from intent_routing.testing.csv_runner import (
 from intent_routing.versions import releases as release_service
 
 router = APIRouter(prefix="/admin/v1", tags=["admin"])
+
+__all__ = ("get_admin_session", "router")
 
 
 class ServiceCreateRequest(BaseModel):
@@ -98,6 +105,14 @@ class ServiceResponse(BaseModel):
     created_by: str
     created_at: datetime
     updated_at: datetime
+
+
+class AccessibleServiceResponse(BaseModel):
+    service_id: str
+    display_name: str
+    environment: str
+    status: str
+    roles: list[str]
 
 
 class ApiKeyCreateRequest(BaseModel):
@@ -483,17 +498,6 @@ class RawQueryDecryptResponse(BaseModel):
     viewed_at: datetime
 
 
-def get_admin_session() -> Iterator[Session]:
-    session = SessionLocal()
-    try:
-        yield session
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-
-
 def _trace_id() -> str:
     return f"irt-{uuid4().hex}"
 
@@ -590,7 +594,10 @@ def _require_system_admin(context: AdminContext) -> None:
 def _require_service_catalog_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_role("service_developer") and context.can_access_service(service_id):
+    if context.has_any_service_role(
+        service_id,
+        {"service_owner", "service_developer"},
+    ):
         return
     raise_admin_forbidden("Service catalog scope is required for this action.")
 
@@ -598,8 +605,7 @@ def _require_service_catalog_access(context: AdminContext, service_id: str) -> N
 def _require_runtime_log_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    allowed_roles = {"service_operator", "auditor"}
-    if context.roles.intersection(allowed_roles) and context.can_access_service(service_id):
+    if context.has_any_service_role(service_id, {"service_operator", "auditor"}):
         return
     raise_admin_forbidden("Runtime log scope is required for this action.")
 
@@ -607,7 +613,7 @@ def _require_runtime_log_access(context: AdminContext, service_id: str) -> None:
 def _require_runtime_metrics_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_role("service_operator") and context.can_access_service(service_id):
+    if context.has_service_role(service_id, "service_operator"):
         return
     raise_admin_forbidden("Runtime metrics scope is required for this action.")
 
@@ -618,7 +624,7 @@ def _require_security_lifecycle_read_access(
 ) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_role("auditor") and context.can_access_service(service_id):
+    if context.has_service_role(service_id, "auditor"):
         return
     raise_admin_forbidden("Security lifecycle audit scope is required for this action.")
 
@@ -626,7 +632,7 @@ def _require_security_lifecycle_read_access(
 def _require_raw_query_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_role("auditor") and context.can_access_service(service_id):
+    if context.has_service_role(service_id, "auditor"):
         return
     raise_admin_forbidden("Raw query audit scope is required for this action.")
 
@@ -642,6 +648,20 @@ def _service_response(service: Service) -> ServiceResponse:
         created_by=service.created_by,
         created_at=service.created_at,
         updated_at=service.updated_at,
+    )
+
+
+def _accessible_service_response(
+    service: Service,
+    *,
+    roles: frozenset[str],
+) -> AccessibleServiceResponse:
+    return AccessibleServiceResponse(
+        service_id=service.service_id,
+        display_name=service.display_name,
+        environment=service.environment,
+        status=service.status,
+        roles=sorted(roles),
     )
 
 
@@ -957,6 +977,31 @@ def _catalog_snapshot(
             }
         )
     return {"service_id": service_id, "intents": intents}
+
+
+@router.get("/me/services", response_model=list[AccessibleServiceResponse])
+def list_accessible_services(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> list[AccessibleServiceResponse]:
+    context = admin_context_from_session_record(session_context)
+    repository = IntentRoutingRepository(session)
+    if context.has_role("system_admin"):
+        return [
+            _accessible_service_response(service, roles=frozenset({"system_admin"}))
+            for service in repository.list_services()
+        ]
+
+    return [
+        _accessible_service_response(
+            service,
+            roles=frozenset(context.service_roles.get(service.service_id, frozenset())),
+        )
+        for service in repository.list_services_for_user(context.actor_id)
+    ]
 
 
 @router.post(

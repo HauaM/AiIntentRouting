@@ -5,9 +5,11 @@ from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     LargeBinary,
     Numeric,
     Text,
@@ -56,6 +58,97 @@ class ApiKey(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     service: Mapped[Service] = relationship()
+
+
+class AdminUser(Base):
+    __tablename__ = "admin_users"
+
+    user_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    email: Mapped[str] = mapped_column(Text)
+    email_normalized: Mapped[str] = mapped_column(Text)
+    display_name: Mapped[str] = mapped_column(Text)
+    password_hash: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'active'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('active', 'disabled')",
+            name="ck_admin_users_status",
+        ),
+        UniqueConstraint("email"),
+        UniqueConstraint("email_normalized"),
+    )
+
+
+class AdminSession(Base):
+    __tablename__ = "admin_sessions"
+
+    session_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    user_id: Mapped[str] = mapped_column(Text, ForeignKey("admin_users.user_id"))
+    token_hash: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[AdminUser] = relationship()
+
+    __table_args__ = (UniqueConstraint("token_hash"),)
+
+
+class AdminUserRole(Base):
+    __tablename__ = "admin_user_roles"
+
+    user_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("admin_users.user_id"),
+        primary_key=True,
+    )
+    role: Mapped[str] = mapped_column(Text, primary_key=True)
+    assigned_by: Mapped[str] = mapped_column(Text)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[AdminUser] = relationship()
+
+    __table_args__ = (
+        CheckConstraint(
+            "role in ('system_admin')",
+            name="ck_admin_user_roles_role",
+        ),
+    )
+
+
+class UserServiceRole(Base):
+    __tablename__ = "user_service_roles"
+
+    user_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("admin_users.user_id"),
+        primary_key=True,
+    )
+    service_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("services.service_id"),
+        primary_key=True,
+    )
+    role: Mapped[str] = mapped_column(Text, primary_key=True)
+    assigned_by: Mapped[str] = mapped_column(Text)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[AdminUser] = relationship()
+    service: Mapped[Service] = relationship()
+
+    __table_args__ = (
+        CheckConstraint(
+            "role in ('service_owner', 'service_developer', 'service_operator', 'auditor')",
+            name="ck_user_service_roles_role",
+        ),
+        Index("ix_user_service_roles_user_id", "user_id"),
+        Index("ix_user_service_roles_service_id", "service_id"),
+    )
 
 
 class Intent(Base):

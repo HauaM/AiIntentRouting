@@ -1,31 +1,22 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  fetchCurrentAdminUser,
+  listAccessibleServices,
+  loginAdmin,
+  logoutAdmin,
+} from '../services/authServices';
 
 const STORAGE_KEYS = {
-  adminToken: 'admin_token',
-  actorId: 'actor_id',
-  actorRoles: 'actor_roles',
-  serviceId: 'service_id',
-  serviceScope: 'service_scope',
-  environment: 'admin_environment',
-  serviceOptions: 'admin_service_options',
+  serviceId: 'admin_selected_service_id',
 };
 
 export type AdminSession = {
-  adminToken: string;
-  actorId: string;
-  actorRoles: string[];
+  authenticated: boolean;
+  user?: API.AdminUser;
+  globalRoles: string[];
+  serviceRoles: API.AdminServiceRole[];
+  services: API.AccessibleService[];
   serviceId: string;
-  serviceScope: string;
-  environment: string;
-};
-
-export const DEFAULT_ADMIN_SESSION: AdminSession = {
-  adminToken: '',
-  actorId: 'admin-user',
-  actorRoles: ['system_admin'],
-  serviceId: 'it-helpdesk-pilot-sprint10-operation-monitoring',
-  serviceScope: 'it-helpdesk-pilot-sprint10-operation-monitoring',
-  environment: 'local',
 };
 
 export type ServiceOption = {
@@ -33,108 +24,140 @@ export type ServiceOption = {
   value: string;
 };
 
+export const EMPTY_ADMIN_SESSION: AdminSession = {
+  authenticated: false,
+  user: undefined,
+  globalRoles: [],
+  serviceRoles: [],
+  services: [],
+  serviceId: '',
+};
+
 const storage = () => {
   if (typeof localStorage === 'undefined') return undefined;
   return localStorage;
 };
 
-const readValue = (key: string, fallback: string) => {
-  const value = storage()?.getItem(key)?.trim();
-  return value || fallback;
-};
+const readSelectedServiceId = () => storage()?.getItem(STORAGE_KEYS.serviceId)?.trim() ?? '';
 
-export const normalizeRoles = (roles: string | string[]) => {
-  const values = Array.isArray(roles) ? roles : roles.split(',');
-  const normalized = values.map((role) => role.trim()).filter(Boolean);
-  return normalized.length > 0 ? normalized : DEFAULT_ADMIN_SESSION.actorRoles;
-};
-
-export const normalizeEnvironment = (environment: string) =>
-  environment.trim() || DEFAULT_ADMIN_SESSION.environment;
-
-export const isAdminSessionReady = (session: AdminSession) =>
-  Boolean(
-    session.adminToken.trim() &&
-      session.actorId.trim() &&
-      session.actorRoles.length > 0 &&
-      session.serviceId.trim() &&
-      session.serviceScope.trim(),
-  );
-
-const uniqueServiceIds = (values: string[]) =>
-  Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
-
-export function readAdminSession(): AdminSession {
-  const serviceId = readValue(STORAGE_KEYS.serviceId, DEFAULT_ADMIN_SESSION.serviceId);
-  return {
-    adminToken: readValue(STORAGE_KEYS.adminToken, DEFAULT_ADMIN_SESSION.adminToken),
-    actorId: readValue(STORAGE_KEYS.actorId, DEFAULT_ADMIN_SESSION.actorId),
-    actorRoles: normalizeRoles(readValue(STORAGE_KEYS.actorRoles, DEFAULT_ADMIN_SESSION.actorRoles.join(','))),
-    serviceId,
-    serviceScope: readValue(STORAGE_KEYS.serviceScope, serviceId),
-    environment: readValue(STORAGE_KEYS.environment, DEFAULT_ADMIN_SESSION.environment),
-  };
-}
-
-export function writeAdminSession(session: AdminSession) {
-  const next = {
-    ...session,
-    actorRoles: normalizeRoles(session.actorRoles),
-    serviceScope: session.serviceScope || session.serviceId,
-  };
+const writeSelectedServiceId = (serviceId: string) => {
   const target = storage();
   if (!target) return;
-  target.setItem(STORAGE_KEYS.adminToken, next.adminToken);
-  target.setItem(STORAGE_KEYS.actorId, next.actorId);
-  target.setItem(STORAGE_KEYS.actorRoles, next.actorRoles.join(','));
-  target.setItem(STORAGE_KEYS.serviceId, next.serviceId);
-  target.setItem(STORAGE_KEYS.serviceScope, next.serviceScope);
-  target.setItem(STORAGE_KEYS.environment, next.environment);
-  writeServiceOptions(readServiceOptions(next.serviceId).map((option) => option.value));
-}
+  if (serviceId) target.setItem(STORAGE_KEYS.serviceId, serviceId);
+  else target.removeItem(STORAGE_KEYS.serviceId);
+};
 
-export function readServiceOptions(currentServiceId = readAdminSession().serviceId): ServiceOption[] {
-  const stored = storage()?.getItem(STORAGE_KEYS.serviceOptions);
-  const ids = uniqueServiceIds([
-    currentServiceId,
-    ...(stored ? stored.split(',') : []),
-  ]);
-  return ids.map((serviceId) => ({ label: serviceId, value: serviceId }));
-}
+const clearSelectedServiceId = () => storage()?.removeItem(STORAGE_KEYS.serviceId);
 
-export function writeServiceOptions(serviceIds: string[]) {
-  storage()?.setItem(STORAGE_KEYS.serviceOptions, uniqueServiceIds(serviceIds).join(','));
-}
+export const isAdminSessionReady = (session: AdminSession) =>
+  Boolean(session.authenticated && session.user && session.serviceId.trim());
+
+export const selectInitialServiceId = (
+  services: API.AccessibleService[],
+  preferredServiceId: string,
+) => {
+  const preferred = preferredServiceId.trim();
+  if (preferred && services.some((service) => service.service_id === preferred)) {
+    return preferred;
+  }
+  return services[0]?.service_id ?? '';
+};
+
+export const normalizeAuthSession = (
+  currentUser: API.AdminCurrentUserResponse,
+  services: API.AccessibleService[],
+  preferredServiceId = readSelectedServiceId(),
+): AdminSession => ({
+  authenticated: true,
+  user: currentUser.user,
+  globalRoles: currentUser.global_roles,
+  serviceRoles: currentUser.service_roles,
+  services,
+  serviceId: selectInitialServiceId(services, preferredServiceId),
+});
+
+export const toServiceOptions = (services: API.AccessibleService[]): ServiceOption[] =>
+  services.map((service) => ({
+    label: service.display_name || service.service_id,
+    value: service.service_id,
+  }));
+
+export const getDisplayRoles = (session: AdminSession) => {
+  const serviceRoles =
+    session.services.find((service) => service.service_id === session.serviceId)?.roles ??
+    session.serviceRoles
+      .filter((role) => role.service_id === session.serviceId)
+      .map((role) => role.role);
+  return Array.from(new Set([...session.globalRoles, ...serviceRoles]));
+};
 
 export default function useAdminSessionModel() {
-  const [session, setSessionState] = useState<AdminSession>(() => readAdminSession());
-  const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>(() =>
-    readServiceOptions(session.serviceId),
-  );
+  const [session, setSession] = useState<AdminSession>(EMPTY_ADMIN_SESSION);
+  const [restoring, setRestoring] = useState(true);
+  const [error, setError] = useState<string>();
 
-  const commitSession = useCallback((next: AdminSession) => {
-    writeAdminSession(next);
-    setSessionState(next);
-    setServiceOptions(readServiceOptions(next.serviceId));
+  const restoreSession = useCallback(async () => {
+    setRestoring(true);
+    setError(undefined);
+    try {
+      const currentUser = await fetchCurrentAdminUser();
+      const services = await listAccessibleServices();
+      const next = normalizeAuthSession(currentUser, services);
+      setSession(next);
+      writeSelectedServiceId(next.serviceId);
+      return next;
+    } catch (err: any) {
+      setSession(EMPTY_ADMIN_SESSION);
+      if (err?.response?.status && err.response.status !== 401) {
+        setError(err?.message ?? 'Failed to restore admin session.');
+      }
+      return EMPTY_ADMIN_SESSION;
+    } finally {
+      setRestoring(false);
+    }
   }, []);
 
-  const setServiceId = useCallback(
-    (serviceId: string) => {
-      const nextServiceId = serviceId.trim();
-      if (!nextServiceId) return;
-      commitSession({
-        ...readAdminSession(),
-        serviceId: nextServiceId,
-        serviceScope: nextServiceId,
-      });
-    },
-    [commitSession],
-  );
+  useEffect(() => {
+    restoreSession();
+  }, [restoreSession]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    setError(undefined);
+    const currentUser = await loginAdmin({ email, password });
+    const services = await listAccessibleServices();
+    const next = normalizeAuthSession(currentUser, services);
+    setSession(next);
+    writeSelectedServiceId(next.serviceId);
+    return next;
+  }, []);
+
+  const logout = useCallback(async () => {
+    try {
+      await logoutAdmin();
+    } finally {
+      clearSelectedServiceId();
+      setSession(EMPTY_ADMIN_SESSION);
+    }
+  }, []);
+
+  const setServiceId = useCallback((serviceId: string) => {
+    const nextServiceId = serviceId.trim();
+    if (!nextServiceId) return;
+    writeSelectedServiceId(nextServiceId);
+    setSession((current) => ({ ...current, serviceId: nextServiceId }));
+  }, []);
+
+  const serviceOptions = useMemo(() => toServiceOptions(session.services), [session.services]);
 
   return {
     session,
     serviceOptions,
+    restoring,
+    error,
+    displayRoles: getDisplayRoles(session),
+    restoreSession,
+    login,
+    logout,
     setServiceId,
-    updateSession: commitSession,
   };
 }

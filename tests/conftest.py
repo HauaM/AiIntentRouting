@@ -8,6 +8,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 
+@pytest.fixture(autouse=True)
+def trusted_header_admin_auth_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_AUTH_MODE", "trusted_headers")
+
+
 @pytest.fixture
 def db_session() -> Iterator[Session]:
     database_url = environ.get("TEST_DATABASE_URL") or environ.get("DATABASE_URL")

@@ -1,7 +1,8 @@
 import type { PropsWithChildren } from 'react';
+import { useEffect } from 'react';
 import { history, useLocation, useModel } from '@umijs/max';
 import { PageContainer, ProLayout } from '@ant-design/pro-components';
-import { Alert, ConfigProvider, theme as antdTheme } from 'antd';
+import { Alert, ConfigProvider, Skeleton, theme as antdTheme } from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import {
   AuditOutlined,
@@ -63,7 +64,22 @@ type AdminShellProps = PropsWithChildren<{
 
 export function AdminShell({ title, children }: AdminShellProps) {
   const location = useLocation();
-  const { session, serviceOptions, setServiceId, updateSession } = useModel('adminSession');
+  const {
+    session,
+    serviceOptions,
+    restoring,
+    displayRoles,
+    setServiceId,
+    logout,
+  } = useModel('adminSession');
+
+  useEffect(() => {
+    if (!restoring && !session.authenticated) {
+      history.replace(
+        `/login?redirect=${encodeURIComponent(`${location.pathname}${location.search}`)}`,
+      );
+    }
+  }, [location.pathname, location.search, restoring, session.authenticated]);
 
   return (
     <ConfigProvider locale={koKR} theme={adminUiTheme}>
@@ -96,20 +112,27 @@ export function AdminShell({ title, children }: AdminShellProps) {
         )}
       >
         <PageContainer title={title} ghost={false} header={{ breadcrumb: {} }}>
-          <Alert
-            type="info"
-            showIcon
-            message="Sprint 11 Admin UI Phase 0"
-            description="Read-only console for Dashboard metrics, Intent Catalog, Runtime Logs, and Audit Logs. Phase 1 write flows remain out of this pass."
-            style={{ marginBottom: 12 }}
-          />
-          <ServiceScopeBar
-            session={session}
-            serviceOptions={serviceOptions}
-            onServiceChange={setServiceId}
-            onSessionSave={updateSession}
-          />
-          <main className="admin-page-content">{children}</main>
+          {restoring || !session.authenticated ? (
+            <Skeleton active paragraph={{ rows: 8 }} />
+          ) : (
+            <>
+              <Alert
+                type="info"
+                showIcon
+                message="Sprint 11 Admin UI Phase 0"
+                description="Read-only console for Dashboard metrics, Intent Catalog, Runtime Logs, and Audit Logs. Phase 1 write flows remain out of this pass."
+                style={{ marginBottom: 12 }}
+              />
+              <ServiceScopeBar
+                session={session}
+                roles={displayRoles}
+                serviceOptions={serviceOptions}
+                onServiceChange={setServiceId}
+                onLogout={logout}
+              />
+              <main className="admin-page-content">{children}</main>
+            </>
+          )}
         </PageContainer>
       </ProLayout>
     </ConfigProvider>
