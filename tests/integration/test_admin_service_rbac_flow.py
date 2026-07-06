@@ -99,6 +99,76 @@ def test_session_service_developer_can_manage_only_assigned_service(
         )
 
 
+def test_me_services_returns_session_accessible_services(
+    db_session: Session,
+) -> None:
+    service_a = f"svc-me-a-{uuid4().hex}"
+    service_b = f"svc-me-b-{uuid4().hex}"
+    developer_user = f"developer-me-{uuid4().hex}"
+    system_admin_user = f"system-admin-me-{uuid4().hex}"
+    now = datetime.now(UTC)
+
+    _purge_rows(
+        db_session,
+        user_ids=[developer_user, system_admin_user],
+        service_ids=[service_a, service_b],
+    )
+    try:
+        repository = IntentRoutingRepository(db_session)
+        _create_service(repository, service_a, now=now)
+        _create_service(repository, service_b, now=now)
+        developer_token = _create_user_session(
+            repository,
+            developer_user,
+            now=now,
+            service_roles=[(service_a, "service_developer")],
+        )
+        system_admin_token = _create_user_session(
+            repository,
+            system_admin_user,
+            now=now,
+            global_roles=["system_admin"],
+        )
+        db_session.commit()
+
+        client = _client(db_session)
+
+        developer_response = client.get(
+            "/admin/v1/me/services",
+            cookies={ADMIN_SESSION_COOKIE_NAME: developer_token},
+            headers={
+                "X-Service-Scope": service_b,
+                "X-Actor-Roles": "system_admin",
+            },
+        )
+        system_admin_response = client.get(
+            "/admin/v1/me/services",
+            cookies={ADMIN_SESSION_COOKIE_NAME: system_admin_token},
+        )
+
+        assert developer_response.status_code == 200
+        developer_services = developer_response.json()
+        assert [service["service_id"] for service in developer_services] == [service_a]
+        assert developer_services[0]["roles"] == ["service_developer"]
+
+        assert system_admin_response.status_code == 200
+        system_admin_services = system_admin_response.json()
+        assert [service["service_id"] for service in system_admin_services] == [
+            service_a,
+            service_b,
+        ]
+        assert [service["roles"] for service in system_admin_services] == [
+            ["system_admin"],
+            ["system_admin"],
+        ]
+    finally:
+        _purge_rows(
+            db_session,
+            user_ids=[developer_user, system_admin_user],
+            service_ids=[service_a, service_b],
+        )
+
+
 def _client(db_session: Session) -> TestClient:
     app = create_app()
 

@@ -77,6 +77,8 @@ def test_repository_exposes_account_auth_helpers() -> None:
         "assign_user_service_role",
         "list_user_service_roles",
         "list_service_roles_for_user",
+        "list_services",
+        "list_services_for_user",
     }.issubset(dir(IntentRoutingRepository))
 
 

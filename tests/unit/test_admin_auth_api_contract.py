@@ -1,8 +1,14 @@
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 from starlette.responses import Response
 
+from intent_routing.api import admin as admin_module
 from intent_routing.api import admin_auth as admin_auth_module
-from intent_routing.api.admin_dependencies import get_admin_session
+from intent_routing.api.admin_dependencies import (
+    get_admin_session,
+    require_admin_session_context,
+)
 from intent_routing.main import create_app
 from intent_routing.security.admin_sessions import (
     ADMIN_SESSION_COOKIE_MAX_AGE_SECONDS,
@@ -116,3 +122,78 @@ def test_session_cookie_can_be_secure_for_deployed_environments(monkeypatch) -> 
     assert "HttpOnly" in set_cookie
     assert "SameSite=lax" in set_cookie
     assert "Secure" in set_cookie
+
+
+def test_me_services_rejects_trusted_headers_without_session_cookie(
+    monkeypatch,
+) -> None:
+    app = create_app()
+
+    def override_session():
+        yield object()
+
+    monkeypatch.setenv("ADMIN_AUTH_MODE", "trusted_headers")
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "bootstrap-token")
+    app.dependency_overrides[get_admin_session] = override_session
+
+    response = TestClient(app).get(
+        "/admin/v1/me/services",
+        headers={
+            "X-Admin-Token": "bootstrap-token",
+            "X-Actor-Id": "header-admin",
+            "X-Actor-Roles": "system_admin",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
+
+
+def test_me_services_system_admin_response_uses_session_context(monkeypatch) -> None:
+    class FakeRepository:
+        def __init__(self, _session: object) -> None:
+            pass
+
+        def list_services(self):
+            return [
+                SimpleNamespace(
+                    service_id="svc-a",
+                    display_name="Service A",
+                    environment="test",
+                    status="active",
+                )
+            ]
+
+    app = create_app()
+    session_context = SimpleNamespace(
+        user=SimpleNamespace(user_id="session-admin"),
+        global_roles=frozenset({"system_admin"}),
+        service_roles=(),
+    )
+
+    def override_session():
+        yield object()
+
+    app.dependency_overrides[get_admin_session] = override_session
+    app.dependency_overrides[require_admin_session_context] = lambda: session_context
+    monkeypatch.setattr(admin_module, "IntentRoutingRepository", FakeRepository)
+
+    response = TestClient(app).get(
+        "/admin/v1/me/services",
+        headers={
+            "X-Actor-Id": "header-user",
+            "X-Actor-Roles": "service_developer",
+            "X-Service-Scope": "svc-b",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "service_id": "svc-a",
+            "display_name": "Service A",
+            "environment": "test",
+            "status": "active",
+            "roles": ["system_admin"],
+        }
+    ]

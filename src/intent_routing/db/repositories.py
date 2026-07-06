@@ -90,6 +90,27 @@ class IntentRoutingRepository:
     def get_service(self, service_id: str) -> models.Service | None:
         return self.session.get(models.Service, service_id)
 
+    def list_services(self) -> list[models.Service]:
+        return list(
+            self.session.scalars(
+                select(models.Service).order_by(
+                    models.Service.service_id,
+                    models.Service.display_name,
+                )
+            )
+        )
+
+    def list_services_for_user(self, user_id: str) -> list[models.Service]:
+        return list(
+            self.session.scalars(
+                select(models.Service)
+                .join(models.UserServiceRole)
+                .where(models.UserServiceRole.user_id == user_id)
+                .distinct()
+                .order_by(models.Service.service_id, models.Service.display_name)
+            )
+        )
+
     def create_api_key(self, **values: Any) -> models.ApiKey:
         return self._add_and_flush(models.ApiKey(**values))
 

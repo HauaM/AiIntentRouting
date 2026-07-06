@@ -14,7 +14,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
-from intent_routing.api.admin_dependencies import get_admin_session, require_admin_context
+from intent_routing.api.admin_dependencies import (
+    admin_context_from_session_record,
+    get_admin_session,
+    require_admin_context,
+    require_admin_session_context,
+)
 from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekError
 from intent_routing.db.models import (
     ApiKey,
@@ -28,6 +33,7 @@ from intent_routing.db.models import (
 )
 from intent_routing.db.repositories import (
     MASKED_RUNTIME_LOG_FIELD_NAMES,
+    AdminSessionContextRecord,
     IntentRoutingRepository,
 )
 from intent_routing.domain.enums import (
@@ -97,6 +103,14 @@ class ServiceResponse(BaseModel):
     created_by: str
     created_at: datetime
     updated_at: datetime
+
+
+class AccessibleServiceResponse(BaseModel):
+    service_id: str
+    display_name: str
+    environment: str
+    status: str
+    roles: list[str]
 
 
 class ApiKeyCreateRequest(BaseModel):
@@ -635,6 +649,20 @@ def _service_response(service: Service) -> ServiceResponse:
     )
 
 
+def _accessible_service_response(
+    service: Service,
+    *,
+    roles: frozenset[str],
+) -> AccessibleServiceResponse:
+    return AccessibleServiceResponse(
+        service_id=service.service_id,
+        display_name=service.display_name,
+        environment=service.environment,
+        status=service.status,
+        roles=sorted(roles),
+    )
+
+
 def _api_key_response(api_key: ApiKey) -> ApiKeyResponse:
     return ApiKeyResponse(
         key_id=api_key.key_id,
@@ -947,6 +975,31 @@ def _catalog_snapshot(
             }
         )
     return {"service_id": service_id, "intents": intents}
+
+
+@router.get("/me/services", response_model=list[AccessibleServiceResponse])
+def list_accessible_services(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> list[AccessibleServiceResponse]:
+    context = admin_context_from_session_record(session_context)
+    repository = IntentRoutingRepository(session)
+    if context.has_role("system_admin"):
+        return [
+            _accessible_service_response(service, roles=frozenset({"system_admin"}))
+            for service in repository.list_services()
+        ]
+
+    return [
+        _accessible_service_response(
+            service,
+            roles=frozenset(context.service_roles.get(service.service_id, frozenset())),
+        )
+        for service in repository.list_services_for_user(context.actor_id)
+    ]
 
 
 @router.post(
