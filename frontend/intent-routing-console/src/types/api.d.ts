@@ -1,4 +1,42 @@
 declare namespace API {
+  type AdminUser = {
+    user_id: string;
+    email: string;
+    display_name: string;
+    status: string;
+    created_at: string;
+    updated_at: string;
+    last_login_at: string | null;
+  };
+
+  type AdminServiceRole = {
+    service_id: string;
+    role: string;
+  };
+
+  type AdminCurrentUserResponse = {
+    user: AdminUser;
+    global_roles: string[];
+    service_roles: AdminServiceRole[];
+  };
+
+  type AdminLoginRequest = {
+    email: string;
+    password: string;
+  };
+
+  type AdminLogoutResponse = {
+    success: boolean;
+  };
+
+  type AccessibleService = {
+    service_id: string;
+    display_name: string;
+    environment: string;
+    status: string;
+    roles: string[];
+  };
+
   type Intent = {
     id?: string;
     service_id: string;

@@ -12,6 +12,7 @@ export default defineConfig({
   fastRefresh: true,
   routes: [
     { path: '/', redirect: '/dashboard' },
+    { path: '/login', component: './Login' },
     { path: '/dashboard', component: './Dashboard' },
     { path: '/intents', component: './Intents' },
     { path: '/runtime-logs', component: './RuntimeLogs' },
