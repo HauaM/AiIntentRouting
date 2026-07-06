@@ -7,8 +7,11 @@ import koKR from 'antd/locale/ko_KR';
 import {
   AuditOutlined,
   DashboardOutlined,
+  ExperimentOutlined,
   FileSearchOutlined,
+  KeyOutlined,
   ProfileOutlined,
+  RocketOutlined,
 } from '@ant-design/icons';
 import { ServiceScopeBar } from './ServiceScopeBar';
 
@@ -95,6 +98,9 @@ export function AdminShell({ title, children }: AdminShellProps) {
           routes: [
             { path: '/dashboard', name: 'Dashboard', icon: <DashboardOutlined /> },
             { path: '/intents', name: 'Intent Catalog', icon: <ProfileOutlined /> },
+            { path: '/releases', name: 'Releases', icon: <RocketOutlined /> },
+            { path: '/test-runs', name: 'Test Runs', icon: <ExperimentOutlined /> },
+            { path: '/api-keys', name: 'API Keys', icon: <KeyOutlined /> },
             { path: '/runtime-logs', name: 'Runtime Logs', icon: <FileSearchOutlined /> },
             { path: '/audit-logs', name: 'Audit Logs', icon: <AuditOutlined /> },
           ],
@@ -119,8 +125,8 @@ export function AdminShell({ title, children }: AdminShellProps) {
               <Alert
                 type="info"
                 showIcon
-                message="Sprint 11 Admin UI Phase 0"
-                description="Read-only console for Dashboard metrics, Intent Catalog, Runtime Logs, and Audit Logs. Phase 1 write flows remain out of this pass."
+                message="Sprint 11 Admin UI Phase 1"
+                description="Authenticated console for service-scoped catalog work, test runs, releases, API keys, runtime logs, and audit evidence. Phase 2 governed approval workflows remain informational."
                 style={{ marginBottom: 12 }}
               />
               <ServiceScopeBar
