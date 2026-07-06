@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
-from intent_routing.api.admin_dependencies import get_admin_session
+from intent_routing.api.admin_dependencies import get_admin_session, require_admin_context
 from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekError
 from intent_routing.db.models import (
     ApiKey,
@@ -57,7 +57,6 @@ from intent_routing.ops.metrics import (
 from intent_routing.security.admin_auth import (
     AdminContext,
     raise_admin_forbidden,
-    require_admin_context,
 )
 from intent_routing.security.api_keys import (
     fingerprint_secret,
@@ -579,7 +578,10 @@ def _require_system_admin(context: AdminContext) -> None:
 def _require_service_catalog_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_role("service_developer") and context.can_access_service(service_id):
+    if context.has_any_service_role(
+        service_id,
+        {"service_owner", "service_developer"},
+    ):
         return
     raise_admin_forbidden("Service catalog scope is required for this action.")
 
@@ -587,8 +589,7 @@ def _require_service_catalog_access(context: AdminContext, service_id: str) -> N
 def _require_runtime_log_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    allowed_roles = {"service_operator", "auditor"}
-    if context.roles.intersection(allowed_roles) and context.can_access_service(service_id):
+    if context.has_any_service_role(service_id, {"service_operator", "auditor"}):
         return
     raise_admin_forbidden("Runtime log scope is required for this action.")
 
@@ -596,7 +597,7 @@ def _require_runtime_log_access(context: AdminContext, service_id: str) -> None:
 def _require_runtime_metrics_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_role("service_operator") and context.can_access_service(service_id):
+    if context.has_service_role(service_id, "service_operator"):
         return
     raise_admin_forbidden("Runtime metrics scope is required for this action.")
 
@@ -607,7 +608,7 @@ def _require_security_lifecycle_read_access(
 ) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_role("auditor") and context.can_access_service(service_id):
+    if context.has_service_role(service_id, "auditor"):
         return
     raise_admin_forbidden("Security lifecycle audit scope is required for this action.")
 
@@ -615,7 +616,7 @@ def _require_security_lifecycle_read_access(
 def _require_raw_query_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_role("auditor") and context.can_access_service(service_id):
+    if context.has_service_role(service_id, "auditor"):
         return
     raise_admin_forbidden("Raw query audit scope is required for this action.")
 
