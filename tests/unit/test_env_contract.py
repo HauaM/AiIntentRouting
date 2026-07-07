@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 EXPECTED_LOCAL_ENV = {
-    "DATABASE_URL": "postgresql+psycopg://intent:intent@127.0.0.1:5432/intent_routing",
+    "DATABASE_URL": "postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing",
     "APP_ENV": "local",
     "INTENT_ROUTING_ENVIRONMENT": "dev",
     "ADMIN_AUTH_MODE": "trusted_headers",
