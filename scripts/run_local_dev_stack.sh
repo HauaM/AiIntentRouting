@@ -16,6 +16,9 @@ export APP_ENV="${APP_ENV:-local}"
 export INTENT_ROUTING_ENVIRONMENT="${INTENT_ROUTING_ENVIRONMENT:-dev}"
 export ADMIN_AUTH_MODE="${ADMIN_AUTH_MODE:-trusted_headers}"
 export ADMIN_BOOTSTRAP_TOKEN="${ADMIN_BOOTSTRAP_TOKEN:-local-admin-token}"
+export ADMIN_UI_EMAIL="${ADMIN_UI_EMAIL:-local-admin@example.com}"
+export ADMIN_UI_PASSWORD="${ADMIN_UI_PASSWORD:-local-admin-password}"
+export ADMIN_UI_DISPLAY_NAME="${ADMIN_UI_DISPLAY_NAME:-Local Admin}"
 export RAW_TEXT_KEK_ID="${RAW_TEXT_KEK_ID:-local-kek-001}"
 export RAW_TEXT_KEK_BASE64="${RAW_TEXT_KEK_BASE64:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}"
 export RAW_TEXT_LEGACY_KEKS_JSON="${RAW_TEXT_LEGACY_KEKS_JSON:-{}}"
@@ -225,6 +228,80 @@ admin_service_metrics_status() {
     "http://${HOST}:${BACKEND_PORT}/admin/v1/services/${ADMIN_UI_SERVICE_ID}/runtime-metrics?window_hours=24"
 }
 
+admin_auth_payload() {
+  local mode="$1"
+
+  ADMIN_AUTH_PAYLOAD_MODE="${mode}" uv run python - <<'PY'
+from __future__ import annotations
+
+import json
+import os
+
+mode = os.environ["ADMIN_AUTH_PAYLOAD_MODE"]
+payload = {
+    "email": os.environ["ADMIN_UI_EMAIL"],
+    "password": os.environ["ADMIN_UI_PASSWORD"],
+}
+if mode == "bootstrap":
+    payload["display_name"] = os.environ["ADMIN_UI_DISPLAY_NAME"]
+print(json.dumps(payload), end="")
+PY
+}
+
+admin_login_status() {
+  local response_path="$1"
+
+  admin_auth_payload login | curl -sS -o "${response_path}" -w '%{http_code}' \
+    -X POST "http://${HOST}:${BACKEND_PORT}/admin/v1/auth/login" \
+    -H "Content-Type: application/json" \
+    --data-binary @-
+}
+
+bootstrap_local_admin_account() {
+  local bootstrap_response_path
+  local bootstrap_status
+  local login_response_path
+  local login_status
+
+  login_response_path="$(mktemp)"
+  login_status="$(admin_login_status "${login_response_path}")"
+  rm -f "${login_response_path}"
+
+  if [[ "${login_status}" == "200" ]]; then
+    log "Admin UI login account is ready: ${ADMIN_UI_EMAIL}"
+    return
+  fi
+
+  if [[ "${login_status}" != "401" ]]; then
+    printf '[local] Unexpected Admin UI login probe status: %s\n' "${login_status}" >&2
+    exit 1
+  fi
+
+  bootstrap_response_path="$(mktemp)"
+  bootstrap_status="$(
+    admin_auth_payload bootstrap | curl -sS -o "${bootstrap_response_path}" -w '%{http_code}' \
+      -X POST "http://${HOST}:${BACKEND_PORT}/admin/v1/auth/bootstrap-admin" \
+      -H "Content-Type: application/json" \
+      -H "X-Admin-Token: ${ADMIN_BOOTSTRAP_TOKEN}" \
+      --data-binary @-
+  )"
+  rm -f "${bootstrap_response_path}"
+
+  if [[ "${bootstrap_status}" == "201" ]]; then
+    log "Admin UI login account is ready: ${ADMIN_UI_EMAIL}"
+    return
+  fi
+
+  if [[ "${bootstrap_status}" == "409" ]]; then
+    printf '[local] A system admin already exists, but ADMIN_UI_EMAIL/ADMIN_UI_PASSWORD did not authenticate.\n' >&2
+    printf '[local] Use the existing admin credentials, set ADMIN_UI_EMAIL and ADMIN_UI_PASSWORD, or reset the local database.\n' >&2
+    exit 1
+  fi
+
+  printf '[local] Unexpected Admin UI bootstrap status: %s\n' "${bootstrap_status}" >&2
+  exit 1
+}
+
 seed_local_admin_service() {
   local status_code
   local state_path="${ROOT_DIR}/var/pilot/${ADMIN_UI_SERVICE_ID}.state.secret.json"
@@ -309,6 +386,7 @@ main() {
   ensure_local_database
   run_migrations
   start_backend
+  bootstrap_local_admin_account
   seed_local_admin_service
   start_frontend
 
