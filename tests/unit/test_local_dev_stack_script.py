@@ -40,6 +40,7 @@ def test_local_dev_stack_script_contract() -> None:
     assert "require_command pnpm" not in text
     assert "stop_port_listeners \"${BACKEND_PORT}\" \"backend\"" in text
     assert "stop_port_listeners \"${FRONTEND_PORT}\" \"frontend\"" in text
+    assert "cleanup_stale_log_followers" in text
     assert "prefix_logs backend" in text
     assert "prefix_logs frontend" in text
 
@@ -65,3 +66,23 @@ def test_local_dev_stack_database_port_contract_is_consistent() -> None:
         text = path.read_text(encoding="utf-8")
 
         assert "127.0.0.1:30142" in text
+
+
+def test_local_dev_stack_uses_polling_watchers_for_frontend_dev_server() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'CHOKIDAR_USEPOLLING="${CHOKIDAR_USEPOLLING:-true}"' in text
+    assert 'WATCHPACK_POLLING="${WATCHPACK_POLLING:-true}"' in text
+    assert 'CHOKIDAR_INTERVAL="${CHOKIDAR_INTERVAL:-1000}"' in text
+
+
+def test_local_dev_stack_cleans_up_orphaned_log_followers() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    assert "cleanup_stale_log_followers()" in text
+    assert "pgrep -u \"${USER}\" -f" in text
+    assert "tail -n \\\\+1 -F ${LOG_DIR}/" in text
+    main_body = text.split("main() {", 1)[1]
+    assert main_body.index("cleanup_stale_log_followers") < main_body.index(
+        "ensure_local_database"
+    )

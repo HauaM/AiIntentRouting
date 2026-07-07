@@ -163,6 +163,24 @@ stop_port_listeners() {
   kill -9 "${remaining[@]}" 2>/dev/null || true
 }
 
+cleanup_stale_log_followers() {
+  local pids=()
+
+  if ! command -v pgrep >/dev/null 2>&1; then
+    return
+  fi
+
+  mapfile -t pids < <(
+    pgrep -u "${USER}" -f "tail -n \\+1 -F ${LOG_DIR}/(backend|frontend)\\.log" || true
+  )
+  if ((${#pids[@]} == 0)); then
+    return
+  fi
+
+  log "Stopping stale local log follower process(es): ${pids[*]}"
+  kill "${pids[@]}" 2>/dev/null || true
+}
+
 cleanup() {
   local pids=()
 
@@ -266,6 +284,9 @@ start_frontend() {
     HOST="${HOST}" \
       PORT="${FRONTEND_PORT}" \
       ADMIN_API_PROXY="http://${HOST}:${BACKEND_PORT}" \
+      CHOKIDAR_USEPOLLING="${CHOKIDAR_USEPOLLING:-true}" \
+      WATCHPACK_POLLING="${WATCHPACK_POLLING:-true}" \
+      CHOKIDAR_INTERVAL="${CHOKIDAR_INTERVAL:-1000}" \
       "${PNPM_CMD[@]}" dev
   ) >"${frontend_log}" 2>&1 &
   FRONTEND_PID="$!"
@@ -284,6 +305,7 @@ main() {
 
   stop_port_listeners "${BACKEND_PORT}" "backend"
   stop_port_listeners "${FRONTEND_PORT}" "frontend"
+  cleanup_stale_log_followers
   ensure_local_database
   run_migrations
   start_backend
