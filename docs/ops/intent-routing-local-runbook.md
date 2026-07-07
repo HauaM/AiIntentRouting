@@ -21,6 +21,7 @@ Defaults:
 - Backend: `http://127.0.0.1:30141`
 - Frontend: `http://127.0.0.1:30140`
 - PostgreSQL: `127.0.0.1:30142`
+- Admin login: `local-admin@example.com` / `local-admin-password`
 
 ## Environment
 
