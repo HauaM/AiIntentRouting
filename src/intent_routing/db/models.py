@@ -151,6 +151,75 @@ class UserServiceRole(Base):
     )
 
 
+class GovernedActionRequest(Base):
+    __tablename__ = "governed_action_requests"
+
+    request_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    service_id: Mapped[str] = mapped_column(Text, ForeignKey("services.service_id"))
+    resource_type: Mapped[str] = mapped_column(Text)
+    resource_id: Mapped[str] = mapped_column(Text)
+    action: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    requested_by: Mapped[str] = mapped_column(Text)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str] = mapped_column(Text)
+    decision_reason: Mapped[str | None] = mapped_column(Text)
+
+    service: Mapped[Service] = relationship()
+
+    __table_args__ = (
+        CheckConstraint(
+            "resource_type in "
+            "('intent', 'example', 'release', 'runtime_log', 'raw_query', 'export')",
+            name="ck_governed_action_requests_resource_type",
+        ),
+        CheckConstraint(
+            "action in "
+            "('request', 'approve', 'reject', 'activate', 'rollback', 'decrypt', "
+            "'export')",
+            name="ck_governed_action_requests_action",
+        ),
+        CheckConstraint(
+            "status in "
+            "('pending', 'approved', 'rejected', 'activated', 'rolled_back', "
+            "'token_issued', 'viewed', 'expired', 'completed')",
+            name="ck_governed_action_requests_status",
+        ),
+        Index("ix_governed_action_requests_service_id", "service_id"),
+        Index("ix_governed_action_requests_status", "status"),
+        Index("ix_governed_action_requests_resource_type", "resource_type"),
+    )
+
+
+class RawQueryViewToken(Base):
+    __tablename__ = "raw_query_view_tokens"
+
+    token_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    request_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("governed_action_requests.request_id"),
+    )
+    service_id: Mapped[str] = mapped_column(Text, ForeignKey("services.service_id"))
+    trace_id: Mapped[str] = mapped_column(Text)
+    token_hash: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    issued_by: Mapped[str] = mapped_column(Text)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    request: Mapped[GovernedActionRequest] = relationship()
+    service: Mapped[Service] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("token_hash"),
+        Index("ix_raw_query_view_tokens_service_id", "service_id"),
+        Index("ix_raw_query_view_tokens_expires_at", "expires_at"),
+    )
+
+
 class Intent(Base):
     __tablename__ = "intents"
 

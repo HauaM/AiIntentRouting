@@ -43,6 +43,25 @@ GLOBAL_ADMIN_ROLES = frozenset({"system_admin"})
 SERVICE_ADMIN_ROLES = frozenset(
     {"service_owner", "service_developer", "service_operator", "auditor"}
 )
+GOVERNED_RESOURCE_TYPES = frozenset(
+    {"intent", "example", "release", "runtime_log", "raw_query", "export"}
+)
+GOVERNED_ACTIONS = frozenset(
+    {"request", "approve", "reject", "activate", "rollback", "decrypt", "export"}
+)
+GOVERNED_REQUEST_STATUSES = frozenset(
+    {
+        "pending",
+        "approved",
+        "rejected",
+        "activated",
+        "rolled_back",
+        "token_issued",
+        "viewed",
+        "expired",
+        "completed",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +91,12 @@ def _require_allowed_value(value: object, *, field_name: str, allowed: frozenset
     if not isinstance(value, str) or value not in allowed:
         allowed_values = ", ".join(sorted(allowed))
         raise ValueError(f"{field_name} must be one of: {allowed_values}")
+    return value
+
+
+def _require_nonblank_string(value: object, *, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name} must not be blank")
     return value
 
 
@@ -324,6 +349,197 @@ class IntentRoutingRepository:
                 .order_by(models.UserServiceRole.service_id, models.UserServiceRole.role)
             )
         )
+
+    def create_governed_action_request(
+        self,
+        **values: Any,
+    ) -> models.GovernedActionRequest:
+        values = dict(values)
+        values["resource_type"] = _require_allowed_value(
+            values.get("resource_type"),
+            field_name="governed resource type",
+            allowed=GOVERNED_RESOURCE_TYPES,
+        )
+        values["action"] = _require_allowed_value(
+            values.get("action"),
+            field_name="governed action",
+            allowed=GOVERNED_ACTIONS,
+        )
+        values["status"] = _require_allowed_value(
+            values.get("status", "pending"),
+            field_name="governed request status",
+            allowed=GOVERNED_REQUEST_STATUSES,
+        )
+        values["resource_id"] = _require_nonblank_string(
+            values.get("resource_id"),
+            field_name="governed resource id",
+        )
+        values["requested_by"] = _require_nonblank_string(
+            values.get("requested_by"),
+            field_name="governed request requester",
+        )
+        values["reason"] = _require_nonblank_string(
+            values.get("reason"),
+            field_name="governed request reason",
+        )
+        values.setdefault("decided_by", None)
+        values.setdefault("decided_at", None)
+        values.setdefault("decision_reason", None)
+        return self._add_and_flush(models.GovernedActionRequest(**values))
+
+    def get_governed_action_request(
+        self,
+        request_id: str,
+    ) -> models.GovernedActionRequest | None:
+        return self.session.get(models.GovernedActionRequest, request_id)
+
+    def list_governed_action_requests(
+        self,
+        *,
+        service_id: str,
+        status: str | None = None,
+        resource_type: str | None = None,
+        limit: int = 50,
+    ) -> list[models.GovernedActionRequest]:
+        statement = select(models.GovernedActionRequest).where(
+            models.GovernedActionRequest.service_id == service_id
+        )
+        if status is not None:
+            status = _require_allowed_value(
+                status,
+                field_name="governed request status",
+                allowed=GOVERNED_REQUEST_STATUSES,
+            )
+            statement = statement.where(models.GovernedActionRequest.status == status)
+        if resource_type is not None:
+            resource_type = _require_allowed_value(
+                resource_type,
+                field_name="governed resource type",
+                allowed=GOVERNED_RESOURCE_TYPES,
+            )
+            statement = statement.where(models.GovernedActionRequest.resource_type == resource_type)
+        return list(
+            self.session.scalars(
+                statement.order_by(
+                    models.GovernedActionRequest.requested_at.desc(),
+                    models.GovernedActionRequest.request_id,
+                ).limit(limit)
+            )
+        )
+
+    def approve_governed_action_request(
+        self,
+        request: models.GovernedActionRequest,
+        *,
+        decided_by: str,
+        decided_at: datetime,
+        reason: str | None = None,
+    ) -> models.GovernedActionRequest:
+        self._require_pending_governed_request(request)
+        decided_by = _require_nonblank_string(
+            decided_by,
+            field_name="governed request decision actor",
+        )
+        if request.requested_by == decided_by:
+            raise ValueError("request author cannot approve own request")
+        request.status = "approved"
+        request.decided_by = decided_by
+        request.decided_at = decided_at
+        request.decision_reason = reason
+        self.session.flush()
+        return request
+
+    def reject_governed_action_request(
+        self,
+        request: models.GovernedActionRequest,
+        *,
+        decided_by: str,
+        decided_at: datetime,
+        reason: str,
+    ) -> models.GovernedActionRequest:
+        self._require_pending_governed_request(request)
+        decided_by = _require_nonblank_string(
+            decided_by,
+            field_name="governed request decision actor",
+        )
+        if request.requested_by == decided_by:
+            raise ValueError("request author cannot reject own request")
+        request.status = "rejected"
+        request.decided_by = decided_by
+        request.decided_at = decided_at
+        request.decision_reason = _require_nonblank_string(
+            reason,
+            field_name="governed request rejection reason",
+        )
+        self.session.flush()
+        return request
+
+    def issue_raw_query_view_token(
+        self,
+        request: models.GovernedActionRequest,
+        *,
+        token_id: str,
+        token_hash: str,
+        expires_at: datetime,
+        issued_by: str,
+        issued_at: datetime,
+    ) -> models.RawQueryViewToken:
+        if request.resource_type != "raw_query" or request.action != "decrypt":
+            raise ValueError("raw query view token requires a raw_query decrypt request")
+        if request.status != "approved":
+            raise ValueError("raw query view request must be approved before token issue")
+        token_hash = _require_nonblank_string(
+            token_hash,
+            field_name="raw query view token hash",
+        )
+        if expires_at <= issued_at:
+            raise ValueError("raw query view token expiry must be after issue time")
+        request.status = "token_issued"
+        token = models.RawQueryViewToken(
+            token_id=token_id,
+            request_id=request.request_id,
+            service_id=request.service_id,
+            trace_id=request.resource_id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            issued_by=_require_nonblank_string(
+                issued_by,
+                field_name="raw query view token issuer",
+            ),
+            issued_at=issued_at,
+            viewed_at=None,
+            expired_at=None,
+        )
+        self.session.add(token)
+        self.session.flush()
+        return token
+
+    def expire_raw_query_view_tokens(
+        self,
+        *,
+        now: datetime,
+    ) -> list[models.RawQueryViewToken]:
+        tokens = list(
+            self.session.scalars(
+                select(models.RawQueryViewToken)
+                .join(models.GovernedActionRequest)
+                .where(models.RawQueryViewToken.expires_at <= now)
+                .where(models.RawQueryViewToken.expired_at.is_(None))
+            )
+        )
+        for token in tokens:
+            token.expired_at = now
+            if token.request.status == "token_issued":
+                token.request.status = "expired"
+        self.session.flush()
+        return tokens
+
+    def _require_pending_governed_request(
+        self,
+        request: models.GovernedActionRequest,
+    ) -> None:
+        if request.status != "pending":
+            raise ValueError("governed request must be pending")
 
     def revoke_api_key(
         self,
