@@ -252,16 +252,34 @@ def test_raw_decrypt_returns_plaintext_to_auditor_or_system_admin_and_writes_aud
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
+    auditor_token = _approved_raw_query_view_token(
+        client,
+        trace_id,
+        requester_headers=_auditor_headers(SERVICE_ID, actor_id="auditor-user"),
+        approver_headers=_admin_headers(actor_id="system-approver"),
+    )
+    admin_token = _approved_raw_query_view_token(
+        client,
+        trace_id,
+        requester_headers=_admin_headers(actor_id="system-user"),
+        approver_headers=_auditor_headers(SERVICE_ID, actor_id="auditor-approver"),
+    )
 
     auditor_response = client.post(
         f"/admin/v1/services/{SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
         headers=_auditor_headers(SERVICE_ID, actor_id="auditor-user"),
-        json={"view_reason": VIEW_REASON},
+        json={
+            "view_reason": VIEW_REASON,
+            "raw_query_view_token": auditor_token,
+        },
     )
     admin_response = client.post(
         f"/admin/v1/services/{SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
         headers=_admin_headers(actor_id="system-user"),
-        json={"view_reason": "장애 분석 ticket INC-20260625-002"},
+        json={
+            "view_reason": "장애 분석 ticket INC-20260625-002",
+            "raw_query_view_token": admin_token,
+        },
     )
 
     assert auditor_response.status_code == 200
@@ -306,11 +324,20 @@ def test_raw_decrypt_returns_gone_for_redacted_raw_query_without_view_audit_log(
     )
     db_session.commit()
     client = _client(db_session, monkeypatch)
+    raw_query_view_token = _approved_raw_query_view_token(
+        client,
+        trace_id,
+        requester_headers=_auditor_headers(SERVICE_ID),
+        approver_headers=_admin_headers(actor_id="system-approver"),
+    )
 
     response = client.post(
         f"/admin/v1/services/{SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
         headers=_auditor_headers(SERVICE_ID),
-        json={"view_reason": VIEW_REASON},
+        json={
+            "view_reason": VIEW_REASON,
+            "raw_query_view_token": raw_query_view_token,
+        },
     )
 
     body = response.json()
@@ -345,11 +372,20 @@ def test_raw_decrypt_returns_gone_for_missing_raw_query_envelope_without_view_au
     )
     db_session.commit()
     client = _client(db_session, monkeypatch)
+    raw_query_view_token = _approved_raw_query_view_token(
+        client,
+        trace_id,
+        requester_headers=_auditor_headers(SERVICE_ID),
+        approver_headers=_admin_headers(actor_id="system-approver"),
+    )
 
     response = client.post(
         f"/admin/v1/services/{SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
         headers=_auditor_headers(SERVICE_ID),
-        json={"view_reason": VIEW_REASON},
+        json={
+            "view_reason": VIEW_REASON,
+            "raw_query_view_token": raw_query_view_token,
+        },
     )
 
     body = response.json()
@@ -394,11 +430,20 @@ def test_raw_decrypt_returns_gone_when_kek_material_is_missing_without_view_audi
     )
     db_session.commit()
     client = _client(db_session, monkeypatch, raise_server_exceptions=False)
+    raw_query_view_token = _approved_raw_query_view_token(
+        client,
+        trace_id,
+        requester_headers=_auditor_headers(SERVICE_ID),
+        approver_headers=_admin_headers(actor_id="system-approver"),
+    )
 
     response = client.post(
         f"/admin/v1/services/{SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
         headers=_auditor_headers(SERVICE_ID),
-        json={"view_reason": VIEW_REASON},
+        json={
+            "view_reason": VIEW_REASON,
+            "raw_query_view_token": raw_query_view_token,
+        },
     )
 
     body = response.json()
@@ -425,11 +470,20 @@ def test_raw_decrypt_returns_gone_for_tampered_raw_query_envelope_without_view_a
     runtime_log.query_raw_auth_tag = b"0" * 16
     db_session.commit()
     client = _client(db_session, monkeypatch, raise_server_exceptions=False)
+    raw_query_view_token = _approved_raw_query_view_token(
+        client,
+        trace_id,
+        requester_headers=_auditor_headers(SERVICE_ID),
+        approver_headers=_admin_headers(actor_id="system-approver"),
+    )
 
     response = client.post(
         f"/admin/v1/services/{SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
         headers=_auditor_headers(SERVICE_ID),
-        json={"view_reason": VIEW_REASON},
+        json={
+            "view_reason": VIEW_REASON,
+            "raw_query_view_token": raw_query_view_token,
+        },
     )
 
     body = response.json()
@@ -603,6 +657,37 @@ def _auditor_headers(service_id: str, *, actor_id: str = "auditor-user") -> dict
             "X-Service-Scope": service_id,
         }
     )
+
+
+def _approved_raw_query_view_token(
+    client: TestClient,
+    trace_id: str,
+    *,
+    requester_headers: dict[str, str],
+    approver_headers: dict[str, str],
+) -> str:
+    created = client.post(
+        f"/admin/v1/services/{SERVICE_ID}/runtime-logs/{trace_id}/raw-query-view-requests",
+        headers=requester_headers,
+        json={"reason": "Investigating support ticket INC-20260708-token"},
+    )
+    assert created.status_code == 201
+    request_id = created.json()["request_id"]
+
+    approved = client.post(
+        f"/admin/v1/services/{SERVICE_ID}/raw-query-view-requests/{request_id}:approve",
+        headers=approver_headers,
+        json={"reason": "Ticket reason is valid"},
+    )
+    assert approved.status_code == 200
+
+    issued = client.post(
+        f"/admin/v1/services/{SERVICE_ID}/raw-query-view-requests/{request_id}:issue-token",
+        headers=requester_headers,
+        json={},
+    )
+    assert issued.status_code == 200
+    return cast("str", issued.json()["token"])
 
 
 def _dify_request(
@@ -819,6 +904,16 @@ def _purge_runtime_rows(db_session: Session) -> None:
                 models.RuntimeLog.service_id.in_(service_ids),
                 models.RuntimeLog.app_id == APP_ID,
             )
+        )
+    )
+    db_session.execute(
+        delete(models.RawQueryViewToken).where(
+            models.RawQueryViewToken.service_id.in_(service_ids)
+        )
+    )
+    db_session.execute(
+        delete(models.GovernedActionRequest).where(
+            models.GovernedActionRequest.service_id.in_(service_ids)
         )
     )
     db_session.execute(delete(models.AuditLog).where(models.AuditLog.service_id.in_(service_ids)))

@@ -514,6 +514,37 @@ class IntentRoutingRepository:
         self.session.flush()
         return token
 
+    def get_valid_raw_query_view_token(
+        self,
+        *,
+        token_hash: str,
+        service_id: str,
+        trace_id: str,
+        now: datetime,
+    ) -> models.RawQueryViewToken | None:
+        return self.session.scalar(
+            select(models.RawQueryViewToken)
+            .join(models.GovernedActionRequest)
+            .where(models.RawQueryViewToken.token_hash == token_hash)
+            .where(models.RawQueryViewToken.service_id == service_id)
+            .where(models.RawQueryViewToken.trace_id == trace_id)
+            .where(models.RawQueryViewToken.expires_at > now)
+            .where(models.RawQueryViewToken.viewed_at.is_(None))
+            .where(models.RawQueryViewToken.expired_at.is_(None))
+            .where(models.GovernedActionRequest.status == "token_issued")
+        )
+
+    def mark_raw_query_view_token_viewed(
+        self,
+        token: models.RawQueryViewToken,
+        *,
+        viewed_at: datetime,
+    ) -> models.RawQueryViewToken:
+        token.viewed_at = viewed_at
+        token.request.status = "viewed"
+        self.session.flush()
+        return token
+
     def expire_raw_query_view_tokens(
         self,
         *,

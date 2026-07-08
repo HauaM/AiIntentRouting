@@ -71,6 +71,8 @@ def test_repository_exposes_governed_workflow_helpers() -> None:
         "approve_governed_action_request",
         "reject_governed_action_request",
         "issue_raw_query_view_token",
+        "get_valid_raw_query_view_token",
+        "mark_raw_query_view_token_viewed",
         "expire_raw_query_view_tokens",
     }.issubset(dir(IntentRoutingRepository))
 

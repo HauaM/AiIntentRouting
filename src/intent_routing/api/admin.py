@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import secrets
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -23,6 +25,7 @@ from intent_routing.api.admin_dependencies import (
 from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekError
 from intent_routing.db.models import (
     ApiKey,
+    GovernedActionRequest,
     Intent,
     IntentCatalogVersion,
     IntentExample,
@@ -537,6 +540,7 @@ class RawQueryDecryptRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     view_reason: str = Field(min_length=10)
+    raw_query_view_token: str | None = Field(default=None, min_length=1)
 
     @field_validator("view_reason")
     @classmethod
@@ -546,6 +550,16 @@ class RawQueryDecryptRequest(BaseModel):
             raise ValueError("view_reason must be at least 10 characters")
         return stripped
 
+    @field_validator("raw_query_view_token")
+    @classmethod
+    def raw_query_view_token_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("raw_query_view_token must not be blank")
+        return stripped
+
 
 class RawQueryDecryptResponse(BaseModel):
     trace_id: str
@@ -553,6 +567,74 @@ class RawQueryDecryptResponse(BaseModel):
     query_raw: str
     viewed_by: str
     viewed_at: datetime
+
+
+class RawQueryViewRequestCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=10)
+    ticket_ref: str | None = Field(default=None, min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def reason_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if len(stripped) < 10:
+            raise ValueError("reason must be at least 10 characters")
+        return stripped
+
+    @field_validator("ticket_ref")
+    @classmethod
+    def ticket_ref_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("ticket_ref must not be blank")
+        return stripped
+
+
+class RawQueryViewRequestDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(default=None, min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def decision_reason_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("reason must not be blank")
+        return stripped
+
+
+class RawQueryViewTokenIssueRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ttl_seconds: int = Field(default=300, ge=1, le=900)
+
+
+class RawQueryViewRequestResponse(BaseModel):
+    request_id: str
+    service_id: str
+    trace_id: str
+    resource_type: Literal["raw_query"]
+    action: Literal["decrypt"]
+    status: str
+    requested_by: str
+    requested_at: datetime
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+    reason: str
+    decision_reason: str | None = None
+
+
+class RawQueryTokenResponse(BaseModel):
+    request_id: str
+    token: str
+    expires_at: datetime
 
 
 def _trace_id() -> str:
@@ -686,12 +768,82 @@ def _require_security_lifecycle_read_access(
     raise_admin_forbidden("Security lifecycle audit scope is required for this action.")
 
 
-def _require_raw_query_access(context: AdminContext, service_id: str) -> None:
+def _require_raw_query_request_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_service_role(service_id, "auditor"):
+    if context.has_any_service_role(
+        service_id,
+        {"service_operator", "auditor", "service_owner"},
+    ):
         return
-    raise_admin_forbidden("Raw query audit scope is required for this action.")
+    raise_admin_forbidden("Raw query request scope is required for this action.")
+
+
+def _require_raw_query_decision_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(service_id, {"auditor", "service_owner"}):
+        return
+    raise_admin_forbidden("Raw query approval scope is required for this action.")
+
+
+def _require_raw_query_token_requester(
+    context: AdminContext,
+    request: GovernedActionRequest,
+) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.actor_id == request.requested_by and context.can_access_service(
+        request.service_id
+    ):
+        return
+    raise_admin_forbidden("Raw query token requester scope is required for this action.")
+
+
+def _create_raw_query_view_token() -> str:
+    return f"rqv_{secrets.token_urlsafe(32)}"
+
+
+def _hash_raw_query_view_token(token: str) -> str:
+    if not token.strip():
+        raise ValueError("raw query view token must not be blank")
+    return f"sha256:{hashlib.sha256(token.encode('utf-8')).hexdigest()}"
+
+
+def _raw_query_view_request_response(
+    request: GovernedActionRequest,
+) -> RawQueryViewRequestResponse:
+    return RawQueryViewRequestResponse(
+        request_id=request.request_id,
+        service_id=request.service_id,
+        trace_id=request.resource_id,
+        resource_type="raw_query",
+        action="decrypt",
+        status=request.status,
+        requested_by=request.requested_by,
+        requested_at=request.requested_at,
+        decided_by=request.decided_by,
+        decided_at=request.decided_at,
+        reason=request.reason,
+        decision_reason=request.decision_reason,
+    )
+
+
+def _raw_query_view_request_or_404(
+    repository: IntentRoutingRepository,
+    *,
+    service_id: str,
+    request_id: str,
+) -> GovernedActionRequest:
+    request = repository.get_governed_action_request(request_id)
+    if (
+        request is None
+        or request.service_id != service_id
+        or request.resource_type != "raw_query"
+        or request.action != "decrypt"
+    ):
+        _raise_not_found("Raw query view request does not exist.")
+    return request
 
 
 def _service_response(service: Service) -> ServiceResponse:
@@ -1354,6 +1506,220 @@ def get_raw_text_key_summary(
 
 
 @router.post(
+    "/services/{service_id}/runtime-logs/{trace_id}/raw-query-view-requests",
+    response_model=RawQueryViewRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_raw_query_view_request(
+    service_id: str,
+    trace_id: str,
+    request: RawQueryViewRequestCreateRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> RawQueryViewRequestResponse:
+    _require_raw_query_request_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    runtime_log = repository.get_masked_runtime_log(service_id, trace_id)
+    if runtime_log is None:
+        _raise_not_found("Runtime log does not exist.")
+
+    view_request = repository.create_governed_action_request(
+        request_id=f"gar_{uuid4().hex}",
+        service_id=service_id,
+        resource_type="raw_query",
+        resource_id=trace_id,
+        action="decrypt",
+        requested_by=context.actor_id,
+        requested_at=now,
+        reason=request.reason,
+    )
+    response = _raw_query_view_request_response(view_request)
+    repository.insert_audit_log(
+        event_type="raw_query.requested",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=trace_id,
+        target_type="raw_query_view_request",
+        target_id=view_request.request_id,
+        view_reason=request.reason,
+        source_ip=source_ip_from_request(http_request),
+        before_state=None,
+        after_state=response.model_dump(mode="json"),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/raw-query-view-requests/{request_id}:approve",
+    response_model=RawQueryViewRequestResponse,
+)
+def approve_raw_query_view_request(
+    service_id: str,
+    request_id: str,
+    request: RawQueryViewRequestDecisionRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> RawQueryViewRequestResponse:
+    _require_raw_query_decision_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    view_request = _raw_query_view_request_or_404(
+        repository,
+        service_id=service_id,
+        request_id=request_id,
+    )
+    before_state = _raw_query_view_request_response(view_request).model_dump(mode="json")
+    try:
+        repository.approve_governed_action_request(
+            view_request,
+            decided_by=context.actor_id,
+            decided_at=now,
+            reason=request.reason,
+        )
+    except ValueError as exc:
+        if "request author" in str(exc):
+            raise_admin_forbidden(str(exc))
+        _raise_conflict(str(exc))
+    response = _raw_query_view_request_response(view_request)
+    repository.insert_audit_log(
+        event_type="raw_query.approved",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=view_request.resource_id,
+        target_type="raw_query_view_request",
+        target_id=view_request.request_id,
+        view_reason=request.reason,
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state=response.model_dump(mode="json"),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/raw-query-view-requests/{request_id}:reject",
+    response_model=RawQueryViewRequestResponse,
+)
+def reject_raw_query_view_request(
+    service_id: str,
+    request_id: str,
+    request: RawQueryViewRequestDecisionRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> RawQueryViewRequestResponse:
+    if request.reason is None:
+        _raise_validation_failed()
+    _require_raw_query_decision_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    view_request = _raw_query_view_request_or_404(
+        repository,
+        service_id=service_id,
+        request_id=request_id,
+    )
+    before_state = _raw_query_view_request_response(view_request).model_dump(mode="json")
+    try:
+        repository.reject_governed_action_request(
+            view_request,
+            decided_by=context.actor_id,
+            decided_at=now,
+            reason=request.reason,
+        )
+    except ValueError as exc:
+        if "request author" in str(exc):
+            raise_admin_forbidden(str(exc))
+        _raise_conflict(str(exc))
+    response = _raw_query_view_request_response(view_request)
+    repository.insert_audit_log(
+        event_type="raw_query.rejected",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=view_request.resource_id,
+        target_type="raw_query_view_request",
+        target_id=view_request.request_id,
+        view_reason=request.reason,
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state=response.model_dump(mode="json"),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/raw-query-view-requests/{request_id}:issue-token",
+    response_model=RawQueryTokenResponse,
+)
+def issue_raw_query_view_token(
+    service_id: str,
+    request_id: str,
+    request: RawQueryViewTokenIssueRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> RawQueryTokenResponse:
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    view_request = _raw_query_view_request_or_404(
+        repository,
+        service_id=service_id,
+        request_id=request_id,
+    )
+    _require_raw_query_token_requester(context, view_request)
+    raw_token = _create_raw_query_view_token()
+    expires_at = now + timedelta(seconds=request.ttl_seconds)
+    before_state = _raw_query_view_request_response(view_request).model_dump(mode="json")
+    try:
+        repository.issue_raw_query_view_token(
+            view_request,
+            token_id=f"rqt_{uuid4().hex}",
+            token_hash=_hash_raw_query_view_token(raw_token),
+            expires_at=expires_at,
+            issued_by=context.actor_id,
+            issued_at=now,
+        )
+    except ValueError as exc:
+        _raise_conflict(str(exc))
+    response = RawQueryTokenResponse(
+        request_id=view_request.request_id,
+        token=raw_token,
+        expires_at=expires_at,
+    )
+    repository.insert_audit_log(
+        event_type="raw_query.token_issued",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=view_request.resource_id,
+        target_type="raw_query_view_request",
+        target_id=view_request.request_id,
+        view_reason=None,
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state={
+            "request_id": view_request.request_id,
+            "service_id": service_id,
+            "trace_id": view_request.resource_id,
+            "status": view_request.status,
+            "expires_at": expires_at.isoformat(),
+            "token_returned_once": True,
+        },
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
     "/services/{service_id}/runtime-logs/{trace_id}:decrypt-raw-query",
     response_model=RawQueryDecryptResponse,
 )
@@ -1365,10 +1731,21 @@ def decrypt_raw_runtime_query(
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> RawQueryDecryptResponse:
-    _require_raw_query_access(context, service_id)
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
+    if request.raw_query_view_token is None:
+        raise_admin_forbidden("Approved raw query view token is required.")
+    raw_query_view_token = repository.get_valid_raw_query_view_token(
+        token_hash=_hash_raw_query_view_token(request.raw_query_view_token),
+        service_id=service_id,
+        trace_id=trace_id,
+        now=now,
+    )
+    if raw_query_view_token is None:
+        raise_admin_forbidden("Approved raw query view token is required.")
+    _require_raw_query_token_requester(context, raw_query_view_token.request)
+
     runtime_log = repository.get_runtime_log_for_decrypt(service_id, trace_id)
     if runtime_log is None:
         _raise_not_found("Runtime log does not exist.")
@@ -1386,6 +1763,7 @@ def decrypt_raw_runtime_query(
     if query_raw is None:
         _raise_raw_query_unavailable()
 
+    repository.mark_raw_query_view_token_viewed(raw_query_view_token, viewed_at=now)
     repository.insert_audit_log(
         event_type="raw_query.viewed",
         actor_id=context.actor_id,
