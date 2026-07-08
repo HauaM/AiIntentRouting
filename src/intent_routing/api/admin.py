@@ -1318,9 +1318,22 @@ def _runtime_log_export_trace_id(filters: Mapping[str, object]) -> str | None:
     trace_id = filters.get("trace_id")
     if trace_id is None:
         return None
-    if not isinstance(trace_id, str) or not trace_id.strip():
+    if not isinstance(trace_id, str) or not _safe_export_trace_id(trace_id):
         _raise_bad_request("Unsupported export filter.")
     return trace_id
+
+
+def _safe_export_trace_id(trace_id: str) -> bool:
+    allowed_punctuation = {"-", "_", ".", ":"}
+    return (
+        trace_id == trace_id.strip()
+        and 0 < len(trace_id) <= 200
+        and all(
+            character.isascii()
+            and (character.isalnum() or character in allowed_punctuation)
+            for character in trace_id
+        )
+    )
 
 
 def _serialize_export_rows(
@@ -1801,11 +1814,7 @@ def create_export(
         event_type="export.requested",
         actor_id=context.actor_id,
         service_id=service_id,
-        trace_id=(
-            request.filters.get("trace_id")
-            if isinstance(request.filters.get("trace_id"), str)
-            else None
-        ),
+        trace_id=None,
         target_type="export",
         target_id=export_id,
         view_reason=request.reason,
@@ -1840,11 +1849,7 @@ def create_export(
             event_type="export.rejected",
             actor_id=context.actor_id,
             service_id=service_id,
-            trace_id=(
-                request.filters.get("trace_id")
-                if isinstance(request.filters.get("trace_id"), str)
-                else None
-            ),
+            trace_id=None,
             target_type="export",
             target_id=export_id,
             view_reason=request.reason,
@@ -1882,7 +1887,7 @@ def create_export(
         event_type="export.completed",
         actor_id=context.actor_id,
         service_id=service_id,
-        trace_id=trace_id,
+        trace_id=None,
         target_type="export",
         target_id=export_id,
         view_reason=request.reason,
