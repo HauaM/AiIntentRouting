@@ -1096,7 +1096,7 @@ def test_sprint_zero_vertical_slice(
         )
         assert audit_log is not None
         assert audit_log.service_id == SPRINT_ZERO_SERVICE_ID
-        assert audit_log.view_reason == view_reason
+        assert audit_log.view_reason == "governed workflow reason supplied"
     finally:
         db_session.rollback()
         _purge_service_rows(db_session, SPRINT_ZERO_SERVICE_ID)

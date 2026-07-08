@@ -147,6 +147,50 @@ def test_raw_query_view_token_cannot_decrypt_twice(
     assert len(viewed_audit_logs) == 1
 
 
+def test_raw_query_viewed_audit_metadata_redacts_decrypt_reason_text(
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    trace_id = _create_runtime_trace(db_session, monkeypatch)
+    client = _client(db_session, monkeypatch)
+    raw_query_view_token = _approved_raw_query_view_token(client, trace_id)
+    malicious_view_reason = (
+        "Investigating RAW_QUERY ciphertext key_live_secret decrypt reason"
+    )
+
+    response = client.post(
+        f"/admin/v1/services/{SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
+        headers=_operator_headers(SERVICE_ID),
+        json={
+            "view_reason": malicious_view_reason,
+            "raw_query_view_token": raw_query_view_token,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["query_raw"] == RAW_QUERY
+    viewed_audit_log = db_session.scalar(
+        select(models.AuditLog)
+        .where(models.AuditLog.event_type == "raw_query.viewed")
+        .where(models.AuditLog.actor_id == "operator-user")
+        .where(models.AuditLog.trace_id == trace_id)
+    )
+    assert viewed_audit_log is not None
+    serialized_audit = json.dumps(
+        {
+            "view_reason": viewed_audit_log.view_reason,
+            "before_state": viewed_audit_log.before_state,
+            "after_state": viewed_audit_log.after_state,
+        },
+        ensure_ascii=False,
+        default=str,
+    )
+    assert viewed_audit_log.view_reason == "governed workflow reason supplied"
+    assert "RAW_QUERY" not in serialized_audit
+    assert "ciphertext" not in serialized_audit
+    assert "key_live_secret" not in serialized_audit
+
+
 def test_repository_consumes_raw_query_view_token_once(
     db_session: Session,
     monkeypatch,

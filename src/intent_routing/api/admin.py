@@ -2238,7 +2238,7 @@ def decrypt_raw_runtime_query(
         trace_id=trace_id,
         target_type="runtime_log",
         target_id=trace_id,
-        view_reason=request.view_reason,
+        view_reason=_safe_phase2_audit_reason(request.view_reason),
         source_ip=source_ip_from_request(http_request),
         before_state=None,
         after_state=raw_query_view_after_state(runtime_log),

@@ -35,6 +35,7 @@ SERVICE_ID = "svc-trace-audit"
 OTHER_SERVICE_ID = "svc-trace-audit-other"
 RAW_QUERY = "api timeout gateway incident latency 전화 010-1234-5678"
 VIEW_REASON = "장애 분석 ticket INC-20260625-001"
+SAFE_PHASE2_AUDIT_REASON = "governed workflow reason supplied"
 
 
 def test_runtime_call_stores_masked_and_encrypted_raw_query(
@@ -298,7 +299,7 @@ def test_raw_decrypt_returns_plaintext_to_auditor_or_system_admin_and_writes_aud
     )
     assert audit_log is not None
     assert audit_log.service_id == SERVICE_ID
-    assert audit_log.view_reason == VIEW_REASON
+    assert audit_log.view_reason == SAFE_PHASE2_AUDIT_REASON
     assert audit_log.source_ip == "testclient"
     assert audit_log.target_type == "runtime_log"
     assert audit_log.target_id == trace_id
