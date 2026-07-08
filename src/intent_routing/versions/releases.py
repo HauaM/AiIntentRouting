@@ -23,6 +23,18 @@ class ReleaseDependencies:
     test_run: models.TestRun
 
 
+@dataclass(frozen=True, slots=True)
+class ReleaseDiff:
+    service_id: str
+    release_version: str
+    compare_to: str | None
+    policy_version_diff: dict[str, object]
+    catalog_version_diff: dict[str, object]
+    model_version_diff: dict[str, object]
+    test_run_diff: dict[str, object]
+    rollback_target: str | None
+
+
 def release_version_id(
     repository: IntentRoutingRepository,
     *,
@@ -155,6 +167,58 @@ def create_release(
         released_by=released_by,
         released_at=now,
         rollback_target=rollback_target,
+    )
+
+
+def build_release_diff(
+    repository: IntentRoutingRepository,
+    *,
+    service_id: str,
+    release_version: str,
+    compare_to: str | None = None,
+) -> ReleaseDiff:
+    candidate = repository.get_release(service_id, release_version)
+    if candidate is None:
+        raise ReleaseDependencyNotFoundError("Release does not exist.")
+
+    baseline = (
+        repository.get_release(service_id, compare_to)
+        if compare_to is not None
+        else repository.get_active_release(service_id, candidate.environment)
+    )
+    if baseline is None and compare_to is not None:
+        raise ReleaseDependencyNotFoundError("Compare release does not exist.")
+
+    return ReleaseDiff(
+        service_id=service_id,
+        release_version=candidate.release_version,
+        compare_to=baseline.release_version if baseline is not None else None,
+        policy_version_diff={
+            "from": baseline.policy_version if baseline is not None else None,
+            "to": candidate.policy_version,
+            "changed": baseline is None
+            or baseline.policy_version != candidate.policy_version,
+        },
+        catalog_version_diff={
+            "from": baseline.intent_catalog_version if baseline is not None else None,
+            "to": candidate.intent_catalog_version,
+            "changed": baseline is None
+            or baseline.intent_catalog_version != candidate.intent_catalog_version,
+        },
+        model_version_diff={
+            "from": baseline.model_version if baseline is not None else None,
+            "to": candidate.model_version,
+            "changed": baseline is None
+            or baseline.model_version != candidate.model_version,
+        },
+        test_run_diff={
+            "from": baseline.test_run_id if baseline is not None else None,
+            "to": candidate.test_run_id,
+            "pass_rate": float(candidate.pass_rate),
+            "risk_pass_rate": float(candidate.risk_pass_rate),
+            "gate_passed": True,
+        },
+        rollback_target=candidate.rollback_target,
     )
 
 

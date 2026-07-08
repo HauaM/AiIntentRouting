@@ -5,6 +5,7 @@ This document records mandatory follow-up work for the long-term authorization d
 Related ADR:
 
 - `docs/adr/2026-07-06-account-auth-service-rbac-to-fine-grained-authorization.md`
+- `docs/adr/2026-07-06-phase2-governed-workflow-contracts.md`
 
 ## Destination
 

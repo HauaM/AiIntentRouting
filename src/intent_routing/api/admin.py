@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import csv
+import hashlib
+import json
+import secrets
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from io import StringIO
 from os import environ
 from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID, uuid4
@@ -23,6 +28,7 @@ from intent_routing.api.admin_dependencies import (
 from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekError
 from intent_routing.db.models import (
     ApiKey,
+    GovernedActionRequest,
     Intent,
     IntentCatalogVersion,
     IntentExample,
@@ -412,6 +418,76 @@ class ReleaseResponse(BaseModel):
     rollback_target: str | None
 
 
+class ReleaseDiffResponse(BaseModel):
+    service_id: str
+    release_version: str
+    compare_to: str | None
+    policy_version_diff: dict[str, object]
+    catalog_version_diff: dict[str, object]
+    model_version_diff: dict[str, object]
+    test_run_diff: dict[str, object]
+    rollback_target: str | None
+
+
+class PublishRequestCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_type: Literal["intent", "example", "release"]
+    resource_id: str = Field(min_length=1)
+    action: Literal["request", "activate", "rollback"]
+    target_version: str | None = Field(default=None, min_length=1)
+    reason: str = Field(min_length=10)
+
+    @field_validator("resource_id", "reason")
+    @classmethod
+    def publish_request_text_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("publish request text must not be blank")
+        return stripped
+
+    @field_validator("target_version")
+    @classmethod
+    def target_version_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("target_version must not be blank")
+        return stripped
+
+
+class PublishRequestDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(default=None, min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def decision_reason_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("reason must not be blank")
+        return stripped
+
+
+class PublishRequestResponse(BaseModel):
+    request_id: str
+    service_id: str
+    resource_type: str
+    resource_id: str
+    action: str
+    status: str
+    requested_by: str
+    requested_at: datetime
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+    reason: str
+    decision_reason: str | None = None
+
+
 class ReleaseCandidateResponse(BaseModel):
     test_run_id: str
     service_id: str
@@ -429,6 +505,35 @@ class ReleaseCandidateResponse(BaseModel):
     already_released: bool
     existing_release_version: str | None
     created_at: datetime
+
+
+class ExportCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_type: Literal["intent", "example", "release", "runtime_log", "export"]
+    format: Literal["csv", "jsonl"]
+    filters: dict[str, object] = Field(default_factory=dict)
+    reason: str = Field(min_length=10)
+
+    @field_validator("reason")
+    @classmethod
+    def reason_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if len(stripped) < 10:
+            raise ValueError("reason must be at least 10 characters")
+        return stripped
+
+
+class ExportResponse(BaseModel):
+    export_id: str
+    service_id: str
+    resource_type: str
+    status: Literal["completed", "rejected"]
+    format: str
+    content: str | None = None
+    rejection_reason: str | None = None
+    requested_by: str
+    requested_at: datetime
 
 
 class IntentRouteCandidateResponse(BaseModel):
@@ -537,6 +642,7 @@ class RawQueryDecryptRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     view_reason: str = Field(min_length=10)
+    raw_query_view_token: str | None = Field(default=None, min_length=1)
 
     @field_validator("view_reason")
     @classmethod
@@ -546,6 +652,16 @@ class RawQueryDecryptRequest(BaseModel):
             raise ValueError("view_reason must be at least 10 characters")
         return stripped
 
+    @field_validator("raw_query_view_token")
+    @classmethod
+    def raw_query_view_token_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("raw_query_view_token must not be blank")
+        return stripped
+
 
 class RawQueryDecryptResponse(BaseModel):
     trace_id: str
@@ -553,6 +669,74 @@ class RawQueryDecryptResponse(BaseModel):
     query_raw: str
     viewed_by: str
     viewed_at: datetime
+
+
+class RawQueryViewRequestCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=10)
+    ticket_ref: str | None = Field(default=None, min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def reason_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if len(stripped) < 10:
+            raise ValueError("reason must be at least 10 characters")
+        return stripped
+
+    @field_validator("ticket_ref")
+    @classmethod
+    def ticket_ref_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("ticket_ref must not be blank")
+        return stripped
+
+
+class RawQueryViewRequestDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(default=None, min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def decision_reason_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("reason must not be blank")
+        return stripped
+
+
+class RawQueryViewTokenIssueRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ttl_seconds: int = Field(default=300, ge=1, le=900)
+
+
+class RawQueryViewRequestResponse(BaseModel):
+    request_id: str
+    service_id: str
+    trace_id: str
+    resource_type: Literal["raw_query"]
+    action: Literal["decrypt"]
+    status: str
+    requested_by: str
+    requested_at: datetime
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+    reason: str
+    decision_reason: str | None = None
+
+
+class RawQueryTokenResponse(BaseModel):
+    request_id: str
+    token: str
+    expires_at: datetime
 
 
 def _trace_id() -> str:
@@ -659,6 +843,47 @@ def _require_service_catalog_access(context: AdminContext, service_id: str) -> N
     raise_admin_forbidden("Service catalog scope is required for this action.")
 
 
+def _require_release_review_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(
+        service_id,
+        {"service_developer", "service_owner", "auditor"},
+    ):
+        return
+    raise_admin_forbidden("Release review scope is required for this action.")
+
+
+def _require_publish_request_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(
+        service_id,
+        {"service_developer", "service_owner"},
+    ):
+        return
+    raise_admin_forbidden("Publish request scope is required for this action.")
+
+
+def _require_publish_decision_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_service_role(service_id, "service_owner"):
+        return
+    raise_admin_forbidden("Publish approval scope is required for this action.")
+
+
+def _require_publish_activation_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(
+        service_id,
+        {"service_developer", "service_owner"},
+    ):
+        return
+    raise_admin_forbidden("Publish activation scope is required for this action.")
+
+
 def _require_runtime_log_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
@@ -686,12 +911,136 @@ def _require_security_lifecycle_read_access(
     raise_admin_forbidden("Security lifecycle audit scope is required for this action.")
 
 
-def _require_raw_query_access(context: AdminContext, service_id: str) -> None:
+def _require_raw_query_request_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_service_role(service_id, "auditor"):
+    if context.has_any_service_role(
+        service_id,
+        {"service_operator", "auditor", "service_owner"},
+    ):
         return
-    raise_admin_forbidden("Raw query audit scope is required for this action.")
+    raise_admin_forbidden("Raw query request scope is required for this action.")
+
+
+def _require_raw_query_decision_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(service_id, {"auditor", "service_owner"}):
+        return
+    raise_admin_forbidden("Raw query approval scope is required for this action.")
+
+
+def _require_export_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(service_id, {"auditor", "service_owner"}):
+        return
+    raise_admin_forbidden("Export scope is required for this action.")
+
+
+def _require_raw_query_token_requester(
+    context: AdminContext,
+    request: GovernedActionRequest,
+) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.actor_id == request.requested_by and context.can_access_service(
+        request.service_id
+    ):
+        return
+    raise_admin_forbidden("Raw query token requester scope is required for this action.")
+
+
+def _create_raw_query_view_token() -> str:
+    return f"rqv_{secrets.token_urlsafe(32)}"
+
+
+def _hash_raw_query_view_token(token: str) -> str:
+    if not token.strip():
+        raise ValueError("raw query view token must not be blank")
+    return f"sha256:{hashlib.sha256(token.encode('utf-8')).hexdigest()}"
+
+
+_PHASE2_SAFE_AUDIT_REASON = "governed workflow reason supplied"
+
+
+def _safe_phase2_audit_reason(reason: str | None) -> str | None:
+    if reason is None:
+        return None
+    return _PHASE2_SAFE_AUDIT_REASON
+
+
+def _safe_phase2_audit_state(
+    state: BaseModel | Mapping[str, Any],
+) -> dict[str, Any]:
+    values = (
+        state.model_dump(mode="json")
+        if isinstance(state, BaseModel)
+        else dict(state)
+    )
+    for field_name in ("reason", "decision_reason"):
+        if field_name in values:
+            value = values.pop(field_name)
+            values[f"{field_name}_present"] = (
+                isinstance(value, str) and bool(value.strip())
+            )
+    return values
+
+
+def _raw_query_token_audit_state(
+    token: Any,
+    *,
+    include_terminal_timestamps: bool = True,
+    status_override: str | None = None,
+) -> dict[str, Any]:
+    state = {
+        "request_id": token.request_id,
+        "service_id": token.service_id,
+        "trace_id": token.trace_id,
+        "status": status_override or token.request.status,
+        "expires_at": token.expires_at.isoformat(),
+    }
+    if include_terminal_timestamps and token.expired_at is not None:
+        state["expired_at"] = token.expired_at.isoformat()
+    if include_terminal_timestamps and token.viewed_at is not None:
+        state["viewed_at"] = token.viewed_at.isoformat()
+    return state
+
+
+def _raw_query_view_request_response(
+    request: GovernedActionRequest,
+) -> RawQueryViewRequestResponse:
+    return RawQueryViewRequestResponse(
+        request_id=request.request_id,
+        service_id=request.service_id,
+        trace_id=request.resource_id,
+        resource_type="raw_query",
+        action="decrypt",
+        status=request.status,
+        requested_by=request.requested_by,
+        requested_at=request.requested_at,
+        decided_by=request.decided_by,
+        decided_at=request.decided_at,
+        reason=request.reason,
+        decision_reason=request.decision_reason,
+    )
+
+
+def _raw_query_view_request_or_404(
+    repository: IntentRoutingRepository,
+    *,
+    service_id: str,
+    request_id: str,
+) -> GovernedActionRequest:
+    request = repository.get_governed_action_request(request_id)
+    if (
+        request is None
+        or request.service_id != service_id
+        or request.resource_type != "raw_query"
+        or request.action != "decrypt"
+    ):
+        _raise_not_found("Raw query view request does not exist.")
+    return request
 
 
 def _service_response(service: Service) -> ServiceResponse:
@@ -915,6 +1264,54 @@ def _release_response(release: Release) -> ReleaseResponse:
     )
 
 
+def _release_diff_response(diff: release_service.ReleaseDiff) -> ReleaseDiffResponse:
+    return ReleaseDiffResponse(
+        service_id=diff.service_id,
+        release_version=diff.release_version,
+        compare_to=diff.compare_to,
+        policy_version_diff=diff.policy_version_diff,
+        catalog_version_diff=diff.catalog_version_diff,
+        model_version_diff=diff.model_version_diff,
+        test_run_diff=diff.test_run_diff,
+        rollback_target=diff.rollback_target,
+    )
+
+
+def _publish_request_response(
+    request: GovernedActionRequest,
+) -> PublishRequestResponse:
+    return PublishRequestResponse(
+        request_id=request.request_id,
+        service_id=request.service_id,
+        resource_type=request.resource_type,
+        resource_id=request.resource_id,
+        action=request.action,
+        status=request.status,
+        requested_by=request.requested_by,
+        requested_at=request.requested_at,
+        decided_by=request.decided_by,
+        decided_at=request.decided_at,
+        reason=request.reason,
+        decision_reason=request.decision_reason,
+    )
+
+
+def _publish_request_or_404(
+    repository: IntentRoutingRepository,
+    *,
+    service_id: str,
+    request_id: str,
+) -> GovernedActionRequest:
+    request = repository.get_governed_action_request(request_id)
+    if (
+        request is None
+        or request.service_id != service_id
+        or request.resource_type not in {"intent", "example", "release"}
+    ):
+        _raise_not_found("Publish request does not exist.")
+    return request
+
+
 def _runtime_log_response(runtime_log: Mapping[str, Any]) -> RuntimeLogResponse:
     values = {
         field: runtime_log[field]
@@ -924,6 +1321,75 @@ def _runtime_log_response(runtime_log: Mapping[str, Any]) -> RuntimeLogResponse:
         value = values[decimal_field]
         values[decimal_field] = float(value) if value is not None else None
     return RuntimeLogResponse.model_validate(values)
+
+
+def _export_audit_state(
+    response: ExportResponse,
+    *,
+    filter_keys: set[str],
+    row_count: int | None = None,
+    status_override: str | None = None,
+) -> dict[str, Any]:
+    state = response.model_dump(mode="json", exclude={"content"})
+    if status_override is not None:
+        state["status"] = status_override
+    state["filter_keys"] = sorted(filter_keys)
+    if row_count is not None:
+        state["row_count"] = row_count
+    return state
+
+
+def _safe_export_filter_keys(
+    resource_type: str,
+    filters: Mapping[str, object],
+) -> set[str]:
+    if resource_type != "runtime_log":
+        return set()
+    return set(filters) & {"trace_id"}
+
+
+def _runtime_log_export_trace_id(filters: Mapping[str, object]) -> str | None:
+    unknown_filters = set(filters) - {"trace_id"}
+    if unknown_filters:
+        _raise_bad_request("Unsupported export filter.")
+    trace_id = filters.get("trace_id")
+    if trace_id is None:
+        return None
+    if not isinstance(trace_id, str) or not _safe_export_trace_id(trace_id):
+        _raise_bad_request("Unsupported export filter.")
+    return trace_id
+
+
+def _safe_export_trace_id(trace_id: str) -> bool:
+    allowed_punctuation = {"-", "_", ".", ":"}
+    return (
+        trace_id == trace_id.strip()
+        and 0 < len(trace_id) <= 200
+        and all(
+            character.isascii()
+            and (character.isalnum() or character in allowed_punctuation)
+            for character in trace_id
+        )
+    )
+
+
+def _serialize_export_rows(
+    rows: list[Mapping[str, Any]],
+    *,
+    export_format: str,
+) -> str:
+    if export_format == "jsonl":
+        return "\n".join(
+            json.dumps(dict(row), ensure_ascii=False, default=str)
+            for row in rows
+        )
+
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=list(MASKED_RUNTIME_LOG_FIELD_NAMES))
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({field: row[field] for field in MASKED_RUNTIME_LOG_FIELD_NAMES})
+    return output.getvalue()
 
 
 def _raw_text_keyring() -> RawTextKeyring:
@@ -1354,6 +1820,348 @@ def get_raw_text_key_summary(
 
 
 @router.post(
+    "/services/{service_id}/exports",
+    response_model=ExportResponse,
+)
+def create_export(
+    service_id: str,
+    request: ExportCreateRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ExportResponse:
+    _require_export_access(context, service_id)
+    requested_at = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    export_id = f"exp_{uuid4().hex}"
+    filter_keys = _safe_export_filter_keys(request.resource_type, request.filters)
+    requested_response = ExportResponse(
+        export_id=export_id,
+        service_id=service_id,
+        resource_type=request.resource_type,
+        status="rejected",
+        format=request.format,
+        content=None,
+        rejection_reason=None,
+        requested_by=context.actor_id,
+        requested_at=requested_at,
+    )
+    repository.insert_audit_log(
+        event_type="export.requested",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="export",
+        target_id=export_id,
+        view_reason=_safe_phase2_audit_reason(request.reason),
+        source_ip=source_ip_from_request(http_request),
+        before_state=None,
+        after_state=_export_audit_state(
+            requested_response,
+            filter_keys=filter_keys,
+            status_override="requested",
+        ),
+        created_at=requested_at,
+    )
+
+    try:
+        if request.resource_type != "runtime_log":
+            _raise_bad_request("Unsupported export resource type.")
+        trace_id = _runtime_log_export_trace_id(request.filters)
+    except HTTPException:
+        rejected_at = datetime.now(UTC)
+        rejected_response = ExportResponse(
+            export_id=export_id,
+            service_id=service_id,
+            resource_type=request.resource_type,
+            status="rejected",
+            format=request.format,
+            content=None,
+            rejection_reason="Unsupported export request.",
+            requested_by=context.actor_id,
+            requested_at=requested_at,
+        )
+        repository.insert_audit_log(
+            event_type="export.rejected",
+            actor_id=context.actor_id,
+            service_id=service_id,
+            trace_id=None,
+            target_type="export",
+            target_id=export_id,
+            view_reason=_safe_phase2_audit_reason(request.reason),
+            source_ip=source_ip_from_request(http_request),
+            before_state=_export_audit_state(
+                requested_response,
+                filter_keys=filter_keys,
+                status_override="requested",
+            ),
+            after_state=_export_audit_state(
+                rejected_response,
+                filter_keys=filter_keys,
+            ),
+            created_at=rejected_at,
+        )
+        session.commit()
+        _raise_bad_request("Unsupported export request.")
+
+    rows = repository.list_masked_runtime_logs_for_export(
+        service_id,
+        trace_id=trace_id,
+    )
+    response = ExportResponse(
+        export_id=export_id,
+        service_id=service_id,
+        resource_type=request.resource_type,
+        status="completed",
+        format=request.format,
+        content=_serialize_export_rows(rows, export_format=request.format),
+        rejection_reason=None,
+        requested_by=context.actor_id,
+        requested_at=requested_at,
+    )
+    repository.insert_audit_log(
+        event_type="export.completed",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="export",
+        target_id=export_id,
+        view_reason=_safe_phase2_audit_reason(request.reason),
+        source_ip=source_ip_from_request(http_request),
+        before_state=_export_audit_state(
+            requested_response,
+            filter_keys=filter_keys,
+            status_override="requested",
+        ),
+        after_state=_export_audit_state(
+            response,
+            filter_keys=filter_keys,
+            row_count=len(rows),
+        ),
+        created_at=datetime.now(UTC),
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/runtime-logs/{trace_id}/raw-query-view-requests",
+    response_model=RawQueryViewRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_raw_query_view_request(
+    service_id: str,
+    trace_id: str,
+    request: RawQueryViewRequestCreateRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> RawQueryViewRequestResponse:
+    _require_raw_query_request_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    runtime_log = repository.get_masked_runtime_log(service_id, trace_id)
+    if runtime_log is None:
+        _raise_not_found("Runtime log does not exist.")
+
+    view_request = repository.create_governed_action_request(
+        request_id=f"gar_{uuid4().hex}",
+        service_id=service_id,
+        resource_type="raw_query",
+        resource_id=trace_id,
+        action="decrypt",
+        requested_by=context.actor_id,
+        requested_at=now,
+        reason=request.reason,
+    )
+    response = _raw_query_view_request_response(view_request)
+    repository.insert_audit_log(
+        event_type="raw_query.requested",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=trace_id,
+        target_type="raw_query_view_request",
+        target_id=view_request.request_id,
+        view_reason=_safe_phase2_audit_reason(request.reason),
+        source_ip=source_ip_from_request(http_request),
+        before_state=None,
+        after_state=_safe_phase2_audit_state(response),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/raw-query-view-requests/{request_id}:approve",
+    response_model=RawQueryViewRequestResponse,
+)
+def approve_raw_query_view_request(
+    service_id: str,
+    request_id: str,
+    request: RawQueryViewRequestDecisionRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> RawQueryViewRequestResponse:
+    _require_raw_query_decision_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    view_request = _raw_query_view_request_or_404(
+        repository,
+        service_id=service_id,
+        request_id=request_id,
+    )
+    before_state = _safe_phase2_audit_state(
+        _raw_query_view_request_response(view_request)
+    )
+    try:
+        repository.approve_governed_action_request(
+            view_request,
+            decided_by=context.actor_id,
+            decided_at=now,
+            reason=request.reason,
+        )
+    except ValueError as exc:
+        if "request author" in str(exc):
+            raise_admin_forbidden(str(exc))
+        _raise_conflict(str(exc))
+    response = _raw_query_view_request_response(view_request)
+    repository.insert_audit_log(
+        event_type="raw_query.approved",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=view_request.resource_id,
+        target_type="raw_query_view_request",
+        target_id=view_request.request_id,
+        view_reason=_safe_phase2_audit_reason(request.reason),
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state=_safe_phase2_audit_state(response),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/raw-query-view-requests/{request_id}:reject",
+    response_model=RawQueryViewRequestResponse,
+)
+def reject_raw_query_view_request(
+    service_id: str,
+    request_id: str,
+    request: RawQueryViewRequestDecisionRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> RawQueryViewRequestResponse:
+    if request.reason is None:
+        _raise_validation_failed()
+    _require_raw_query_decision_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    view_request = _raw_query_view_request_or_404(
+        repository,
+        service_id=service_id,
+        request_id=request_id,
+    )
+    before_state = _safe_phase2_audit_state(
+        _raw_query_view_request_response(view_request)
+    )
+    try:
+        repository.reject_governed_action_request(
+            view_request,
+            decided_by=context.actor_id,
+            decided_at=now,
+            reason=request.reason,
+        )
+    except ValueError as exc:
+        if "request author" in str(exc):
+            raise_admin_forbidden(str(exc))
+        _raise_conflict(str(exc))
+    response = _raw_query_view_request_response(view_request)
+    repository.insert_audit_log(
+        event_type="raw_query.rejected",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=view_request.resource_id,
+        target_type="raw_query_view_request",
+        target_id=view_request.request_id,
+        view_reason=_safe_phase2_audit_reason(request.reason),
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state=_safe_phase2_audit_state(response),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/raw-query-view-requests/{request_id}:issue-token",
+    response_model=RawQueryTokenResponse,
+)
+def issue_raw_query_view_token(
+    service_id: str,
+    request_id: str,
+    request: RawQueryViewTokenIssueRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> RawQueryTokenResponse:
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    view_request = _raw_query_view_request_or_404(
+        repository,
+        service_id=service_id,
+        request_id=request_id,
+    )
+    _require_raw_query_token_requester(context, view_request)
+    raw_token = _create_raw_query_view_token()
+    expires_at = now + timedelta(seconds=request.ttl_seconds)
+    before_state = _safe_phase2_audit_state(
+        _raw_query_view_request_response(view_request)
+    )
+    try:
+        token = repository.issue_raw_query_view_token(
+            view_request,
+            token_id=f"rqt_{uuid4().hex}",
+            token_hash=_hash_raw_query_view_token(raw_token),
+            expires_at=expires_at,
+            issued_by=context.actor_id,
+            issued_at=now,
+        )
+    except ValueError as exc:
+        _raise_conflict(str(exc))
+    response = RawQueryTokenResponse(
+        request_id=view_request.request_id,
+        token=raw_token,
+        expires_at=expires_at,
+    )
+    repository.insert_audit_log(
+        event_type="raw_query.token_issued",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=view_request.resource_id,
+        target_type="raw_query_view_request",
+        target_id=view_request.request_id,
+        view_reason=None,
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state={
+            **_raw_query_token_audit_state(token),
+            "token_returned_once": True,
+        },
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
     "/services/{service_id}/runtime-logs/{trace_id}:decrypt-raw-query",
     response_model=RawQueryDecryptResponse,
 )
@@ -1365,10 +2173,47 @@ def decrypt_raw_runtime_query(
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> RawQueryDecryptResponse:
-    _require_raw_query_access(context, service_id)
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
+    if request.raw_query_view_token is None:
+        raise_admin_forbidden("Approved raw query view token is required.")
+    raw_query_view_token_hash = _hash_raw_query_view_token(request.raw_query_view_token)
+    raw_query_view_token = repository.consume_raw_query_view_token(
+        token_hash=raw_query_view_token_hash,
+        service_id=service_id,
+        trace_id=trace_id,
+        consumed_at=now,
+    )
+    if raw_query_view_token is None:
+        expired_token = repository.expire_raw_query_view_token(
+            token_hash=raw_query_view_token_hash,
+            service_id=service_id,
+            trace_id=trace_id,
+            expired_at=now,
+        )
+        if expired_token is not None:
+            repository.insert_audit_log(
+                event_type="raw_query.token_expired",
+                actor_id=context.actor_id,
+                service_id=service_id,
+                trace_id=trace_id,
+                target_type="raw_query_view_request",
+                target_id=expired_token.request_id,
+                view_reason=None,
+                source_ip=source_ip_from_request(http_request),
+                before_state=_raw_query_token_audit_state(
+                    expired_token,
+                    include_terminal_timestamps=False,
+                    status_override="token_issued",
+                ),
+                after_state=_raw_query_token_audit_state(expired_token),
+                created_at=now,
+            )
+            session.commit()
+        raise_admin_forbidden("Approved raw query view token is required.")
+    _require_raw_query_token_requester(context, raw_query_view_token.request)
+
     runtime_log = repository.get_runtime_log_for_decrypt(service_id, trace_id)
     if runtime_log is None:
         _raise_not_found("Runtime log does not exist.")
@@ -1393,7 +2238,7 @@ def decrypt_raw_runtime_query(
         trace_id=trace_id,
         target_type="runtime_log",
         target_id=trace_id,
-        view_reason=request.view_reason,
+        view_reason=_safe_phase2_audit_reason(request.view_reason),
         source_ip=source_ip_from_request(http_request),
         before_state=None,
         after_state=raw_query_view_after_state(runtime_log),
@@ -1988,6 +2833,213 @@ def get_test_run_results(
 
 
 @router.post(
+    "/services/{service_id}/publish-requests",
+    response_model=PublishRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_publish_request(
+    service_id: str,
+    request: PublishRequestCreateRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> PublishRequestResponse:
+    _require_publish_request_access(context, service_id)
+    if request.resource_type != "release" or request.action != "activate":
+        _raise_bad_request("Only release activation publish requests are supported.")
+    if request.target_version is not None and request.target_version != request.resource_id:
+        _raise_bad_request("target_version must match release resource_id.")
+
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    if repository.get_release(service_id, request.resource_id) is None:
+        _raise_not_found("Release does not exist.")
+
+    publish_request = repository.create_governed_action_request(
+        request_id=f"gar_{uuid4().hex}",
+        service_id=service_id,
+        resource_type=request.resource_type,
+        resource_id=request.resource_id,
+        action=request.action,
+        requested_by=context.actor_id,
+        requested_at=now,
+        reason=request.reason,
+    )
+    response = _publish_request_response(publish_request)
+    repository.insert_audit_log(
+        event_type="publish.requested",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="publish_request",
+        target_id=publish_request.request_id,
+        view_reason=_safe_phase2_audit_reason(request.reason),
+        source_ip=source_ip_from_request(http_request),
+        before_state=None,
+        after_state=_safe_phase2_audit_state(response),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/publish-requests/{request_id}:approve",
+    response_model=PublishRequestResponse,
+)
+def approve_publish_request(
+    service_id: str,
+    request_id: str,
+    request: PublishRequestDecisionRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> PublishRequestResponse:
+    _require_publish_decision_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    publish_request = _publish_request_or_404(
+        repository,
+        service_id=service_id,
+        request_id=request_id,
+    )
+    before_state = _safe_phase2_audit_state(_publish_request_response(publish_request))
+    try:
+        repository.approve_governed_action_request(
+            publish_request,
+            decided_by=context.actor_id,
+            decided_at=now,
+            reason=request.reason,
+        )
+    except ValueError as exc:
+        if "request author" in str(exc):
+            raise_admin_forbidden(str(exc))
+        _raise_conflict(str(exc))
+    response = _publish_request_response(publish_request)
+    repository.insert_audit_log(
+        event_type="publish.approved",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="publish_request",
+        target_id=publish_request.request_id,
+        view_reason=_safe_phase2_audit_reason(request.reason),
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state=_safe_phase2_audit_state(response),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/publish-requests/{request_id}:reject",
+    response_model=PublishRequestResponse,
+)
+def reject_publish_request(
+    service_id: str,
+    request_id: str,
+    request: PublishRequestDecisionRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> PublishRequestResponse:
+    if request.reason is None:
+        _raise_validation_failed()
+    _require_publish_decision_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    publish_request = _publish_request_or_404(
+        repository,
+        service_id=service_id,
+        request_id=request_id,
+    )
+    before_state = _safe_phase2_audit_state(_publish_request_response(publish_request))
+    try:
+        repository.reject_governed_action_request(
+            publish_request,
+            decided_by=context.actor_id,
+            decided_at=now,
+            reason=request.reason,
+        )
+    except ValueError as exc:
+        if "request author" in str(exc):
+            raise_admin_forbidden(str(exc))
+        _raise_conflict(str(exc))
+    response = _publish_request_response(publish_request)
+    repository.insert_audit_log(
+        event_type="publish.rejected",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="publish_request",
+        target_id=publish_request.request_id,
+        view_reason=_safe_phase2_audit_reason(request.reason),
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state=_safe_phase2_audit_state(response),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/publish-requests/{request_id}:activate",
+    response_model=ReleaseResponse,
+)
+def activate_publish_request(
+    service_id: str,
+    request_id: str,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ReleaseResponse:
+    _require_publish_activation_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    publish_request = _publish_request_or_404(
+        repository,
+        service_id=service_id,
+        request_id=request_id,
+    )
+    if publish_request.resource_type != "release" or publish_request.action != "activate":
+        _raise_bad_request("Publish request is not a release activation request.")
+    if publish_request.status != "approved":
+        _raise_conflict("Publish request must be approved before activation.")
+
+    try:
+        before_state, release = release_service.activate_release(
+            repository,
+            service_id=service_id,
+            release_version=publish_request.resource_id,
+        )
+    except release_service.ReleaseDependencyNotFoundError as exc:
+        session.rollback()
+        _raise_not_found(str(exc))
+
+    publish_request.status = "activated"
+    session.flush()
+    repository.insert_audit_log(
+        event_type="release.activated",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="release",
+        target_id=release.release_version,
+        view_reason=_safe_phase2_audit_reason(publish_request.reason),
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state=release_service.release_after_state(release),
+        created_at=now,
+    )
+    session.commit()
+    return _release_response(release)
+
+
+@router.post(
     "/services/{service_id}/releases",
     response_model=ReleaseResponse,
     status_code=status.HTTP_201_CREATED,
@@ -2127,6 +3179,32 @@ def list_release_candidates(
             )
         )
     return candidates
+
+
+@router.get(
+    "/services/{service_id}/releases/{release_version}/diff",
+    response_model=ReleaseDiffResponse,
+)
+def get_release_diff(
+    service_id: str,
+    release_version: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    compare_to: str | None = None,
+) -> ReleaseDiffResponse:
+    _require_release_review_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    try:
+        diff = release_service.build_release_diff(
+            repository,
+            service_id=service_id,
+            release_version=release_version,
+            compare_to=compare_to,
+        )
+    except release_service.ReleaseDependencyNotFoundError as exc:
+        _raise_not_found(str(exc))
+    return _release_diff_response(diff)
 
 
 @router.get(

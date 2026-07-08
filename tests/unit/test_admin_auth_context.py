@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from intent_routing.api import admin_dependencies
+from intent_routing.api.admin_dependencies import require_admin_context
 from intent_routing.security.admin_auth import (
     AdminContext,
     require_trusted_header_admin_context,
@@ -88,7 +89,7 @@ def test_session_cookie_takes_precedence_over_trusted_headers(
     monkeypatch.setattr(admin_dependencies, "IntentRoutingRepository", FakeRepository)
     fake_session = FakeSession()
 
-    context = admin_dependencies.require_admin_context(
+    context = require_admin_context(
         session=cast(Session, fake_session),
         admin_session_token="valid-cookie-token",
         admin_token="wrong-header-token",
@@ -111,7 +112,7 @@ def test_default_admin_context_rejects_trusted_headers_without_explicit_mode(
     monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
 
     with pytest.raises(Exception) as exc:
-        admin_dependencies.require_admin_context(
+        require_admin_context(
             session=cast(Session, object()),
             admin_session_token=None,
             admin_token="local-admin-token",
