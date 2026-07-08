@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 EXPECTED_LOCAL_ENV = {
-    "DATABASE_URL": "postgresql+psycopg://intent:intent@127.0.0.1:5432/intent_routing",
+    "DATABASE_URL": "postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing",
     "APP_ENV": "local",
     "INTENT_ROUTING_ENVIRONMENT": "dev",
     "ADMIN_AUTH_MODE": "trusted_headers",
@@ -45,6 +45,11 @@ def test_env_example_uses_runtime_local_defaults() -> None:
     assert values == EXPECTED_LOCAL_ENV
     assert "RAW_KEK_ID=" not in text
     assert "RAW_KEK_BASE64=" not in text
+    assert "# ADMIN_SYSTEM_ADMIN_EMAIL=local-admin@example.com" in text
+    assert "# ADMIN_SYSTEM_ADMIN_PASSWORD=local-admin-password" in text
+    assert "# ADMIN_SYSTEM_ADMIN_DISPLAY_NAME=Local Admin" in text
+    assert "ADMIN_SYSTEM_ADMIN_EMAIL" not in values
+    assert "ADMIN_SYSTEM_ADMIN_PASSWORD" not in values
 
 
 def test_closed_network_env_uses_secret_placeholders_without_live_key_material() -> None:

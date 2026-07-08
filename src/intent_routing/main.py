@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any, cast
 
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -21,10 +23,17 @@ from intent_routing.logging.trace import (
     log_runtime_preflight_error,
     should_log_runtime_error,
 )
+from intent_routing.security.admin_provisioning import configure_startup_system_admin
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    configure_startup_system_admin(session_scope)
+    yield
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Intent Routing Service")
+    app = FastAPI(title="Intent Routing Service", lifespan=lifespan)
     app.state.runtime_log_session_factory = session_scope
     app.state.readiness_session_factory = session_scope
     app.include_router(admin_router)
