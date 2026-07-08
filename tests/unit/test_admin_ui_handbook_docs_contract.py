@@ -15,6 +15,7 @@ def test_admin_ui_v04_handbook_files_exist() -> None:
         "README.md",
         "SETUP_GUIDE.md",
         "PATTERN_KIT.md",
+        "ONBOARDING_FLOW.md",
         "examples/adminServices.ts",
         "examples/AdminShell.tsx",
         "examples/ServiceScopeBar.tsx",
@@ -73,3 +74,21 @@ def test_admin_ui_v04_uses_umi_request_without_react_query_or_axios() -> None:
     )
     for pattern in forbidden_implementation_patterns:
         assert pattern not in examples
+
+
+def test_admin_ui_v04_records_authorization_first_onboarding_flow() -> None:
+    onboarding = _read(V04 / "ONBOARDING_FLOW.md")
+    pattern_kit = _read(V04 / "PATTERN_KIT.md")
+    readme = _read(V04 / "README.md")
+
+    for expected in (
+        "C-1: Service Onboarding",
+        "C-2: Service Membership, Roles, And Developer Validation",
+        "C-3: Runtime Integration And Operations",
+        "Service picker options come from `/me/services`",
+        "Do not send `X-Admin-Token`",
+    ):
+        assert expected in onboarding
+
+    assert "Authorization-first onboarding" in pattern_kit
+    assert "ONBOARDING_FLOW.md" in readme

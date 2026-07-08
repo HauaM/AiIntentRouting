@@ -37,6 +37,26 @@ declare namespace API {
     roles: string[];
   };
 
+  type ServiceCreateRequest = {
+    service_id: string;
+    display_name: string;
+    environment: string;
+    default_threshold_preset: ThresholdPreset;
+    max_input_tokens: number;
+  };
+
+  type Service = {
+    service_id: string;
+    display_name: string;
+    environment: string;
+    default_threshold_preset: string;
+    max_input_tokens: number;
+    status: string;
+    created_by: string;
+    created_at: string;
+    updated_at: string;
+  };
+
   type IntentStatus = 'active' | 'draft' | 'deprecated';
   type RuntimeDecision = 'confident' | 'clarify' | 'fallback' | 'off_topic' | 'risk';
   type ApiKeyStatus = 'active' | 'revoked' | 'expired';

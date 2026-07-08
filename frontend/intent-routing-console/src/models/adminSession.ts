@@ -105,6 +105,24 @@ export const canManageReleases = (session: AdminSession) =>
 export const canManageApiKeys = (session: AdminSession) =>
   hasAnyDisplayRole(session, ['system_admin']);
 
+export const canCreateServices = (session: AdminSession) =>
+  session.globalRoles.includes('system_admin');
+
+export const canUseServicesPage = (session: AdminSession) =>
+  Boolean(
+    session.authenticated &&
+      session.user &&
+      (session.serviceId.trim() || canCreateServices(session)),
+  );
+
+export const canSelectServiceFromScope = (session: AdminSession, serviceId: string) => {
+  const targetServiceId = serviceId.trim();
+  return Boolean(
+    targetServiceId &&
+      session.services.some((service) => service.service_id === targetServiceId),
+  );
+};
+
 export default function useAdminSessionModel() {
   const [session, setSession] = useState<AdminSession>(EMPTY_ADMIN_SESSION);
   const [restoring, setRestoring] = useState(true);
