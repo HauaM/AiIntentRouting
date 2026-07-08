@@ -2,7 +2,8 @@ from typing import Any, cast
 
 import pytest
 
-from intent_routing.api import admin, admin_dependencies
+from intent_routing.api import admin_dependencies
+from intent_routing.api.admin import get_admin_session
 
 
 class FakeSession:
@@ -23,7 +24,7 @@ def test_get_admin_session_rolls_back_and_closes_on_exception(
     session = FakeSession()
     monkeypatch.setattr(admin_dependencies, "SessionLocal", lambda: session)
 
-    session_generator = cast(Any, admin.get_admin_session())
+    session_generator = cast(Any, get_admin_session())
     assert next(session_generator) is session
 
     with pytest.raises(RuntimeError):
@@ -34,4 +35,4 @@ def test_get_admin_session_rolls_back_and_closes_on_exception(
 
 
 def test_admin_module_reexports_shared_admin_session_dependency() -> None:
-    assert admin.get_admin_session is admin_dependencies.get_admin_session
+    assert get_admin_session is admin_dependencies.get_admin_session

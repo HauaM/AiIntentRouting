@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,7 +22,7 @@ from tests.integration.test_release_flow import (
 
 def test_release_diff_compares_candidate_to_active_release(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service_id, policy_version, catalog_version, client = _release_setup(
         db_session,
@@ -93,7 +94,7 @@ def test_release_diff_compares_candidate_to_active_release(
 
 def test_release_activation_requires_governed_approval_for_service_developer(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service_id, policy_version, catalog_version, client = _release_setup(
         db_session,
@@ -163,7 +164,7 @@ def test_release_activation_requires_governed_approval_for_service_developer(
 
 def test_publish_request_rejects_evidence_refs_field(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service_id, policy_version, catalog_version, client = _release_setup(
         db_session,
@@ -197,7 +198,7 @@ def test_publish_request_rejects_evidence_refs_field(
 
 def test_publish_request_audit_metadata_redacts_user_reason_text(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service_id, policy_version, catalog_version, client = _release_setup(
         db_session,
@@ -271,7 +272,7 @@ def test_publish_request_audit_metadata_redacts_user_reason_text(
 
 def test_release_reject_is_terminal(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service_id, policy_version, catalog_version, client = _release_setup(
         db_session,
@@ -330,7 +331,7 @@ def test_release_reject_is_terminal(
 
 def test_system_admin_can_still_activate_release_directly(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service_id, policy_version, catalog_version, client = _release_setup(
         db_session,

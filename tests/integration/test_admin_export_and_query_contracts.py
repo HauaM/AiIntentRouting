@@ -4,6 +4,7 @@ import csv
 import io
 import json
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,7 +24,7 @@ from tests.integration.test_trace_audit_logs import (
 
 def test_masked_runtime_log_export_excludes_raw_query_and_secret_material(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -75,7 +76,7 @@ def test_masked_runtime_log_export_excludes_raw_query_and_secret_material(
 
 def test_export_audit_metadata_redacts_user_reason_text(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -125,7 +126,7 @@ def test_export_audit_metadata_redacts_user_reason_text(
 
 def test_export_rejects_unsupported_filters_and_writes_audit(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -178,7 +179,7 @@ def test_export_rejects_unsupported_filters_and_writes_audit(
 
 def test_export_rejects_malicious_trace_id_without_audit_metadata_leak(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -234,7 +235,7 @@ def test_export_rejects_malicious_trace_id_without_audit_metadata_leak(
 
 def test_export_requires_auditor_owner_or_system_admin(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -272,7 +273,7 @@ def test_export_requires_auditor_owner_or_system_admin(
 
 def test_export_denies_auditor_or_owner_scoped_to_other_service_without_audit(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -317,7 +318,7 @@ def test_export_denies_auditor_or_owner_scoped_to_other_service_without_audit(
 
 def test_runtime_log_export_supports_csv_headers_from_masked_projection(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)

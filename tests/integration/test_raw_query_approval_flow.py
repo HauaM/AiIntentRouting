@@ -1,6 +1,8 @@
 import json
 from datetime import UTC, datetime, timedelta
 
+import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,7 +21,7 @@ from tests.integration.test_trace_audit_logs import (
 
 def test_raw_query_two_person_approval_flow(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -109,7 +111,7 @@ def test_raw_query_two_person_approval_flow(
 
 def test_raw_query_view_token_cannot_decrypt_twice(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -149,7 +151,7 @@ def test_raw_query_view_token_cannot_decrypt_twice(
 
 def test_raw_query_viewed_audit_metadata_redacts_decrypt_reason_text(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -193,7 +195,7 @@ def test_raw_query_viewed_audit_metadata_redacts_decrypt_reason_text(
 
 def test_repository_consumes_raw_query_view_token_once(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -228,7 +230,7 @@ def test_repository_consumes_raw_query_view_token_once(
 
 def test_expired_raw_query_view_token_attempt_expires_request_and_writes_audit(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -289,7 +291,7 @@ def test_expired_raw_query_view_token_attempt_expires_request_and_writes_audit(
 
 def test_phase2_raw_query_audit_metadata_redacts_user_reason_text(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -362,7 +364,7 @@ def test_phase2_raw_query_audit_metadata_redacts_user_reason_text(
 
 def test_raw_query_reject_is_terminal(
     db_session: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trace_id = _create_runtime_trace(db_session, monkeypatch)
     client = _client(db_session, monkeypatch)
@@ -392,11 +394,12 @@ def test_raw_query_reject_is_terminal(
     request_model = db_session.get(models.GovernedActionRequest, request_id)
     assert request_model is not None
     assert request_model.status == "rejected"
+    assert request_model.decided_at is not None
     assert request_model.decided_at <= datetime.now(UTC)
 
 
 def _approved_raw_query_view_token(
-    client,
+    client: TestClient,
     trace_id: str,
     *,
     ttl_seconds: int = 300,
