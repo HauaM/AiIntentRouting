@@ -21,7 +21,11 @@ import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
 import { FieldHelpLabel } from '@/components/FieldHelpLabel';
 import { FutureFeatureNotice } from '@/components/FutureFeatureNotice';
-import { canCreateServices, isAdminSessionReady } from '@/models/adminSession';
+import {
+  canCreateServices,
+  canSelectServiceFromScope,
+  canUseServicesPage,
+} from '@/models/adminSession';
 import { createService } from '@/services/adminServices';
 import {
   serviceFormInitialValues,
@@ -64,7 +68,7 @@ export default function ServicesPage() {
   const [form] = Form.useForm<ServiceFormValues>();
   const [creating, setCreating] = useState(false);
   const [createdService, setCreatedService] = useState<API.Service>();
-  const ready = isAdminSessionReady(session);
+  const ready = canUseServicesPage(session);
   const canCreate = canCreateServices(session);
 
   const selectedService = session.services.find(
@@ -131,10 +135,17 @@ export default function ServicesPage() {
     setCreating(true);
     try {
       const created = await createService(toServiceCreateRequest(values));
+      const restoredSession = await restoreSession();
+      if (!canSelectServiceFromScope(restoredSession, created.service_id)) {
+        setCreatedService(undefined);
+        message.warning(
+          'Service는 등록되었지만 아직 접근 가능한 Service scope에 포함되지 않았습니다.',
+        );
+        return;
+      }
+      setServiceId(created.service_id);
       setCreatedService(created);
       message.success('Service가 등록되었습니다.');
-      await restoreSession();
-      setServiceId(created.service_id);
       form.resetFields();
       form.setFieldsValue(serviceFormInitialValues);
     } finally {

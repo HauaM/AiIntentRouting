@@ -6,6 +6,8 @@ import {
   canEditCatalog,
   canManageApiKeys,
   canManageReleases,
+  canSelectServiceFromScope,
+  canUseServicesPage,
   getDisplayRoles,
   hasAnyDisplayRole,
   isAdminSessionReady,
@@ -70,6 +72,23 @@ describe('admin session model helpers', () => {
       serviceId: 'svc-b',
     });
     expect(isAdminSessionReady(session)).toBe(true);
+  });
+
+  it('allows global system admins to open Services before any service exists', () => {
+    const session = normalizeAuthSession(currentUser, [], '');
+
+    expect(isAdminSessionReady(session)).toBe(false);
+    expect(canUseServicesPage(session)).toBe(true);
+  });
+
+  it('requires a selected accessible service for non-system-admin Services access', () => {
+    const session = normalizeAuthSession(
+      { ...currentUser, global_roles: [], service_roles: [] },
+      [],
+      '',
+    );
+
+    expect(canUseServicesPage(session)).toBe(false);
   });
 
   it('falls back to the first accessible service when the requested service is unavailable', () => {
@@ -151,6 +170,14 @@ describe('admin session model helpers', () => {
 
     expect(getDisplayRoles(session)).toEqual(['service_owner']);
     expect(canCreateServices(session)).toBe(false);
+  });
+
+  it('selects created services only when they come from server-derived scope', () => {
+    const session = normalizeAuthSession(currentUser, services, 'svc-a');
+
+    expect(canSelectServiceFromScope(session, 'svc-b')).toBe(true);
+    expect(canSelectServiceFromScope(session, 'missing')).toBe(false);
+    expect(canSelectServiceFromScope(session, '   ')).toBe(false);
   });
 
   it('does not read legacy Admin header values for role helpers', () => {
