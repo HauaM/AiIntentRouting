@@ -31,6 +31,25 @@ Do not add React Query or axios unless a future architecture decision explicitly
 
 ## Phase Model
 
+### Authorization-first onboarding
+
+Admin UI development must use the C flow from
+`docs/AdminUI_Handbook/v04/ONBOARDING_FLOW.md` as the target product workflow.
+This keeps financial closed-network authorization constraints visible before
+future C-2 and C-3 work begins.
+
+- C-1 Service onboarding: `system_admin` creates a Service, the Service appears
+  through server-derived Service scope, and creation is audited.
+- C-2 Service membership and validation: Service roles are assigned before
+  developers configure Intents, examples, policy/catalog versions, and test
+  runs for assigned Services.
+- C-3 runtime integration and operations: scoped API keys, client setup
+  guidance, masked Runtime Logs, and append-only Audit Logs complete the
+  onboarding loop.
+- Permission and audit requirements are product workflow requirements, not test
+  setup. Do not add UI shortcuts that bypass server-derived roles or Service
+  scope.
+
 ### Workflow candidate selectors
 
 Admin UI write screens must prefer service-scoped selectors over manual internal
