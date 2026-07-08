@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AdminSession } from './adminSession';
 import {
   EMPTY_ADMIN_SESSION,
+  canCreateServices,
   canEditCatalog,
   canManageApiKeys,
   canManageReleases,
@@ -133,6 +134,23 @@ describe('admin session model helpers', () => {
 
     expect(canManageReleases(session)).toBe(true);
     expect(canManageApiKeys(session)).toBe(true);
+  });
+
+  it('allows only global system admins to create services', () => {
+    const session = normalizeAuthSession(currentUser, services, 'svc-a');
+
+    expect(canCreateServices(session)).toBe(true);
+  });
+
+  it('does not allow service-scoped roles to create services', () => {
+    const session = normalizeAuthSession(
+      { ...currentUser, global_roles: [], service_roles: [] },
+      [{ ...services[0], roles: ['service_owner'] }],
+      'svc-a',
+    );
+
+    expect(getDisplayRoles(session)).toEqual(['service_owner']);
+    expect(canCreateServices(session)).toBe(false);
   });
 
   it('does not read legacy Admin header values for role helpers', () => {

@@ -12,6 +12,13 @@ const RECENT_AUDIT_LOG_LIMIT = 100;
 const servicePath = (serviceId: string, suffix: string) =>
   `/services/${encodeURIComponent(serviceId)}${suffix}`;
 
+export async function createService(payload: API.ServiceCreateRequest) {
+  return request<API.Service>('/services', {
+    method: 'POST',
+    data: payload,
+  });
+}
+
 export async function fetchRuntimeMetrics(serviceId: string, windowHours: number) {
   return request<API.RuntimeMetrics>(servicePath(serviceId, '/runtime-metrics'), {
     method: 'GET',

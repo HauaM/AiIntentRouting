@@ -105,6 +105,9 @@ export const canManageReleases = (session: AdminSession) =>
 export const canManageApiKeys = (session: AdminSession) =>
   hasAnyDisplayRole(session, ['system_admin']);
 
+export const canCreateServices = (session: AdminSession) =>
+  session.globalRoles.includes('system_admin');
+
 export default function useAdminSessionModel() {
   const [session, setSession] = useState<AdminSession>(EMPTY_ADMIN_SESSION);
   const [restoring, setRestoring] = useState(true);
