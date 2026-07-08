@@ -42,8 +42,10 @@ ID entry.
   candidate/list endpoints.
 - Manual internal ID entry is transitional and should be removed once candidate
   endpoints exist.
-- Phase 2 governed workflows remain disabled until their backend approval
-  contracts pass.
+- Phase 2 governed backend contracts have passed for raw query approval,
+  release diff/approval, and masked export.
+- Phase 2 action buttons remain disabled until frontend routes, service
+  functions, role gates, and UX tests are implemented.
 
 ### Phase 0 — Read-first
 
@@ -73,19 +75,24 @@ client-supplied actor headers.
 
 Every destructive or operationally dangerous action must go through `ConfirmActionButton` or the same `Modal.confirm` pattern.
 
-### Phase 2 — Future backend
+### Phase 2 — Backend Implemented, UI Gated
 
-Render as disabled or informational only:
+Backend contracts are implemented for:
 
-- Publish pending/approve/reject.
+- Publish pending/approve/reject for release activation.
 - Raw query two-person approval.
 - Time-limited raw query token.
 - Release diff approval workflow.
-- CSV export.
+- Masked runtime log export as CSV or JSONL.
+
+Render these as disabled or informational until the Admin UI adds frontend
+routes, service functions, server-derived role gates, and UX tests. Do not use
+mock state or fake endpoints to simulate approval progress.
+
+Keep using `FutureFeatureNotice` for unsupported capabilities:
+
 - Server pagination/compound filters/live polling.
 - Example reject with reason.
-
-Use `FutureFeatureNotice` instead of mock state or fake endpoints.
 
 ## API Rules
 
@@ -104,6 +111,17 @@ Use `FutureFeatureNotice` instead of mock state or fake endpoints.
 - Runtime log masked field: `query_masked`.
 - Example approve: `PATCH /services/{sid}/examples/{example_id}:approve`.
 - Release activate/rollback: `POST ...:activate`, `POST ...:rollback`.
+- Release diff: `GET /services/{sid}/releases/{release_version}/diff`.
+- Release approval workflow: `POST /services/{sid}/publish-requests`,
+  `POST /services/{sid}/publish-requests/{request_id}:approve`,
+  `POST /services/{sid}/publish-requests/{request_id}:reject`, and
+  `POST /services/{sid}/publish-requests/{request_id}:activate`.
+- Raw query approval workflow:
+  `POST /services/{sid}/runtime-logs/{trace_id}/raw-query-view-requests`,
+  `POST /services/{sid}/raw-query-view-requests/{request_id}:approve`,
+  `POST /services/{sid}/raw-query-view-requests/{request_id}:reject`, and
+  `POST /services/{sid}/raw-query-view-requests/{request_id}:token`.
+- Masked export: `POST /services/{sid}/exports`.
 - Intent detail: no current `GET /intents/{intent_id}`. Use selected row data from list.
 
 ## Current Role Gates
@@ -115,7 +133,7 @@ Use `FutureFeatureNotice` instead of mock state or fake endpoints.
   and test runs.
 - `service_operator`: scoped runtime metrics and runtime log inspection.
 - `auditor`: scoped runtime log inspection, audit log inspection, security
-  lifecycle read, and raw-query audited decrypt.
+  lifecycle read, raw-query approval/review paths, and masked export.
 
 ## Visual Tokens
 
