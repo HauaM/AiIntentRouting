@@ -1244,6 +1244,26 @@ class IntentRoutingRepository:
         )
         return [cast("Mapping[str, Any]", row) for row in rows]
 
+    def list_masked_runtime_logs_for_export(
+        self,
+        service_id: str,
+        *,
+        trace_id: str | None = None,
+        limit: int = 500,
+    ) -> list[Mapping[str, Any]]:
+        statement = select(*_masked_runtime_log_columns()).where(
+            models.RuntimeLog.service_id == service_id
+        )
+        if trace_id is not None:
+            statement = statement.where(models.RuntimeLog.trace_id == trace_id)
+        rows = self.session.execute(
+            statement.order_by(
+                models.RuntimeLog.created_at.desc(),
+                models.RuntimeLog.trace_id,
+            ).limit(limit)
+        ).mappings()
+        return [cast("Mapping[str, Any]", row) for row in rows]
+
     def get_masked_runtime_log(
         self,
         service_id: str,

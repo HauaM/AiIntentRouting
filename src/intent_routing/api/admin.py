@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import csv
 import hashlib
+import json
 import secrets
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from io import StringIO
 from os import environ
 from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID, uuid4
@@ -513,6 +516,35 @@ class ReleaseCandidateResponse(BaseModel):
     created_at: datetime
 
 
+class ExportCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_type: Literal["intent", "example", "release", "runtime_log", "export"]
+    format: Literal["csv", "jsonl"]
+    filters: dict[str, object] = Field(default_factory=dict)
+    reason: str = Field(min_length=10)
+
+    @field_validator("reason")
+    @classmethod
+    def reason_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if len(stripped) < 10:
+            raise ValueError("reason must be at least 10 characters")
+        return stripped
+
+
+class ExportResponse(BaseModel):
+    export_id: str
+    service_id: str
+    resource_type: str
+    status: Literal["completed", "rejected"]
+    format: str
+    content: str | None = None
+    rejection_reason: str | None = None
+    requested_by: str
+    requested_at: datetime
+
+
 class IntentRouteCandidateResponse(BaseModel):
     intent_id: str
     display_name: str
@@ -907,6 +939,14 @@ def _require_raw_query_decision_access(context: AdminContext, service_id: str) -
     raise_admin_forbidden("Raw query approval scope is required for this action.")
 
 
+def _require_export_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(service_id, {"auditor", "service_owner"}):
+        return
+    raise_admin_forbidden("Export scope is required for this action.")
+
+
 def _require_raw_query_token_requester(
     context: AdminContext,
     request: GovernedActionRequest,
@@ -1244,6 +1284,62 @@ def _runtime_log_response(runtime_log: Mapping[str, Any]) -> RuntimeLogResponse:
         value = values[decimal_field]
         values[decimal_field] = float(value) if value is not None else None
     return RuntimeLogResponse.model_validate(values)
+
+
+def _export_audit_state(
+    response: ExportResponse,
+    *,
+    filter_keys: set[str],
+    row_count: int | None = None,
+    status_override: str | None = None,
+) -> dict[str, Any]:
+    state = response.model_dump(mode="json", exclude={"content"})
+    if status_override is not None:
+        state["status"] = status_override
+    state["filter_keys"] = sorted(filter_keys)
+    if row_count is not None:
+        state["row_count"] = row_count
+    return state
+
+
+def _safe_export_filter_keys(
+    resource_type: str,
+    filters: Mapping[str, object],
+) -> set[str]:
+    if resource_type != "runtime_log":
+        return set()
+    return set(filters) & {"trace_id"}
+
+
+def _runtime_log_export_trace_id(filters: Mapping[str, object]) -> str | None:
+    unknown_filters = set(filters) - {"trace_id"}
+    if unknown_filters:
+        _raise_bad_request("Unsupported export filter.")
+    trace_id = filters.get("trace_id")
+    if trace_id is None:
+        return None
+    if not isinstance(trace_id, str) or not trace_id.strip():
+        _raise_bad_request("Unsupported export filter.")
+    return trace_id
+
+
+def _serialize_export_rows(
+    rows: list[Mapping[str, Any]],
+    *,
+    export_format: str,
+) -> str:
+    if export_format == "jsonl":
+        return "\n".join(
+            json.dumps(dict(row), ensure_ascii=False, default=str)
+            for row in rows
+        )
+
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=list(MASKED_RUNTIME_LOG_FIELD_NAMES))
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({field: row[field] for field in MASKED_RUNTIME_LOG_FIELD_NAMES})
+    return output.getvalue()
 
 
 def _raw_text_keyring() -> RawTextKeyring:
@@ -1671,6 +1767,140 @@ def get_raw_text_key_summary(
             counts=repository.count_raw_text_key_inventory(service_id),
         )
     )
+
+
+@router.post(
+    "/services/{service_id}/exports",
+    response_model=ExportResponse,
+)
+def create_export(
+    service_id: str,
+    request: ExportCreateRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ExportResponse:
+    _require_export_access(context, service_id)
+    requested_at = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    export_id = f"exp_{uuid4().hex}"
+    filter_keys = _safe_export_filter_keys(request.resource_type, request.filters)
+    requested_response = ExportResponse(
+        export_id=export_id,
+        service_id=service_id,
+        resource_type=request.resource_type,
+        status="rejected",
+        format=request.format,
+        content=None,
+        rejection_reason=None,
+        requested_by=context.actor_id,
+        requested_at=requested_at,
+    )
+    repository.insert_audit_log(
+        event_type="export.requested",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=(
+            request.filters.get("trace_id")
+            if isinstance(request.filters.get("trace_id"), str)
+            else None
+        ),
+        target_type="export",
+        target_id=export_id,
+        view_reason=request.reason,
+        source_ip=source_ip_from_request(http_request),
+        before_state=None,
+        after_state=_export_audit_state(
+            requested_response,
+            filter_keys=filter_keys,
+            status_override="requested",
+        ),
+        created_at=requested_at,
+    )
+
+    try:
+        if request.resource_type != "runtime_log":
+            _raise_bad_request("Unsupported export resource type.")
+        trace_id = _runtime_log_export_trace_id(request.filters)
+    except HTTPException:
+        rejected_at = datetime.now(UTC)
+        rejected_response = ExportResponse(
+            export_id=export_id,
+            service_id=service_id,
+            resource_type=request.resource_type,
+            status="rejected",
+            format=request.format,
+            content=None,
+            rejection_reason="Unsupported export request.",
+            requested_by=context.actor_id,
+            requested_at=requested_at,
+        )
+        repository.insert_audit_log(
+            event_type="export.rejected",
+            actor_id=context.actor_id,
+            service_id=service_id,
+            trace_id=(
+                request.filters.get("trace_id")
+                if isinstance(request.filters.get("trace_id"), str)
+                else None
+            ),
+            target_type="export",
+            target_id=export_id,
+            view_reason=request.reason,
+            source_ip=source_ip_from_request(http_request),
+            before_state=_export_audit_state(
+                requested_response,
+                filter_keys=filter_keys,
+                status_override="requested",
+            ),
+            after_state=_export_audit_state(
+                rejected_response,
+                filter_keys=filter_keys,
+            ),
+            created_at=rejected_at,
+        )
+        session.commit()
+        _raise_bad_request("Unsupported export request.")
+
+    rows = repository.list_masked_runtime_logs_for_export(
+        service_id,
+        trace_id=trace_id,
+    )
+    response = ExportResponse(
+        export_id=export_id,
+        service_id=service_id,
+        resource_type=request.resource_type,
+        status="completed",
+        format=request.format,
+        content=_serialize_export_rows(rows, export_format=request.format),
+        rejection_reason=None,
+        requested_by=context.actor_id,
+        requested_at=requested_at,
+    )
+    repository.insert_audit_log(
+        event_type="export.completed",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=trace_id,
+        target_type="export",
+        target_id=export_id,
+        view_reason=request.reason,
+        source_ip=source_ip_from_request(http_request),
+        before_state=_export_audit_state(
+            requested_response,
+            filter_keys=filter_keys,
+            status_override="requested",
+        ),
+        after_state=_export_audit_state(
+            response,
+            filter_keys=filter_keys,
+            row_count=len(rows),
+        ),
+        created_at=datetime.now(UTC),
+    )
+    session.commit()
+    return response
 
 
 @router.post(
