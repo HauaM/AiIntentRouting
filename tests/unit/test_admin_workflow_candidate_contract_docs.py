@@ -41,6 +41,8 @@ def test_workflow_candidate_contract_docs_exist_and_name_required_endpoints() ->
     for phrase in [
         "Workflow candidate selectors",
         "Manual internal ID entry is transitional",
-        "Phase 2 governed workflows remain disabled",
+        "Phase 2 governed backend contracts have passed",
+        "Phase 2 action buttons remain disabled",
+        "Phase 2 — Backend Implemented, UI Gated",
     ]:
         assert phrase in pattern_text

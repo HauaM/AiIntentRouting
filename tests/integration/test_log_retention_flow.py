@@ -61,6 +61,13 @@ def test_runtime_raw_query_retention_dry_run_execute_and_admin_flow(
     before_ciphertext = before_eligible.query_raw_ciphertext
     before_deleted_at = before_eligible.raw_query_deleted_at
 
+    client = _client(db_session, monkeypatch)
+    raw_query_view_token = _approved_raw_query_view_token(
+        client,
+        service_id,
+        eligible_trace_id,
+    )
+
     apply_log_retention.main(
         [
             "--service-id",
@@ -155,7 +162,6 @@ def test_runtime_raw_query_retention_dry_run_execute_and_admin_flow(
     assert APPROVAL_ID in execute_markdown
     _assert_no_sensitive_material(execute_stdout, execute_report, execute_markdown)
 
-    client = _client(db_session, monkeypatch)
     masked_response = client.get(
         f"/admin/v1/services/{service_id}/runtime-logs/{eligible_trace_id}",
         headers=_operator_headers(service_id),
@@ -163,7 +169,10 @@ def test_runtime_raw_query_retention_dry_run_execute_and_admin_flow(
     decrypt_response = client.post(
         f"/admin/v1/services/{service_id}/runtime-logs/{eligible_trace_id}:decrypt-raw-query",
         headers=_auditor_headers(service_id),
-        json={"view_reason": "incident follow-up ticket INC-20260628-001"},
+        json={
+            "view_reason": "incident follow-up ticket INC-20260628-001",
+            "raw_query_view_token": raw_query_view_token,
+        },
     )
 
     masked_body = masked_response.json()
@@ -712,6 +721,35 @@ def _auditor_headers(service_id: str, *, actor_id: str = "auditor-user") -> dict
             "X-Service-Scope": service_id,
         }
     )
+
+
+def _approved_raw_query_view_token(
+    client: TestClient,
+    service_id: str,
+    trace_id: str,
+) -> str:
+    created = client.post(
+        f"/admin/v1/services/{service_id}/runtime-logs/{trace_id}/raw-query-view-requests",
+        headers=_auditor_headers(service_id),
+        json={"reason": "retention verification requires approved raw query token"},
+    )
+    assert created.status_code == 201
+    request_id = created.json()["request_id"]
+
+    approved = client.post(
+        f"/admin/v1/services/{service_id}/raw-query-view-requests/{request_id}:approve",
+        headers=_admin_headers(actor_id="retention-approver"),
+        json={"reason": "raw query retention check approved"},
+    )
+    assert approved.status_code == 200
+
+    issued = client.post(
+        f"/admin/v1/services/{service_id}/raw-query-view-requests/{request_id}:issue-token",
+        headers=_auditor_headers(service_id),
+        json={},
+    )
+    assert issued.status_code == 200
+    return str(issued.json()["token"])
 
 
 def _latest_reports(report_dir: Path) -> tuple[dict[str, object], str]:
