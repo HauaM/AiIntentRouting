@@ -415,6 +415,85 @@ class ReleaseResponse(BaseModel):
     rollback_target: str | None
 
 
+class ReleaseDiffResponse(BaseModel):
+    service_id: str
+    release_version: str
+    compare_to: str | None
+    policy_version_diff: dict[str, object]
+    catalog_version_diff: dict[str, object]
+    model_version_diff: dict[str, object]
+    test_run_diff: dict[str, object]
+    rollback_target: str | None
+
+
+class PublishRequestCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_type: Literal["intent", "example", "release"]
+    resource_id: str = Field(min_length=1)
+    action: Literal["request", "activate", "rollback"]
+    target_version: str | None = Field(default=None, min_length=1)
+    reason: str = Field(min_length=10)
+    evidence_refs: list[str] = Field(default_factory=list)
+
+    @field_validator("resource_id", "reason")
+    @classmethod
+    def publish_request_text_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("publish request text must not be blank")
+        return stripped
+
+    @field_validator("target_version")
+    @classmethod
+    def target_version_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("target_version must not be blank")
+        return stripped
+
+    @field_validator("evidence_refs")
+    @classmethod
+    def evidence_refs_must_not_be_blank(cls, value: list[str]) -> list[str]:
+        stripped_values = [item.strip() for item in value]
+        if any(not item for item in stripped_values):
+            raise ValueError("evidence_refs must not contain blank values")
+        return stripped_values
+
+
+class PublishRequestDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(default=None, min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def decision_reason_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("reason must not be blank")
+        return stripped
+
+
+class PublishRequestResponse(BaseModel):
+    request_id: str
+    service_id: str
+    resource_type: str
+    resource_id: str
+    action: str
+    status: str
+    requested_by: str
+    requested_at: datetime
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+    reason: str
+    decision_reason: str | None = None
+
+
 class ReleaseCandidateResponse(BaseModel):
     test_run_id: str
     service_id: str
@@ -741,6 +820,47 @@ def _require_service_catalog_access(context: AdminContext, service_id: str) -> N
     raise_admin_forbidden("Service catalog scope is required for this action.")
 
 
+def _require_release_review_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(
+        service_id,
+        {"service_developer", "service_owner", "auditor"},
+    ):
+        return
+    raise_admin_forbidden("Release review scope is required for this action.")
+
+
+def _require_publish_request_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(
+        service_id,
+        {"service_developer", "service_owner"},
+    ):
+        return
+    raise_admin_forbidden("Publish request scope is required for this action.")
+
+
+def _require_publish_decision_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_service_role(service_id, "service_owner"):
+        return
+    raise_admin_forbidden("Publish approval scope is required for this action.")
+
+
+def _require_publish_activation_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(
+        service_id,
+        {"service_developer", "service_owner"},
+    ):
+        return
+    raise_admin_forbidden("Publish activation scope is required for this action.")
+
+
 def _require_runtime_log_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
@@ -1065,6 +1185,54 @@ def _release_response(release: Release) -> ReleaseResponse:
         released_at=release.released_at,
         rollback_target=release.rollback_target,
     )
+
+
+def _release_diff_response(diff: release_service.ReleaseDiff) -> ReleaseDiffResponse:
+    return ReleaseDiffResponse(
+        service_id=diff.service_id,
+        release_version=diff.release_version,
+        compare_to=diff.compare_to,
+        policy_version_diff=diff.policy_version_diff,
+        catalog_version_diff=diff.catalog_version_diff,
+        model_version_diff=diff.model_version_diff,
+        test_run_diff=diff.test_run_diff,
+        rollback_target=diff.rollback_target,
+    )
+
+
+def _publish_request_response(
+    request: GovernedActionRequest,
+) -> PublishRequestResponse:
+    return PublishRequestResponse(
+        request_id=request.request_id,
+        service_id=request.service_id,
+        resource_type=request.resource_type,
+        resource_id=request.resource_id,
+        action=request.action,
+        status=request.status,
+        requested_by=request.requested_by,
+        requested_at=request.requested_at,
+        decided_by=request.decided_by,
+        decided_at=request.decided_at,
+        reason=request.reason,
+        decision_reason=request.decision_reason,
+    )
+
+
+def _publish_request_or_404(
+    repository: IntentRoutingRepository,
+    *,
+    service_id: str,
+    request_id: str,
+) -> GovernedActionRequest:
+    request = repository.get_governed_action_request(request_id)
+    if (
+        request is None
+        or request.service_id != service_id
+        or request.resource_type not in {"intent", "example", "release"}
+    ):
+        _raise_not_found("Publish request does not exist.")
+    return request
 
 
 def _runtime_log_response(runtime_log: Mapping[str, Any]) -> RuntimeLogResponse:
@@ -2366,6 +2534,213 @@ def get_test_run_results(
 
 
 @router.post(
+    "/services/{service_id}/publish-requests",
+    response_model=PublishRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_publish_request(
+    service_id: str,
+    request: PublishRequestCreateRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> PublishRequestResponse:
+    _require_publish_request_access(context, service_id)
+    if request.resource_type != "release" or request.action != "activate":
+        _raise_bad_request("Only release activation publish requests are supported.")
+    if request.target_version is not None and request.target_version != request.resource_id:
+        _raise_bad_request("target_version must match release resource_id.")
+
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    if repository.get_release(service_id, request.resource_id) is None:
+        _raise_not_found("Release does not exist.")
+
+    publish_request = repository.create_governed_action_request(
+        request_id=f"gar_{uuid4().hex}",
+        service_id=service_id,
+        resource_type=request.resource_type,
+        resource_id=request.resource_id,
+        action=request.action,
+        requested_by=context.actor_id,
+        requested_at=now,
+        reason=request.reason,
+    )
+    response = _publish_request_response(publish_request)
+    repository.insert_audit_log(
+        event_type="publish.requested",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="publish_request",
+        target_id=publish_request.request_id,
+        view_reason=request.reason,
+        source_ip=source_ip_from_request(http_request),
+        before_state=None,
+        after_state=response.model_dump(mode="json"),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/publish-requests/{request_id}:approve",
+    response_model=PublishRequestResponse,
+)
+def approve_publish_request(
+    service_id: str,
+    request_id: str,
+    request: PublishRequestDecisionRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> PublishRequestResponse:
+    _require_publish_decision_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    publish_request = _publish_request_or_404(
+        repository,
+        service_id=service_id,
+        request_id=request_id,
+    )
+    before_state = _publish_request_response(publish_request).model_dump(mode="json")
+    try:
+        repository.approve_governed_action_request(
+            publish_request,
+            decided_by=context.actor_id,
+            decided_at=now,
+            reason=request.reason,
+        )
+    except ValueError as exc:
+        if "request author" in str(exc):
+            raise_admin_forbidden(str(exc))
+        _raise_conflict(str(exc))
+    response = _publish_request_response(publish_request)
+    repository.insert_audit_log(
+        event_type="publish.approved",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="publish_request",
+        target_id=publish_request.request_id,
+        view_reason=request.reason,
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state=response.model_dump(mode="json"),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/publish-requests/{request_id}:reject",
+    response_model=PublishRequestResponse,
+)
+def reject_publish_request(
+    service_id: str,
+    request_id: str,
+    request: PublishRequestDecisionRequest,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> PublishRequestResponse:
+    if request.reason is None:
+        _raise_validation_failed()
+    _require_publish_decision_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    publish_request = _publish_request_or_404(
+        repository,
+        service_id=service_id,
+        request_id=request_id,
+    )
+    before_state = _publish_request_response(publish_request).model_dump(mode="json")
+    try:
+        repository.reject_governed_action_request(
+            publish_request,
+            decided_by=context.actor_id,
+            decided_at=now,
+            reason=request.reason,
+        )
+    except ValueError as exc:
+        if "request author" in str(exc):
+            raise_admin_forbidden(str(exc))
+        _raise_conflict(str(exc))
+    response = _publish_request_response(publish_request)
+    repository.insert_audit_log(
+        event_type="publish.rejected",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="publish_request",
+        target_id=publish_request.request_id,
+        view_reason=request.reason,
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state=response.model_dump(mode="json"),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/services/{service_id}/publish-requests/{request_id}:activate",
+    response_model=ReleaseResponse,
+)
+def activate_publish_request(
+    service_id: str,
+    request_id: str,
+    http_request: Request,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ReleaseResponse:
+    _require_publish_activation_access(context, service_id)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    publish_request = _publish_request_or_404(
+        repository,
+        service_id=service_id,
+        request_id=request_id,
+    )
+    if publish_request.resource_type != "release" or publish_request.action != "activate":
+        _raise_bad_request("Publish request is not a release activation request.")
+    if publish_request.status != "approved":
+        _raise_conflict("Publish request must be approved before activation.")
+
+    try:
+        before_state, release = release_service.activate_release(
+            repository,
+            service_id=service_id,
+            release_version=publish_request.resource_id,
+        )
+    except release_service.ReleaseDependencyNotFoundError as exc:
+        session.rollback()
+        _raise_not_found(str(exc))
+
+    publish_request.status = "activated"
+    session.flush()
+    repository.insert_audit_log(
+        event_type="release.activated",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="release",
+        target_id=release.release_version,
+        view_reason=publish_request.reason,
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state=release_service.release_after_state(release),
+        created_at=now,
+    )
+    session.commit()
+    return _release_response(release)
+
+
+@router.post(
     "/services/{service_id}/releases",
     response_model=ReleaseResponse,
     status_code=status.HTTP_201_CREATED,
@@ -2505,6 +2880,32 @@ def list_release_candidates(
             )
         )
     return candidates
+
+
+@router.get(
+    "/services/{service_id}/releases/{release_version}/diff",
+    response_model=ReleaseDiffResponse,
+)
+def get_release_diff(
+    service_id: str,
+    release_version: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    compare_to: str | None = None,
+) -> ReleaseDiffResponse:
+    _require_release_review_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    try:
+        diff = release_service.build_release_diff(
+            repository,
+            service_id=service_id,
+            release_version=release_version,
+            compare_to=compare_to,
+        )
+    except release_service.ReleaseDependencyNotFoundError as exc:
+        _raise_not_found(str(exc))
+    return _release_diff_response(diff)
 
 
 @router.get(

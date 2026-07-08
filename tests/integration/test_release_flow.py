@@ -1071,10 +1071,19 @@ def test_sprint_zero_vertical_slice(
         assert "010-1234-5678" not in serialized_log_body
 
         view_reason = "Sprint 0 acceptance audit ticket INC-20260626-001"
+        raw_query_view_token = _approved_raw_query_view_token(
+            client,
+            service_id=SPRINT_ZERO_SERVICE_ID,
+            trace_id=trace_id,
+            view_reason=view_reason,
+        )
         decrypt_response = client.post(
             f"/admin/v1/services/{SPRINT_ZERO_SERVICE_ID}/runtime-logs/{trace_id}:decrypt-raw-query",
             headers=_auditor_headers(SPRINT_ZERO_SERVICE_ID),
-            json={"view_reason": view_reason},
+            json={
+                "view_reason": view_reason,
+                "raw_query_view_token": raw_query_view_token,
+            },
         )
         assert decrypt_response.status_code == 200
         decrypt_body = decrypt_response.json()
@@ -1752,6 +1761,35 @@ def _auditor_headers(service_id: str) -> dict[str, str]:
     )
 
 
+def _approved_raw_query_view_token(
+    client: TestClient,
+    *,
+    service_id: str,
+    trace_id: str,
+    view_reason: str,
+) -> str:
+    created = client.post(
+        f"/admin/v1/services/{service_id}/runtime-logs/{trace_id}/raw-query-view-requests",
+        headers=_auditor_headers(service_id),
+        json={"reason": view_reason},
+    )
+    assert created.status_code == 201
+    request_id = str(created.json()["request_id"])
+    approved = client.post(
+        f"/admin/v1/services/{service_id}/raw-query-view-requests/{request_id}:approve",
+        headers=_admin_headers(actor_id="system-approver"),
+        json={"reason": "Sprint 0 governed raw query review approved"},
+    )
+    assert approved.status_code == 200
+    issued = client.post(
+        f"/admin/v1/services/{service_id}/raw-query-view-requests/{request_id}:issue-token",
+        headers=_auditor_headers(service_id),
+        json={},
+    )
+    assert issued.status_code == 200
+    return str(issued.json()["token"])
+
+
 def _sprint_zero_example_count(
     intent_examples: Mapping[str, Mapping[str, Sequence[str]]],
 ) -> int:
@@ -1849,6 +1887,8 @@ def _purge_service_rows(db_session: Session, service_id: str) -> None:
         {"service_id": service_id},
     )
     for table_name in (
+        "raw_query_view_tokens",
+        "governed_action_requests",
         "runtime_logs",
         "releases",
         "test_runs",
