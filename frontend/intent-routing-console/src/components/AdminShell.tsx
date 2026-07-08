@@ -6,6 +6,7 @@ import { Alert, ConfigProvider, Skeleton, theme as antdTheme } from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import {
   AuditOutlined,
+  ClusterOutlined,
   DashboardOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
@@ -97,6 +98,7 @@ export function AdminShell({ title, children }: AdminShellProps) {
         route={{
           routes: [
             { path: '/dashboard', name: 'Dashboard', icon: <DashboardOutlined /> },
+            { path: '/services', name: 'Services', icon: <ClusterOutlined /> },
             { path: '/intents', name: 'Intent Catalog', icon: <ProfileOutlined /> },
             { path: '/releases', name: 'Releases', icon: <RocketOutlined /> },
             { path: '/test-runs', name: 'Test Runs', icon: <ExperimentOutlined /> },

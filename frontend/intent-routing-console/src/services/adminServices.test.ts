@@ -9,6 +9,7 @@ import {
   createIntent,
   createPolicyVersion,
   createRelease,
+  createService,
   createTestRun,
   fetchTestRun,
   fetchTestRunResults,
@@ -35,6 +36,23 @@ describe('admin service Phase 1 write flow requests', () => {
   beforeEach(() => {
     requestMock.mockReset();
     requestMock.mockResolvedValue({});
+  });
+
+  it('creates services with POST body and session-cookie auth', async () => {
+    const payload: API.ServiceCreateRequest = {
+      service_id: 'svc-c1-onboarding',
+      display_name: 'C1 Onboarding',
+      environment: 'dev',
+      default_threshold_preset: 'balanced',
+      max_input_tokens: 256,
+    };
+
+    await createService(payload);
+
+    expect(requestMock).toHaveBeenCalledWith('/services', {
+      method: 'POST',
+      data: payload,
+    });
   });
 
   it('creates intents with encoded service id and POST body', async () => {

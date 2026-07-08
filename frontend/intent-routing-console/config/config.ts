@@ -14,6 +14,7 @@ export default defineConfig({
     { path: '/', redirect: '/dashboard' },
     { path: '/login', component: './Login' },
     { path: '/dashboard', component: './Dashboard' },
+    { path: '/services', component: './Services' },
     { path: '/intents', component: './Intents' },
     { path: '/releases', component: './Releases' },
     { path: '/test-runs', component: './TestRuns' },
