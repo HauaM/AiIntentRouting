@@ -120,7 +120,7 @@ Keep using `FutureFeatureNotice` for unsupported capabilities:
   `POST /services/{sid}/runtime-logs/{trace_id}/raw-query-view-requests`,
   `POST /services/{sid}/raw-query-view-requests/{request_id}:approve`,
   `POST /services/{sid}/raw-query-view-requests/{request_id}:reject`, and
-  `POST /services/{sid}/raw-query-view-requests/{request_id}:token`.
+  `POST /services/{sid}/raw-query-view-requests/{request_id}:issue-token`.
 - Masked export: `POST /services/{sid}/exports`.
 - Intent detail: no current `GET /intents/{intent_id}`. Use selected row data from list.
 

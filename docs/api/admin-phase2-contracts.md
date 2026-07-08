@@ -87,7 +87,6 @@ Creates a governed publish request for catalog, example, or release changes.
 | `action` | yes | `request`, `activate`, or `rollback`. |
 | `target_version` | no | Catalog, policy, or release version being proposed. |
 | `reason` | yes | Operator-visible justification. |
-| `evidence_refs` | no | Safe ids or paths only; no raw query text or secrets. |
 
 Response: `PublishRequestResponse`.
 

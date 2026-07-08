@@ -2,6 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = ROOT / "docs/api/admin-phase2-contracts.md"
+PATTERN_KIT = ROOT / "docs/AdminUI_Handbook/v04/PATTERN_KIT.md"
 
 
 def _contract_text() -> str:
@@ -125,6 +126,16 @@ def test_admin_phase2_contract_docs_publish_permissions_are_resource_specific() 
     assert "`release:reject`" not in reject_section
 
 
+def test_admin_phase2_contract_docs_reject_publish_evidence_refs_until_stored() -> None:
+    text = _contract_text()
+    publish_section = _section(
+        text,
+        "POST /admin/v1/services/{service_id}/publish-requests",
+    )
+
+    assert "`evidence_refs`" not in publish_section
+
+
 def test_admin_phase2_contract_docs_exports_are_synchronous() -> None:
     text = _contract_text()
     export_section = _section(text, "POST /admin/v1/services/{service_id}/exports")
@@ -153,3 +164,11 @@ def test_admin_phase2_contract_docs_define_security_rules() -> None:
         "no encrypted DEKs/ciphertext/KEK material",
     ):
         assert rule in text
+
+
+def test_admin_ui_pattern_kit_uses_raw_query_issue_token_route() -> None:
+    assert PATTERN_KIT.exists()
+    text = PATTERN_KIT.read_text(encoding="utf-8")
+
+    assert "`POST /services/{sid}/raw-query-view-requests/{request_id}:issue-token`" in text
+    assert "`POST /services/{sid}/raw-query-view-requests/{request_id}:token`" not in text

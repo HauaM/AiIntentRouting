@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -158,6 +159,114 @@ def test_release_activation_requires_governed_approval_for_service_developer(
     assert _audit_log(db_session, "publish.requested", request_id) is not None
     assert _audit_log(db_session, "publish.approved", request_id) is not None
     assert _audit_log(db_session, "release.activated", release_version) is not None
+
+
+def test_publish_request_rejects_evidence_refs_field(
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    service_id, policy_version, catalog_version, client = _release_setup(
+        db_session,
+        monkeypatch,
+    )
+    release_version = _create_valid_release(
+        db_session,
+        client,
+        service_id,
+        policy_version=policy_version,
+        catalog_version=catalog_version,
+    )
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/publish-requests",
+        headers=_developer_headers(service_id),
+        json={
+            "resource_type": "release",
+            "resource_id": release_version,
+            "action": "activate",
+            "target_version": release_version,
+            "reason": "Promote tested release after green gate",
+            "evidence_refs": ["release-diff-reviewed"],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["status"] == "error"
+    assert response.json()["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_publish_request_audit_metadata_redacts_user_reason_text(
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    service_id, policy_version, catalog_version, client = _release_setup(
+        db_session,
+        monkeypatch,
+    )
+    release_version = _create_valid_release(
+        db_session,
+        client,
+        service_id,
+        policy_version=policy_version,
+        catalog_version=catalog_version,
+    )
+    malicious_reason = "Promote RAW_QUERY ciphertext key_live_secret release"
+    malicious_decision_reason = "Approved RAW_QUERY ciphertext key_live_secret review"
+
+    requested = client.post(
+        f"/admin/v1/services/{service_id}/publish-requests",
+        headers=_developer_headers(service_id),
+        json={
+            "resource_type": "release",
+            "resource_id": release_version,
+            "action": "activate",
+            "target_version": release_version,
+            "reason": malicious_reason,
+        },
+    )
+    assert requested.status_code == 201
+    request_id = requested.json()["request_id"]
+    assert requested.json()["reason"] == malicious_reason
+
+    approved = client.post(
+        f"/admin/v1/services/{service_id}/publish-requests/{request_id}:approve",
+        headers=_owner_headers(service_id),
+        json={"reason": malicious_decision_reason},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["decision_reason"] == malicious_decision_reason
+
+    audit_logs = list(
+        db_session.scalars(
+            select(models.AuditLog)
+            .where(models.AuditLog.target_id == request_id)
+            .where(
+                models.AuditLog.event_type.in_(
+                    {"publish.requested", "publish.approved"}
+                )
+            )
+            .order_by(models.AuditLog.created_at, models.AuditLog.audit_id)
+        )
+    )
+    assert [audit_log.event_type for audit_log in audit_logs] == [
+        "publish.requested",
+        "publish.approved",
+    ]
+    serialized_audit = json.dumps(
+        [
+            {
+                "view_reason": audit_log.view_reason,
+                "before_state": audit_log.before_state,
+                "after_state": audit_log.after_state,
+            }
+            for audit_log in audit_logs
+        ],
+        ensure_ascii=False,
+        default=str,
+    )
+    assert "RAW_QUERY" not in serialized_audit
+    assert "ciphertext" not in serialized_audit
+    assert "key_live_secret" not in serialized_audit
 
 
 def test_release_reject_is_terminal(

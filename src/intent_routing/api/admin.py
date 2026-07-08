@@ -437,7 +437,6 @@ class PublishRequestCreateRequest(BaseModel):
     action: Literal["request", "activate", "rollback"]
     target_version: str | None = Field(default=None, min_length=1)
     reason: str = Field(min_length=10)
-    evidence_refs: list[str] = Field(default_factory=list)
 
     @field_validator("resource_id", "reason")
     @classmethod
@@ -456,14 +455,6 @@ class PublishRequestCreateRequest(BaseModel):
         if not stripped:
             raise ValueError("target_version must not be blank")
         return stripped
-
-    @field_validator("evidence_refs")
-    @classmethod
-    def evidence_refs_must_not_be_blank(cls, value: list[str]) -> list[str]:
-        stripped_values = [item.strip() for item in value]
-        if any(not item for item in stripped_values):
-            raise ValueError("evidence_refs must not contain blank values")
-        return stripped_values
 
 
 class PublishRequestDecisionRequest(BaseModel):
@@ -968,6 +959,52 @@ def _hash_raw_query_view_token(token: str) -> str:
     if not token.strip():
         raise ValueError("raw query view token must not be blank")
     return f"sha256:{hashlib.sha256(token.encode('utf-8')).hexdigest()}"
+
+
+_PHASE2_SAFE_AUDIT_REASON = "governed workflow reason supplied"
+
+
+def _safe_phase2_audit_reason(reason: str | None) -> str | None:
+    if reason is None:
+        return None
+    return _PHASE2_SAFE_AUDIT_REASON
+
+
+def _safe_phase2_audit_state(
+    state: BaseModel | Mapping[str, Any],
+) -> dict[str, Any]:
+    values = (
+        state.model_dump(mode="json")
+        if isinstance(state, BaseModel)
+        else dict(state)
+    )
+    for field_name in ("reason", "decision_reason"):
+        if field_name in values:
+            value = values.pop(field_name)
+            values[f"{field_name}_present"] = (
+                isinstance(value, str) and bool(value.strip())
+            )
+    return values
+
+
+def _raw_query_token_audit_state(
+    token: Any,
+    *,
+    include_terminal_timestamps: bool = True,
+    status_override: str | None = None,
+) -> dict[str, Any]:
+    state = {
+        "request_id": token.request_id,
+        "service_id": token.service_id,
+        "trace_id": token.trace_id,
+        "status": status_override or token.request.status,
+        "expires_at": token.expires_at.isoformat(),
+    }
+    if include_terminal_timestamps and token.expired_at is not None:
+        state["expired_at"] = token.expired_at.isoformat()
+    if include_terminal_timestamps and token.viewed_at is not None:
+        state["viewed_at"] = token.viewed_at.isoformat()
+    return state
 
 
 def _raw_query_view_request_response(
@@ -1817,7 +1854,7 @@ def create_export(
         trace_id=None,
         target_type="export",
         target_id=export_id,
-        view_reason=request.reason,
+        view_reason=_safe_phase2_audit_reason(request.reason),
         source_ip=source_ip_from_request(http_request),
         before_state=None,
         after_state=_export_audit_state(
@@ -1852,7 +1889,7 @@ def create_export(
             trace_id=None,
             target_type="export",
             target_id=export_id,
-            view_reason=request.reason,
+            view_reason=_safe_phase2_audit_reason(request.reason),
             source_ip=source_ip_from_request(http_request),
             before_state=_export_audit_state(
                 requested_response,
@@ -1890,7 +1927,7 @@ def create_export(
         trace_id=None,
         target_type="export",
         target_id=export_id,
-        view_reason=request.reason,
+        view_reason=_safe_phase2_audit_reason(request.reason),
         source_ip=source_ip_from_request(http_request),
         before_state=_export_audit_state(
             requested_response,
@@ -1947,10 +1984,10 @@ def create_raw_query_view_request(
         trace_id=trace_id,
         target_type="raw_query_view_request",
         target_id=view_request.request_id,
-        view_reason=request.reason,
+        view_reason=_safe_phase2_audit_reason(request.reason),
         source_ip=source_ip_from_request(http_request),
         before_state=None,
-        after_state=response.model_dump(mode="json"),
+        after_state=_safe_phase2_audit_state(response),
         created_at=now,
     )
     session.commit()
@@ -1977,7 +2014,9 @@ def approve_raw_query_view_request(
         service_id=service_id,
         request_id=request_id,
     )
-    before_state = _raw_query_view_request_response(view_request).model_dump(mode="json")
+    before_state = _safe_phase2_audit_state(
+        _raw_query_view_request_response(view_request)
+    )
     try:
         repository.approve_governed_action_request(
             view_request,
@@ -1997,10 +2036,10 @@ def approve_raw_query_view_request(
         trace_id=view_request.resource_id,
         target_type="raw_query_view_request",
         target_id=view_request.request_id,
-        view_reason=request.reason,
+        view_reason=_safe_phase2_audit_reason(request.reason),
         source_ip=source_ip_from_request(http_request),
         before_state=before_state,
-        after_state=response.model_dump(mode="json"),
+        after_state=_safe_phase2_audit_state(response),
         created_at=now,
     )
     session.commit()
@@ -2029,7 +2068,9 @@ def reject_raw_query_view_request(
         service_id=service_id,
         request_id=request_id,
     )
-    before_state = _raw_query_view_request_response(view_request).model_dump(mode="json")
+    before_state = _safe_phase2_audit_state(
+        _raw_query_view_request_response(view_request)
+    )
     try:
         repository.reject_governed_action_request(
             view_request,
@@ -2049,10 +2090,10 @@ def reject_raw_query_view_request(
         trace_id=view_request.resource_id,
         target_type="raw_query_view_request",
         target_id=view_request.request_id,
-        view_reason=request.reason,
+        view_reason=_safe_phase2_audit_reason(request.reason),
         source_ip=source_ip_from_request(http_request),
         before_state=before_state,
-        after_state=response.model_dump(mode="json"),
+        after_state=_safe_phase2_audit_state(response),
         created_at=now,
     )
     session.commit()
@@ -2081,9 +2122,11 @@ def issue_raw_query_view_token(
     _require_raw_query_token_requester(context, view_request)
     raw_token = _create_raw_query_view_token()
     expires_at = now + timedelta(seconds=request.ttl_seconds)
-    before_state = _raw_query_view_request_response(view_request).model_dump(mode="json")
+    before_state = _safe_phase2_audit_state(
+        _raw_query_view_request_response(view_request)
+    )
     try:
-        repository.issue_raw_query_view_token(
+        token = repository.issue_raw_query_view_token(
             view_request,
             token_id=f"rqt_{uuid4().hex}",
             token_hash=_hash_raw_query_view_token(raw_token),
@@ -2109,11 +2152,7 @@ def issue_raw_query_view_token(
         source_ip=source_ip_from_request(http_request),
         before_state=before_state,
         after_state={
-            "request_id": view_request.request_id,
-            "service_id": service_id,
-            "trace_id": view_request.resource_id,
-            "status": view_request.status,
-            "expires_at": expires_at.isoformat(),
+            **_raw_query_token_audit_state(token),
             "token_returned_once": True,
         },
         created_at=now,
@@ -2139,13 +2178,39 @@ def decrypt_raw_runtime_query(
     _ensure_service_exists(repository, service_id)
     if request.raw_query_view_token is None:
         raise_admin_forbidden("Approved raw query view token is required.")
-    raw_query_view_token = repository.get_valid_raw_query_view_token(
-        token_hash=_hash_raw_query_view_token(request.raw_query_view_token),
+    raw_query_view_token_hash = _hash_raw_query_view_token(request.raw_query_view_token)
+    raw_query_view_token = repository.consume_raw_query_view_token(
+        token_hash=raw_query_view_token_hash,
         service_id=service_id,
         trace_id=trace_id,
-        now=now,
+        consumed_at=now,
     )
     if raw_query_view_token is None:
+        expired_token = repository.expire_raw_query_view_token(
+            token_hash=raw_query_view_token_hash,
+            service_id=service_id,
+            trace_id=trace_id,
+            expired_at=now,
+        )
+        if expired_token is not None:
+            repository.insert_audit_log(
+                event_type="raw_query.token_expired",
+                actor_id=context.actor_id,
+                service_id=service_id,
+                trace_id=trace_id,
+                target_type="raw_query_view_request",
+                target_id=expired_token.request_id,
+                view_reason=None,
+                source_ip=source_ip_from_request(http_request),
+                before_state=_raw_query_token_audit_state(
+                    expired_token,
+                    include_terminal_timestamps=False,
+                    status_override="token_issued",
+                ),
+                after_state=_raw_query_token_audit_state(expired_token),
+                created_at=now,
+            )
+            session.commit()
         raise_admin_forbidden("Approved raw query view token is required.")
     _require_raw_query_token_requester(context, raw_query_view_token.request)
 
@@ -2166,7 +2231,6 @@ def decrypt_raw_runtime_query(
     if query_raw is None:
         _raise_raw_query_unavailable()
 
-    repository.mark_raw_query_view_token_viewed(raw_query_view_token, viewed_at=now)
     repository.insert_audit_log(
         event_type="raw_query.viewed",
         actor_id=context.actor_id,
@@ -2810,10 +2874,10 @@ def create_publish_request(
         trace_id=None,
         target_type="publish_request",
         target_id=publish_request.request_id,
-        view_reason=request.reason,
+        view_reason=_safe_phase2_audit_reason(request.reason),
         source_ip=source_ip_from_request(http_request),
         before_state=None,
-        after_state=response.model_dump(mode="json"),
+        after_state=_safe_phase2_audit_state(response),
         created_at=now,
     )
     session.commit()
@@ -2840,7 +2904,7 @@ def approve_publish_request(
         service_id=service_id,
         request_id=request_id,
     )
-    before_state = _publish_request_response(publish_request).model_dump(mode="json")
+    before_state = _safe_phase2_audit_state(_publish_request_response(publish_request))
     try:
         repository.approve_governed_action_request(
             publish_request,
@@ -2860,10 +2924,10 @@ def approve_publish_request(
         trace_id=None,
         target_type="publish_request",
         target_id=publish_request.request_id,
-        view_reason=request.reason,
+        view_reason=_safe_phase2_audit_reason(request.reason),
         source_ip=source_ip_from_request(http_request),
         before_state=before_state,
-        after_state=response.model_dump(mode="json"),
+        after_state=_safe_phase2_audit_state(response),
         created_at=now,
     )
     session.commit()
@@ -2892,7 +2956,7 @@ def reject_publish_request(
         service_id=service_id,
         request_id=request_id,
     )
-    before_state = _publish_request_response(publish_request).model_dump(mode="json")
+    before_state = _safe_phase2_audit_state(_publish_request_response(publish_request))
     try:
         repository.reject_governed_action_request(
             publish_request,
@@ -2912,10 +2976,10 @@ def reject_publish_request(
         trace_id=None,
         target_type="publish_request",
         target_id=publish_request.request_id,
-        view_reason=request.reason,
+        view_reason=_safe_phase2_audit_reason(request.reason),
         source_ip=source_ip_from_request(http_request),
         before_state=before_state,
-        after_state=response.model_dump(mode="json"),
+        after_state=_safe_phase2_audit_state(response),
         created_at=now,
     )
     session.commit()
@@ -2965,7 +3029,7 @@ def activate_publish_request(
         trace_id=None,
         target_type="release",
         target_id=release.release_version,
-        view_reason=publish_request.reason,
+        view_reason=_safe_phase2_audit_reason(publish_request.reason),
         source_ip=source_ip_from_request(http_request),
         before_state=before_state,
         after_state=release_service.release_after_state(release),

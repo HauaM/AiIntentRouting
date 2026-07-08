@@ -73,6 +73,56 @@ def test_masked_runtime_log_export_excludes_raw_query_and_secret_material(
     assert audit_events == ["export.requested", "export.completed"]
 
 
+def test_export_audit_metadata_redacts_user_reason_text(
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    trace_id = _create_runtime_trace(db_session, monkeypatch)
+    client = _client(db_session, monkeypatch)
+    malicious_reason = "Investigating RAW_QUERY ciphertext key_live_secret export"
+
+    response = client.post(
+        f"/admin/v1/services/{SERVICE_ID}/exports",
+        headers=_auditor_headers(SERVICE_ID, actor_id="reason-redaction-auditor"),
+        json={
+            "resource_type": "runtime_log",
+            "format": "jsonl",
+            "filters": {"trace_id": trace_id},
+            "reason": malicious_reason,
+        },
+    )
+
+    assert response.status_code == 200
+    audit_logs = list(
+        db_session.scalars(
+            select(models.AuditLog)
+            .where(models.AuditLog.service_id == SERVICE_ID)
+            .where(models.AuditLog.actor_id == "reason-redaction-auditor")
+            .where(models.AuditLog.target_type == "export")
+            .order_by(models.AuditLog.created_at, models.AuditLog.audit_id)
+        )
+    )
+    assert [audit_log.event_type for audit_log in audit_logs] == [
+        "export.requested",
+        "export.completed",
+    ]
+    serialized_audit = json.dumps(
+        [
+            {
+                "view_reason": audit_log.view_reason,
+                "before_state": audit_log.before_state,
+                "after_state": audit_log.after_state,
+            }
+            for audit_log in audit_logs
+        ],
+        ensure_ascii=False,
+        default=str,
+    )
+    assert "RAW_QUERY" not in serialized_audit
+    assert "ciphertext" not in serialized_audit
+    assert "key_live_secret" not in serialized_audit
+
+
 def test_export_rejects_unsupported_filters_and_writes_audit(
     db_session: Session,
     monkeypatch,
