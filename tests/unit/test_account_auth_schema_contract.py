@@ -1,8 +1,9 @@
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint, text
 from sqlalchemy.orm import Session
 
 from intent_routing.db import models
@@ -70,7 +71,9 @@ def test_repository_exposes_account_auth_helpers() -> None:
         "get_admin_user",
         "get_admin_user_by_email",
         "update_admin_user_login",
+        "update_admin_user_password",
         "assign_admin_user_role",
+        "ensure_admin_user_role",
         "admin_user_role_exists",
         "list_admin_user_roles",
         "create_admin_session",
@@ -124,6 +127,71 @@ def test_normalize_admin_email_rejects_blank_values() -> None:
 
     with pytest.raises(ValueError, match="email must not be blank"):
         normalize_admin_email("  ")
+
+
+def test_repository_updates_admin_password_and_ensures_role(
+    db_session: Session,
+) -> None:
+    now = datetime.now(UTC)
+    user_id = "admin-password-sync"
+    repository = IntentRoutingRepository(db_session)
+
+    db_session.execute(
+        text("delete from admin_user_roles where user_id = :user_id"),
+        {"user_id": user_id},
+    )
+    db_session.execute(
+        text("delete from admin_users where user_id = :user_id"),
+        {"user_id": user_id},
+    )
+    db_session.commit()
+
+    try:
+        user = repository.create_admin_user(
+            user_id=user_id,
+            email="password-sync@example.com",
+            display_name="Password Sync",
+            password_hash="old-password-hash",
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+
+        repository.update_admin_user_password(
+            user,
+            password_hash="new-password-hash",
+            updated_at=now,
+        )
+        role = repository.ensure_admin_user_role(
+            user_id=user_id,
+            role="system_admin",
+            assigned_by="startup-provisioning",
+            assigned_at=now,
+        )
+        duplicate_role = repository.ensure_admin_user_role(
+            user_id=user_id,
+            role="system_admin",
+            assigned_by="startup-provisioning",
+            assigned_at=now,
+        )
+        db_session.commit()
+
+        assert user.password_hash == "new-password-hash"
+        assert user.updated_at == now
+        assert role is duplicate_role
+        assert [role.role for role in repository.list_admin_user_roles(user_id)] == [
+            "system_admin"
+        ]
+    finally:
+        db_session.execute(
+            text("delete from admin_user_roles where user_id = :user_id"),
+            {"user_id": user_id},
+        )
+        db_session.execute(
+            text("delete from admin_users where user_id = :user_id"),
+            {"user_id": user_id},
+        )
+        db_session.commit()
 
 
 def _has_unique_constraint(table: Any, column_names: list[str]) -> bool:

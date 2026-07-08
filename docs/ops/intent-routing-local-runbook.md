@@ -21,7 +21,12 @@ Defaults:
 - Backend: `http://127.0.0.1:30141`
 - Frontend: `http://127.0.0.1:30140`
 - PostgreSQL: `127.0.0.1:30142`
-- Admin login: `local-admin@example.com` / `local-admin-password`
+- Admin login: `local-admin@example.com` / `local-admin-password` from startup provisioning variables
+
+The script exports `ADMIN_SYSTEM_ADMIN_EMAIL`, `ADMIN_SYSTEM_ADMIN_PASSWORD`,
+and `ADMIN_SYSTEM_ADMIN_DISPLAY_NAME` so the backend creates or synchronizes the
+local `system_admin` during startup. In non-local deployments, omit those
+variables to skip startup account creation.
 
 ## Environment
 

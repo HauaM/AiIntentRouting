@@ -22,8 +22,18 @@ def test_local_dev_stack_script_contract() -> None:
         'DEFAULT_DATABASE_URL="postgresql+psycopg://'
         'intent:intent@127.0.0.1:30142/intent_routing"'
     ) in text
-    assert 'ADMIN_UI_EMAIL="${ADMIN_UI_EMAIL:-local-admin@example.com}"' in text
-    assert 'ADMIN_UI_PASSWORD="${ADMIN_UI_PASSWORD:-local-admin-password}"' in text
+    assert (
+        'ADMIN_SYSTEM_ADMIN_EMAIL="${ADMIN_SYSTEM_ADMIN_EMAIL:-local-admin@example.com}"'
+        in text
+    )
+    assert (
+        'ADMIN_SYSTEM_ADMIN_PASSWORD="${ADMIN_SYSTEM_ADMIN_PASSWORD:-local-admin-password}"'
+        in text
+    )
+    assert (
+        'ADMIN_SYSTEM_ADMIN_DISPLAY_NAME="${ADMIN_SYSTEM_ADMIN_DISPLAY_NAME:-Local Admin}"'
+        in text
+    )
     assert "uv run alembic upgrade head" in text
     assert "ensure_local_database" in text
     assert "docker compose up -d postgres" in text
@@ -31,7 +41,8 @@ def test_local_dev_stack_script_contract() -> None:
     assert "Skipping compose postgres management for custom DATABASE_URL" in text
     assert "uv run uvicorn intent_routing.main:create_app --factory" in text
     assert "seed_local_admin_service" in text
-    assert "bootstrap_local_admin_account" in text
+    assert "bootstrap_local_admin_account" not in text
+    assert "/admin/v1/auth/bootstrap-admin" not in text
     assert "scripts/seed_pilot.py" in text
     assert "--service-id" in text
     assert '"${ADMIN_UI_SERVICE_ID}"' in text
@@ -91,14 +102,11 @@ def test_local_dev_stack_cleans_up_orphaned_log_followers() -> None:
     )
 
 
-def test_local_dev_stack_bootstraps_local_login_account() -> None:
+def test_local_dev_stack_delegates_login_account_to_backend_startup() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
 
-    assert "bootstrap_local_admin_account()" in text
-    assert "/admin/v1/auth/bootstrap-admin" in text
-    assert "/admin/v1/auth/login" in text
-    assert "Admin UI login account is ready" in text
+    assert "Admin UI login account is configured" in text
     main_body = text.split("main() {", 1)[1]
-    assert main_body.index("bootstrap_local_admin_account") < main_body.index(
+    assert main_body.index("Admin UI login account is configured") < main_body.index(
         "seed_local_admin_service"
     )
