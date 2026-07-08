@@ -27,6 +27,26 @@ def test_auth_router_is_included_in_app_routes() -> None:
     assert "get" in paths["/admin/v1/auth/me"]
 
 
+def test_app_startup_runs_system_admin_provisioning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+
+    def fake_configure(session_scope_factory: object) -> str:
+        calls.append(session_scope_factory)
+        return "skipped"
+
+    monkeypatch.setattr(
+        "intent_routing.main.configure_startup_system_admin",
+        fake_configure,
+    )
+
+    with TestClient(create_app()):
+        pass
+
+    assert len(calls) == 1
+
+
 def test_auth_openapi_contract_does_not_expose_secret_fields() -> None:
     openapi = create_app().openapi()
     auth_schema_names = {

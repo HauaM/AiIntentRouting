@@ -177,6 +177,20 @@ class IntentRoutingRepository:
         self.session.flush()
         return user
 
+    def update_admin_user_password(
+        self,
+        user: models.AdminUser,
+        *,
+        password_hash: str,
+        updated_at: datetime,
+    ) -> models.AdminUser:
+        if not password_hash.strip():
+            raise ValueError("admin user password_hash must not be blank")
+        user.password_hash = password_hash
+        user.updated_at = updated_at
+        self.session.flush()
+        return user
+
     def assign_admin_user_role(self, **values: Any) -> models.AdminUserRole:
         values = dict(values)
         values["role"] = _require_allowed_value(
@@ -185,6 +199,20 @@ class IntentRoutingRepository:
             allowed=GLOBAL_ADMIN_ROLES,
         )
         return self._add_and_flush(models.AdminUserRole(**values))
+
+    def ensure_admin_user_role(self, **values: Any) -> models.AdminUserRole:
+        user_id = values.get("user_id")
+        role = _require_allowed_value(
+            values.get("role"),
+            field_name="admin user role",
+            allowed=GLOBAL_ADMIN_ROLES,
+        )
+        if not isinstance(user_id, str) or not user_id.strip():
+            raise ValueError("admin user role user_id must be provided")
+        existing = self.session.get(models.AdminUserRole, (user_id, role))
+        if existing is not None:
+            return existing
+        return self.assign_admin_user_role(**values)
 
     def admin_user_role_exists(self, role: str) -> bool:
         role = _require_allowed_value(

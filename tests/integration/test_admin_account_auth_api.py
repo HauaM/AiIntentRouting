@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -139,6 +140,15 @@ def test_admin_auth_api_bootstrap_login_me_logout_flow(
         {"email_normalized": email.lower()},
     )
     db_session.commit()
+    existing_system_admin = db_session.execute(
+        text(
+            "select user_id from admin_user_roles "
+            "where role = 'system_admin' and user_id != :user_id limit 1"
+        ),
+        {"user_id": user_id},
+    ).first()
+    if existing_system_admin is not None:
+        pytest.skip("bootstrap flow requires no pre-existing system_admin account")
 
     app = create_app()
 
@@ -237,6 +247,75 @@ def test_admin_auth_api_bootstrap_login_me_logout_flow(
             user_id="second-admin-auth-api-it",
             service_id=service_id,
         )
+
+
+def test_admin_startup_provisioning_creates_login_account(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    email = "startup-login@example.com"
+    password = "startup-login-password"
+
+    _purge_admin_by_email(db_session, email)
+    monkeypatch.setenv("ADMIN_SYSTEM_ADMIN_EMAIL", email)
+    monkeypatch.setenv("ADMIN_SYSTEM_ADMIN_PASSWORD", password)
+    monkeypatch.setenv("ADMIN_SYSTEM_ADMIN_DISPLAY_NAME", "Startup Login")
+
+    @contextmanager
+    def override_lifespan_session() -> Iterator[Session]:
+        try:
+            yield db_session
+            db_session.commit()
+        except Exception:
+            db_session.rollback()
+            raise
+
+    monkeypatch.setattr(
+        "intent_routing.main.session_scope",
+        override_lifespan_session,
+    )
+    app = create_app()
+
+    def override_session() -> Iterator[Session]:
+        yield db_session
+
+    app.dependency_overrides[get_admin_session] = override_session
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/admin/v1/auth/login",
+                json={"email": email, "password": password},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["user"]["email"] == email
+        assert response.json()["global_roles"] == ["system_admin"]
+    finally:
+        _purge_admin_by_email(db_session, email)
+
+
+def _purge_admin_by_email(db_session: Session, email: str) -> None:
+    existing = IntentRoutingRepository(db_session).get_admin_user_by_email(email)
+    if existing is None:
+        return
+    db_session.execute(
+        text("delete from user_service_roles where user_id = :user_id"),
+        {"user_id": existing.user_id},
+    )
+    db_session.execute(
+        text("delete from admin_user_roles where user_id = :user_id"),
+        {"user_id": existing.user_id},
+    )
+    db_session.execute(
+        text("delete from admin_sessions where user_id = :user_id"),
+        {"user_id": existing.user_id},
+    )
+    db_session.execute(
+        text("delete from admin_users where user_id = :user_id"),
+        {"user_id": existing.user_id},
+    )
+    db_session.commit()
 
 
 def _purge_account_auth_rows(
