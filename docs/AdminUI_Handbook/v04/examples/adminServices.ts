@@ -99,3 +99,30 @@ export async function revokeApiKey(keyId: string) {
   return request<API.ApiKey>(`/api-keys/${keyId}:revoke`, { method: 'POST' });
 }
 
+export async function createServiceApiKey(
+  serviceId: string,
+  payload: API.ServiceApiKeyCreateRequest,
+) {
+  return request<API.ApiKeyCreateResponse>(`/services/${serviceId}/api-keys`, {
+    method: 'POST',
+    data: payload,
+  });
+}
+
+export async function listServiceApiKeys(serviceId: string) {
+  return request<API.ApiKey[]>(`/services/${serviceId}/api-keys`, {
+    method: 'GET',
+  });
+}
+
+export async function revokeServiceApiKey(serviceId: string, keyId: string) {
+  return request<API.ApiKey>(`/services/${serviceId}/api-keys/${keyId}:revoke`, {
+    method: 'POST',
+  });
+}
+
+export async function fetchRuntimeSetupGuidance(serviceId: string) {
+  return request<API.RuntimeSetupGuidance>(`/services/${serviceId}/runtime-setup`, {
+    method: 'GET',
+  });
+}

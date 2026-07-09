@@ -30,6 +30,7 @@ def test_workflow_candidate_contract_docs_exist_and_name_required_endpoints() ->
         "GET /admin/v1/services/{service_id}/test-runs",
         "GET /admin/v1/services/{service_id}/release-candidates",
         "GET /admin/v1/services/{service_id}/intent-route-candidates",
+        "GET /admin/v1/services/{service_id}/api-keys",
         "GET /admin/v1/api-keys",
     ]:
         assert endpoint in contract_text

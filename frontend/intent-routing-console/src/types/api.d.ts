@@ -285,6 +285,8 @@ declare namespace API {
     expires_in_days: number;
   };
 
+  type ServiceApiKeyCreateRequest = Omit<ApiKeyCreateRequest, 'service_id'>;
+
   type ApiKey = {
     key_id: string;
     key_fingerprint: string;
@@ -315,6 +317,43 @@ declare namespace API {
     revoked_at: string | null;
     created_by: string;
     created_at: string;
+  };
+
+  type RuntimeSetupActiveRelease = {
+    release_version: string;
+    policy_version: string;
+    intent_catalog_version: string;
+    test_run_id: string;
+  };
+
+  type RuntimeSetupSelectedKey = {
+    key_id: string;
+    key_fingerprint: string;
+    app_id: string;
+    status: ApiKeyStatus;
+    expires_at: string;
+    allowed_intents: string[];
+    allowed_route_keys: string[];
+  };
+
+  type RuntimeSetupVariableMapping = {
+    field: string;
+    source: string;
+  };
+
+  type RuntimeSetupGuidance = {
+    service_id: string;
+    environment: string;
+    runtime_endpoint: string;
+    recommended_timeout_seconds: number;
+    active_release: RuntimeSetupActiveRelease | null;
+    selected_key: RuntimeSetupSelectedKey | null;
+    headers_template: Record<string, string>;
+    body_template: Record<string, unknown>;
+    dify_variable_mapping: RuntimeSetupVariableMapping[];
+    checklist: string[];
+    docs: string[];
+    warnings: string[];
   };
 
   type RuntimeLog = {

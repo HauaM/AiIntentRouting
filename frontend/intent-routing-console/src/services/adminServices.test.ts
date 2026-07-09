@@ -9,8 +9,10 @@ import {
   createIntent,
   createPolicyVersion,
   createRelease,
+  createServiceApiKey,
   createService,
   createTestRun,
+  fetchRuntimeSetupGuidance,
   fetchTestRun,
   fetchTestRunResults,
   listApiKeys,
@@ -20,9 +22,11 @@ import {
   listPolicyVersions,
   listReleases,
   listReleaseCandidates,
+  listServiceApiKeys,
   listTestRuns,
   patchIntent,
   revokeApiKey,
+  revokeServiceApiKey,
   rollbackRelease,
 } from './adminServices';
 
@@ -230,13 +234,72 @@ describe('admin service Phase 1 write flow requests', () => {
     });
   });
 
+  it('uses service-scoped API key lifecycle endpoints without trusted headers', async () => {
+    const payload: API.ServiceApiKeyCreateRequest = {
+      environment: 'prod',
+      app_id: 'app-web',
+      allowed_intents: ['billing_refund'],
+      allowed_route_keys: ['billing.refund.request'],
+      expires_in_days: 30,
+    };
+
+    await createServiceApiKey('svc/admin', payload);
+    await listServiceApiKeys('svc/admin', { environment: 'prod', status: 'active' });
+    await revokeServiceApiKey('svc/admin', 'key/a');
+    await fetchRuntimeSetupGuidance('svc/admin', {
+      environment: 'prod',
+      app_id: 'app-web',
+      key_id: 'key/a',
+    });
+
+    expect(requestMock).toHaveBeenNthCalledWith(
+      1,
+      '/services/svc%2Fadmin/api-keys',
+      {
+        method: 'POST',
+        data: payload,
+      },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      2,
+      '/services/svc%2Fadmin/api-keys',
+      {
+        method: 'GET',
+        params: { environment: 'prod', status: 'active', limit: 50 },
+      },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      3,
+      '/services/svc%2Fadmin/api-keys/key%2Fa:revoke',
+      { method: 'POST' },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      4,
+      '/services/svc%2Fadmin/runtime-setup',
+      {
+        method: 'GET',
+        params: {
+          environment: 'prod',
+          app_id: 'app-web',
+          key_id: 'key/a',
+        },
+      },
+    );
+    const calls = requestMock.mock.calls as unknown as Array<
+      [string, Record<string, unknown>]
+    >;
+    for (const [, options] of calls) {
+      expect(options).not.toHaveProperty('headers');
+    }
+  });
+
   it('loads workflow candidate paths', async () => {
     await listPolicyVersions('svc/admin');
     await listCatalogVersions('svc/admin');
     await listTestRuns('svc/admin', { gate_passed: true, risk_passed: true });
     await listReleaseCandidates('svc/admin');
     await listIntentRouteCandidates('svc/admin', { source: 'active_release' });
-    await listApiKeys({ service_id: 'svc/admin' });
+    await listServiceApiKeys('svc/admin');
 
     expect(requestMock).toHaveBeenCalledWith('/services/svc%2Fadmin/policy-versions', {
       method: 'GET',
@@ -264,10 +327,9 @@ describe('admin service Phase 1 write flow requests', () => {
         params: { source: 'active_release', environment: undefined },
       },
     );
-    expect(requestMock).toHaveBeenCalledWith('/api-keys', {
+    expect(requestMock).toHaveBeenCalledWith('/services/svc%2Fadmin/api-keys', {
       method: 'GET',
       params: {
-        service_id: 'svc/admin',
         environment: undefined,
         status: undefined,
         limit: 50,

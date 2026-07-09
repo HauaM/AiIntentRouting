@@ -134,6 +134,16 @@ class ApiKeyCreateRequest(BaseModel):
     expires_in_days: int = Field(ge=1)
 
 
+class ServiceApiKeyCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    environment: str = Field(min_length=1)
+    app_id: str = Field(min_length=1)
+    allowed_intents: list[str] = Field(default_factory=list)
+    allowed_route_keys: list[str] = Field(default_factory=list)
+    expires_in_days: int = Field(ge=1)
+
+
 class ApiKeyCreateResponse(BaseModel):
     key_id: str
     api_key: str
@@ -146,6 +156,7 @@ class ApiKeyCreateResponse(BaseModel):
     allowed_route_keys: list[str]
     status: str
     expires_at: datetime
+    revoked_at: datetime | None
     created_by: str
     created_at: datetime
 
@@ -163,6 +174,43 @@ class ApiKeyResponse(BaseModel):
     revoked_at: datetime | None
     created_by: str
     created_at: datetime
+
+
+class RuntimeSetupActiveReleaseResponse(BaseModel):
+    release_version: str
+    policy_version: str
+    intent_catalog_version: str
+    test_run_id: str
+
+
+class RuntimeSetupSelectedKeyResponse(BaseModel):
+    key_id: str
+    key_fingerprint: str
+    app_id: str
+    status: str
+    expires_at: datetime
+    allowed_intents: list[str]
+    allowed_route_keys: list[str]
+
+
+class RuntimeSetupVariableMappingResponse(BaseModel):
+    field: str
+    source: str
+
+
+class RuntimeSetupResponse(BaseModel):
+    service_id: str
+    environment: str
+    runtime_endpoint: str
+    recommended_timeout_seconds: int
+    active_release: RuntimeSetupActiveReleaseResponse | None
+    selected_key: RuntimeSetupSelectedKeyResponse | None = None
+    headers_template: dict[str, str]
+    body_template: dict[str, object]
+    dify_variable_mapping: list[RuntimeSetupVariableMappingResponse]
+    checklist: list[str]
+    docs: list[str]
+    warnings: list[str]
 
 
 class IntentCreateRequest(BaseModel):
@@ -799,14 +847,14 @@ def _raise_bad_request(message: str) -> NoReturn:
     )
 
 
-def _raise_validation_failed() -> NoReturn:
+def _raise_validation_failed(message: str = "Request validation failed.") -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=ErrorEnvelope(
             trace_id=_trace_id(),
             error=ErrorInfo(
                 code=ErrorCode.INVALID_REQUEST,
-                message="Request validation failed.",
+                message=message,
                 retryable=False,
             ),
         ).model_dump(mode="json", exclude_none=True),
@@ -1092,6 +1140,183 @@ def _api_key_after_state(api_key: ApiKey) -> dict[str, object]:
     return _api_key_response(api_key).model_dump(mode="json", exclude_none=True) | {
         "api_key": "REDACTED"
     }
+
+
+def _runtime_setup_environment(service: Service, environment: str | None) -> str:
+    target_environment = environment or service.environment
+    if target_environment != service.environment:
+        _raise_validation_failed("environment must match the selected Service environment.")
+    return target_environment
+
+
+def _active_release_intent_route_candidates(
+    repository: IntentRoutingRepository,
+    service: Service,
+    environment: str,
+) -> tuple[Release | None, list[IntentRouteCandidateResponse]]:
+    release = repository.get_active_release(service.service_id, environment)
+    if release is None:
+        return None, []
+
+    catalog_version = repository.get_catalog_version(
+        service.service_id,
+        release.intent_catalog_version,
+    )
+    if catalog_version is None:
+        return release, []
+    intents = catalog_version.snapshot.get("intents", [])
+    if not isinstance(intents, list):
+        return release, []
+
+    candidates: list[IntentRouteCandidateResponse] = []
+    for intent in intents:
+        if not isinstance(intent, Mapping):
+            continue
+        if intent.get("status") != IntentStatus.active.value:
+            continue
+        candidates.append(
+            IntentRouteCandidateResponse(
+                intent_id=str(intent.get("intent_id", "")),
+                display_name=str(intent.get("display_name", "")),
+                route_key=str(intent.get("route_key", "")),
+                status=str(intent.get("status", "")),
+                source="active_release",
+            )
+        )
+    return release, candidates
+
+
+def _validate_runtime_api_key_scope(
+    repository: IntentRoutingRepository,
+    service: Service,
+    request: ServiceApiKeyCreateRequest,
+) -> Release:
+    environment = _runtime_setup_environment(service, request.environment)
+    release, candidates = _active_release_intent_route_candidates(
+        repository,
+        service,
+        environment,
+    )
+    if release is None:
+        _raise_validation_failed(
+            "active release is required for scoped API key creation."
+        )
+
+    candidate_intents = {candidate.intent_id for candidate in candidates}
+    candidate_route_keys = {candidate.route_key for candidate in candidates}
+    unknown_intents = sorted(set(request.allowed_intents) - candidate_intents)
+    unknown_route_keys = sorted(set(request.allowed_route_keys) - candidate_route_keys)
+    if unknown_intents:
+        _raise_validation_failed(
+            "allowed_intents must come from active release candidates: "
+            + ", ".join(unknown_intents)
+        )
+    if unknown_route_keys:
+        _raise_validation_failed(
+            "allowed_route_keys must come from active release candidates: "
+            + ", ".join(unknown_route_keys)
+        )
+    return release
+
+
+def _create_api_key_for_service(
+    repository: IntentRoutingRepository,
+    *,
+    service_id: str,
+    environment: str,
+    app_id: str,
+    allowed_intents: list[str],
+    allowed_route_keys: list[str],
+    expires_in_days: int,
+    actor_id: str,
+    now: datetime,
+) -> tuple[ApiKey, str]:
+    api_key_secret = f"irt_{generate_api_key_secret()}"
+    api_key = repository.create_api_key(
+        key_id=f"key_live_{uuid4().hex}",
+        key_hash=hash_secret(api_key_secret),
+        key_fingerprint=fingerprint_secret(api_key_secret),
+        environment=environment,
+        app_id=app_id,
+        service_id=service_id,
+        allowed_intents=allowed_intents,
+        allowed_route_keys=allowed_route_keys,
+        status=ApiKeyStatus.active.value,
+        expires_at=now + timedelta(days=expires_in_days),
+        revoked_at=None,
+        created_by=actor_id,
+        created_at=now,
+    )
+    repository.insert_audit_log(
+        event_type="api_key.created",
+        actor_id=actor_id,
+        service_id=api_key.service_id,
+        trace_id=None,
+        target_type="api_key",
+        target_id=api_key.key_id,
+        view_reason=None,
+        source_ip=None,
+        before_state=None,
+        after_state=_api_key_after_state(api_key),
+        created_at=now,
+    )
+    return api_key, api_key_secret
+
+
+def _revoke_api_key_record(
+    repository: IntentRoutingRepository,
+    *,
+    api_key: ApiKey,
+    actor_id: str,
+    now: datetime,
+) -> ApiKey:
+    if api_key.status == ApiKeyStatus.revoked.value:
+        return api_key
+    before_state = _api_key_after_state(api_key)
+    repository.revoke_api_key(api_key, revoked_at=now)
+    repository.insert_audit_log(
+        event_type="api_key.revoked",
+        actor_id=actor_id,
+        service_id=api_key.service_id,
+        trace_id=None,
+        target_type="api_key",
+        target_id=api_key.key_id,
+        view_reason=None,
+        source_ip=None,
+        before_state=before_state,
+        after_state=_api_key_after_state(api_key),
+        created_at=now,
+    )
+    return api_key
+
+
+def _runtime_setup_active_release_response(
+    release: Release | None,
+) -> RuntimeSetupActiveReleaseResponse | None:
+    if release is None:
+        return None
+    return RuntimeSetupActiveReleaseResponse(
+        release_version=release.release_version,
+        policy_version=release.policy_version,
+        intent_catalog_version=release.intent_catalog_version,
+        test_run_id=release.test_run_id,
+    )
+
+
+def _runtime_setup_selected_key_response(
+    api_key: ApiKey | None,
+) -> RuntimeSetupSelectedKeyResponse | None:
+    if api_key is None:
+        return None
+    return RuntimeSetupSelectedKeyResponse(
+        key_id=api_key.key_id,
+        key_fingerprint=api_key.key_fingerprint,
+        app_id=api_key.app_id,
+        status=api_key.status,
+        expires_at=api_key.expires_at,
+        allowed_intents=list(api_key.allowed_intents or []),
+        allowed_route_keys=list(api_key.allowed_route_keys or []),
+    )
 
 
 def _intent_response(intent: Intent) -> IntentResponse:
@@ -1665,34 +1890,16 @@ def create_api_key(
     if service is None:
         _raise_not_found("Service does not exist.")
 
-    api_key_secret = f"irt_{generate_api_key_secret()}"
-    api_key = repository.create_api_key(
-        key_id=f"key_live_{uuid4().hex}",
-        key_hash=hash_secret(api_key_secret),
-        key_fingerprint=fingerprint_secret(api_key_secret),
+    api_key, api_key_secret = _create_api_key_for_service(
+        repository,
+        service_id=request.service_id,
         environment=request.environment,
         app_id=request.app_id,
-        service_id=request.service_id,
         allowed_intents=request.allowed_intents,
         allowed_route_keys=request.allowed_route_keys,
-        status=ApiKeyStatus.active.value,
-        expires_at=now + timedelta(days=request.expires_in_days),
-        revoked_at=None,
-        created_by=context.actor_id,
-        created_at=now,
-    )
-    repository.insert_audit_log(
-        event_type="api_key.created",
+        expires_in_days=request.expires_in_days,
         actor_id=context.actor_id,
-        service_id=api_key.service_id,
-        trace_id=None,
-        target_type="api_key",
-        target_id=api_key.key_id,
-        view_reason=None,
-        source_ip=None,
-        before_state=None,
-        after_state=_api_key_after_state(api_key),
-        created_at=now,
+        now=now,
     )
     session.commit()
     return ApiKeyCreateResponse(
@@ -1715,23 +1922,222 @@ def revoke_api_key(
     if api_key is None:
         _raise_not_found("API key does not exist.")
 
-    before_state = _api_key_after_state(api_key)
-    repository.revoke_api_key(api_key, revoked_at=now)
-    repository.insert_audit_log(
-        event_type="api_key.revoked",
+    _revoke_api_key_record(
+        repository,
+        api_key=api_key,
         actor_id=context.actor_id,
-        service_id=api_key.service_id,
-        trace_id=None,
-        target_type="api_key",
-        target_id=api_key.key_id,
-        view_reason=None,
-        source_ip=None,
-        before_state=before_state,
-        after_state=_api_key_after_state(api_key),
-        created_at=now,
+        now=now,
     )
     session.commit()
     return _api_key_response(api_key)
+
+
+@router.get("/services/{service_id}/api-keys", response_model=list[ApiKeyResponse])
+def list_service_api_keys(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    environment: str | None = None,
+    status: ApiKeyStatus | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[ApiKeyResponse]:
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    service = repository.get_service(service_id)
+    if service is None:
+        _raise_not_found("Service does not exist.")
+    if environment is not None:
+        _runtime_setup_environment(service, environment)
+    return [
+        _api_key_response(api_key)
+        for api_key in repository.list_api_keys(
+            service_id=service_id,
+            environment=environment,
+            status=status.value if status is not None else None,
+            limit=limit,
+        )
+    ]
+
+
+@router.post(
+    "/services/{service_id}/api-keys",
+    response_model=ApiKeyCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_service_api_key(
+    service_id: str,
+    request: ServiceApiKeyCreateRequest,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ApiKeyCreateResponse:
+    _require_system_admin(context)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    service = repository.get_service(service_id)
+    if service is None:
+        _raise_not_found("Service does not exist.")
+
+    _validate_runtime_api_key_scope(repository, service, request)
+    api_key, api_key_secret = _create_api_key_for_service(
+        repository,
+        service_id=service_id,
+        environment=request.environment,
+        app_id=request.app_id,
+        allowed_intents=request.allowed_intents,
+        allowed_route_keys=request.allowed_route_keys,
+        expires_in_days=request.expires_in_days,
+        actor_id=context.actor_id,
+        now=now,
+    )
+    session.commit()
+    return ApiKeyCreateResponse(
+        api_key=api_key_secret,
+        api_key_displayed_once=True,
+        **_api_key_response(api_key).model_dump(),
+    )
+
+
+@router.post(
+    "/services/{service_id}/api-keys/{key_id}:revoke",
+    response_model=ApiKeyResponse,
+)
+def revoke_service_api_key(
+    service_id: str,
+    key_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ApiKeyResponse:
+    _require_system_admin(context)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    service = repository.get_service(service_id)
+    if service is None:
+        _raise_not_found("Service does not exist.")
+    api_key = repository.get_api_key_by_id(key_id)
+    if api_key is None:
+        _raise_not_found("API key does not exist.")
+    if api_key.service_id != service_id:
+        raise_admin_forbidden("API key does not belong to the selected Service.")
+
+    _revoke_api_key_record(
+        repository,
+        api_key=api_key,
+        actor_id=context.actor_id,
+        now=now,
+    )
+    session.commit()
+    return _api_key_response(api_key)
+
+
+@router.get(
+    "/services/{service_id}/runtime-setup",
+    response_model=RuntimeSetupResponse,
+)
+def get_runtime_setup(
+    service_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    environment: str | None = None,
+    app_id: str | None = None,
+    key_id: str | None = None,
+) -> RuntimeSetupResponse:
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    service = repository.get_service(service_id)
+    if service is None:
+        _raise_not_found("Service does not exist.")
+
+    target_environment = _runtime_setup_environment(service, environment)
+    release, _ = _active_release_intent_route_candidates(
+        repository,
+        service,
+        target_environment,
+    )
+    selected_key: ApiKey | None = None
+    if key_id is not None:
+        selected_key = repository.get_api_key_by_id(key_id)
+        if selected_key is None:
+            _raise_not_found("API key does not exist.")
+        if selected_key.service_id != service_id:
+            raise_admin_forbidden("API key does not belong to the selected Service.")
+        if selected_key.environment != target_environment:
+            _raise_validation_failed(
+                "API key environment must match the selected environment."
+            )
+        if app_id is not None and selected_key.app_id != app_id:
+            _raise_validation_failed("app_id must match the selected API key.")
+
+    template_key_id = (
+        selected_key.key_id
+        if selected_key is not None
+        else "{{intent_routing_key_id}}"
+    )
+    template_app_id = (
+        selected_key.app_id
+        if selected_key is not None
+        else app_id or "{{intent_routing_app_id}}"
+    )
+    warnings: list[str] = []
+    if release is None:
+        warnings.append("No active release exists for the selected Service environment.")
+
+    return RuntimeSetupResponse(
+        service_id=service_id,
+        environment=target_environment,
+        runtime_endpoint="/v1/intent-route",
+        recommended_timeout_seconds=8,
+        active_release=_runtime_setup_active_release_response(release),
+        selected_key=_runtime_setup_selected_key_response(selected_key),
+        headers_template={
+            "Authorization": "Bearer {{intent_routing_api_key}}",
+            "X-Key-Id": template_key_id,
+            "X-App-Id": template_app_id,
+            "X-Service-Id": service_id,
+            "X-Request-Id": "{{workflow_run_id}}",
+            "Content-Type": "application/json",
+        },
+        body_template={
+            "query": "{{user_query}}",
+            "channel": "chat",
+            "user_context": {"workflow_run_id": "{{workflow_run_id}}"},
+        },
+        dify_variable_mapping=[
+            RuntimeSetupVariableMappingResponse(
+                field="Authorization",
+                source="Secret variable intent_routing_api_key",
+            ),
+            RuntimeSetupVariableMappingResponse(
+                field="X-Key-Id",
+                source="Secret or environment variable intent_routing_key_id",
+            ),
+            RuntimeSetupVariableMappingResponse(
+                field="X-App-Id",
+                source="Literal approved app_id",
+            ),
+            RuntimeSetupVariableMappingResponse(
+                field="X-Service-Id",
+                source="Workflow variable service_id",
+            ),
+            RuntimeSetupVariableMappingResponse(
+                field="X-Request-Id",
+                source="workflow_run_id",
+            ),
+        ],
+        checklist=[
+            "Dify secret variable masks intent_routing_api_key.",
+            "Timeout is 8 seconds.",
+            "408, 5xx, and timeout branches use fallback or human handoff "
+            "without automatic retry loops.",
+            "Downstream nodes preserve trace_id, request_id, route_key, and release_version.",
+        ],
+        docs=[
+            "docs/integrations/dify-http-request-node.md",
+            "docs/integrations/dify-handoff-checklist.md",
+            "docs/integrations/dify-branching-playbook.md",
+            "docs/api/openapi-runtime-examples.md",
+        ],
+        warnings=warnings,
+    )
 
 
 @router.get(

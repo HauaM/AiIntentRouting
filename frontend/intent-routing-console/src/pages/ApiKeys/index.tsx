@@ -19,13 +19,19 @@ import { AdminSessionRequired } from '@/components/AdminSessionRequired';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import { FieldHelpLabel } from '@/components/FieldHelpLabel';
 import { IntentRouteMultiSelect } from '@/components/IntentRouteMultiSelect';
-import { canManageApiKeys, isAdminSessionReady } from '@/models/adminSession';
+import { canManageRuntimeSetup, isAdminSessionReady } from '@/models/adminSession';
 import {
-  createApiKey,
-  listApiKeys,
+  createServiceApiKey,
+  fetchRuntimeSetupGuidance,
   listIntentRouteCandidates,
-  revokeApiKey,
+  listServiceApiKeys,
+  revokeServiceApiKey,
 } from '@/services/adminServices';
+import {
+  runtimeSetupBodyTemplateText,
+  runtimeSetupHeaderRows,
+  runtimeSetupSelectedKeyLabel,
+} from './runtimeSetup';
 
 type ApiKeyFormValues = {
   environment: string;
@@ -39,8 +45,10 @@ const apiKeyHelp = {
   environment: '선택한 서비스의 environment를 자동 사용합니다.',
   appId: '이 key를 사용할 호출 앱/클라이언트 이름입니다. 예: checkout-web, helpdesk-bot',
   expiresInDays: 'Key 만료까지의 일수입니다.',
-  allowedIntents: '선택 항목입니다. 특정 intent_id만 허용하려면 입력합니다. 비워두면 intent_id 제한 목록을 만들지 않습니다.',
-  allowedRouteKeys: '선택 항목입니다. 특정 route_key만 허용하려면 입력합니다. 비워두면 route_key 제한 목록을 만들지 않습니다.',
+  allowedIntents:
+    '선택 항목입니다. 특정 intent_id만 허용하려면 입력합니다. 비워두면 intent_id 제한 목록을 만들지 않습니다.',
+  allowedRouteKeys:
+    '선택 항목입니다. 특정 route_key만 허용하려면 입력합니다. 비워두면 route_key 제한 목록을 만들지 않습니다.',
   revokeKeyId: '생성 결과에 표시된 key_id를 입력합니다. irt_... secret 값으로는 폐기할 수 없습니다.',
 };
 
@@ -57,28 +65,39 @@ export default function ApiKeysPage() {
   const [revoking, setRevoking] = useState(false);
   const [keys, setKeys] = useState<API.ApiKey[]>([]);
   const [scopeCandidates, setScopeCandidates] = useState<API.IntentRouteCandidate[]>([]);
+  const [runtimeSetup, setRuntimeSetup] = useState<API.RuntimeSetupGuidance>();
   const [loadingKeys, setLoadingKeys] = useState(false);
   const serviceIdRef = useRef(session.serviceId);
   const ready = isAdminSessionReady(session);
-  const canManage = canManageApiKeys(session);
-  const selectedService = session.services.find((service) => service.service_id === session.serviceId);
+  const canManage = canManageRuntimeSetup(session);
+  const selectedService = session.services.find(
+    (service) => service.service_id === session.serviceId,
+  );
   const selectedEnvironment = selectedService?.environment || 'prod';
 
-  const loadApiKeyPageData = async () => {
+  const loadApiKeyPageData = async (
+    selectedKey?: Pick<API.ApiKey, 'app_id' | 'key_id'>,
+  ) => {
     if (!ready || !canManage) return;
     const serviceId = session.serviceId;
     setLoadingKeys(true);
     try {
-      const [nextKeys, nextScopeCandidates] = await Promise.all([
-        listApiKeys({ service_id: serviceId, environment: selectedEnvironment }),
+      const [nextKeys, nextScopeCandidates, nextRuntimeSetup] = await Promise.all([
+        listServiceApiKeys(serviceId, { environment: selectedEnvironment }),
         listIntentRouteCandidates(serviceId, {
           source: 'active_release',
           environment: selectedEnvironment,
+        }),
+        fetchRuntimeSetupGuidance(serviceId, {
+          environment: selectedEnvironment,
+          app_id: selectedKey?.app_id,
+          key_id: selectedKey?.key_id,
         }),
       ]);
       if (serviceIdRef.current !== serviceId) return;
       setKeys(nextKeys);
       setScopeCandidates(nextScopeCandidates);
+      setRuntimeSetup(nextRuntimeSetup);
     } finally {
       setLoadingKeys(false);
     }
@@ -89,6 +108,7 @@ export default function ApiKeysPage() {
     setCreatedKey(undefined);
     setKeys([]);
     setScopeCandidates([]);
+    setRuntimeSetup(undefined);
     createForm.resetFields(['app_id', 'allowed_intents', 'allowed_route_keys']);
     revokeForm.resetFields();
     createForm.setFieldsValue({
@@ -105,8 +125,7 @@ export default function ApiKeysPage() {
     const serviceId = session.serviceId;
     setCreating(true);
     try {
-      const response = await createApiKey({
-        service_id: serviceId,
+      const response = await createServiceApiKey(serviceId, {
         environment: selectedEnvironment,
         app_id: values.app_id.trim(),
         allowed_intents: values.allowed_intents ?? [],
@@ -117,17 +136,19 @@ export default function ApiKeysPage() {
       setCreatedKey(response);
       message.success('API key created. Copy the secret before leaving this page.');
       createForm.resetFields(['app_id', 'allowed_intents', 'allowed_route_keys']);
-      await loadApiKeyPageData();
+      await loadApiKeyPageData({ key_id: response.key_id, app_id: response.app_id });
     } finally {
       setCreating(false);
     }
   };
 
   const handleRevokeById = async (keyId: string) => {
+    const serviceId = session.serviceId;
     setRevoking(true);
     try {
-      await revokeApiKey(keyId);
+      await revokeServiceApiKey(serviceId, keyId);
       message.success('API key revoked.');
+      if (createdKey?.key_id === keyId) setCreatedKey(undefined);
       revokeForm.resetFields();
       await loadApiKeyPageData();
     } finally {
@@ -304,6 +325,87 @@ export default function ApiKeysPage() {
                     }
                   />
                 ) : null}
+                <Card title="Runtime setup guidance">
+                  {runtimeSetup ? (
+                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                      {runtimeSetup.warnings.length ? (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          message={runtimeSetup.warnings.join(' ')}
+                        />
+                      ) : null}
+                      <Descriptions size="small" column={2}>
+                        <Descriptions.Item label="Runtime endpoint">
+                          <Typography.Text copyable code>
+                            {runtimeSetup.runtime_endpoint}
+                          </Typography.Text>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Timeout">
+                          {runtimeSetup.recommended_timeout_seconds}s
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Service">
+                          <Typography.Text code>{runtimeSetup.service_id}</Typography.Text>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Environment">
+                          <Tag>{runtimeSetup.environment}</Tag>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Active release">
+                          {runtimeSetup.active_release ? (
+                            <Typography.Text copyable code>
+                              {runtimeSetup.active_release.release_version}
+                            </Typography.Text>
+                          ) : (
+                            <Tag color="default">none</Tag>
+                          )}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Selected key">
+                          <Typography.Text copyable code>
+                            {runtimeSetupSelectedKeyLabel(runtimeSetup)}
+                          </Typography.Text>
+                        </Descriptions.Item>
+                      </Descriptions>
+                      <Descriptions
+                        size="small"
+                        column={1}
+                        title="Headers template"
+                      >
+                        {runtimeSetupHeaderRows(runtimeSetup).map((row) => (
+                          <Descriptions.Item key={row.name} label={row.name}>
+                            <Typography.Text copyable code>
+                              {row.value}
+                            </Typography.Text>
+                          </Descriptions.Item>
+                        ))}
+                      </Descriptions>
+                      <Typography.Paragraph copyable code style={{ marginBottom: 0 }}>
+                        {runtimeSetupBodyTemplateText(runtimeSetup)}
+                      </Typography.Paragraph>
+                      <Descriptions
+                        size="small"
+                        column={1}
+                        title="Dify variable mapping"
+                      >
+                        {runtimeSetup.dify_variable_mapping.map((row) => (
+                          <Descriptions.Item key={row.field} label={row.field}>
+                            {row.source}
+                          </Descriptions.Item>
+                        ))}
+                      </Descriptions>
+                      <Space wrap>
+                        {runtimeSetup.checklist.map((item) => (
+                          <Tag key={item}>{item}</Tag>
+                        ))}
+                      </Space>
+                    </Space>
+                  ) : (
+                    <Alert
+                      type="info"
+                      showIcon
+                      message="Runtime setup guidance loads after selecting a Service."
+                    />
+                  )}
+                </Card>
                 <ProTable<API.ApiKey>
                   rowKey="key_id"
                   loading={loadingKeys}
@@ -314,7 +416,11 @@ export default function ApiKeysPage() {
                   toolbar={{
                     title: 'API key inventory',
                     actions: [
-                      <Button key="reload" onClick={loadApiKeyPageData} loading={loadingKeys}>
+                      <Button
+                        key="reload"
+                        onClick={() => loadApiKeyPageData()}
+                        loading={loadingKeys}
+                      >
                         새로고침
                       </Button>,
                     ],

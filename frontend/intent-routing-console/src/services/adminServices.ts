@@ -217,6 +217,16 @@ export async function createApiKey(payload: API.ApiKeyCreateRequest) {
   });
 }
 
+export async function createServiceApiKey(
+  serviceId: string,
+  payload: API.ServiceApiKeyCreateRequest,
+) {
+  return request<API.ApiKeyCreateResponse>(servicePath(serviceId, '/api-keys'), {
+    method: 'POST',
+    data: payload,
+  });
+}
+
 export async function listApiKeys(
   params: {
     service_id?: string;
@@ -236,9 +246,50 @@ export async function listApiKeys(
   });
 }
 
+export async function listServiceApiKeys(
+  serviceId: string,
+  params: {
+    environment?: string;
+    status?: API.ApiKeyStatus;
+    limit?: number;
+  } = {},
+) {
+  return request<API.ApiKey[]>(servicePath(serviceId, '/api-keys'), {
+    method: 'GET',
+    params: {
+      environment: params.environment,
+      status: params.status,
+      limit: params.limit ?? 50,
+    },
+  });
+}
+
 export async function revokeApiKey(keyId: string) {
   return request<API.ApiKey>(`/api-keys/${encodeURIComponent(keyId)}:revoke`, {
     method: 'POST',
+  });
+}
+
+export async function revokeServiceApiKey(serviceId: string, keyId: string) {
+  return request<API.ApiKey>(
+    servicePath(serviceId, `/api-keys/${encodeURIComponent(keyId)}:revoke`),
+    {
+      method: 'POST',
+    },
+  );
+}
+
+export async function fetchRuntimeSetupGuidance(
+  serviceId: string,
+  params: {
+    environment?: string;
+    app_id?: string;
+    key_id?: string;
+  } = {},
+) {
+  return request<API.RuntimeSetupGuidance>(servicePath(serviceId, '/runtime-setup'), {
+    method: 'GET',
+    params,
   });
 }
 

@@ -105,6 +105,9 @@ export const canManageReleases = (session: AdminSession) =>
 export const canManageApiKeys = (session: AdminSession) =>
   hasAnyDisplayRole(session, ['system_admin']);
 
+export const canManageRuntimeSetup = (session: AdminSession) =>
+  canManageApiKeys(session);
+
 export const canCreateServices = (session: AdminSession) =>
   session.globalRoles.includes('system_admin');
 
