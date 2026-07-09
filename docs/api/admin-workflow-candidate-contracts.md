@@ -154,6 +154,10 @@ Authorization: catalog access for `current_catalog`; release access for
 
 ## GET /admin/v1/api-keys
 
+The global inventory endpoint remains transitional for scripts and older Admin
+UI references. C-3 Admin UI work should prefer
+`GET /admin/v1/services/{service_id}/api-keys`.
+
 Lists API key inventory for administrative review without exposing the key
 secret.
 

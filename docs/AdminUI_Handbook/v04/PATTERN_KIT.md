@@ -43,8 +43,8 @@ future C-2 and C-3 work begins.
 - C-2 Service membership and validation: Service roles are assigned before
   developers configure Intents, examples, policy/catalog versions, and test
   runs for assigned Services.
-- C-3 runtime integration and operations: scoped API keys, client setup
-  guidance, masked Runtime Logs, and append-only Audit Logs complete the
+- C-3 runtime integration and operations: service-scoped API keys, Dify/client
+  setup guidance, masked Runtime Logs, and append-only Audit Logs complete the
   onboarding loop.
 - Permission and audit requirements are product workflow requirements, not test
   setup. Do not add UI shortcuts that bypass server-derived roles or Service
@@ -135,6 +135,12 @@ Keep using `FutureFeatureNotice` for unsupported capabilities:
   `POST /services/{sid}/publish-requests/{request_id}:approve`,
   `POST /services/{sid}/publish-requests/{request_id}:reject`, and
   `POST /services/{sid}/publish-requests/{request_id}:activate`.
+- API key lifecycle: `GET /services/{sid}/api-keys`,
+  `POST /services/{sid}/api-keys`, and
+  `POST /services/{sid}/api-keys/{key_id}:revoke`.
+- Runtime setup guidance: `GET /services/{sid}/runtime-setup`. This guidance
+  may render `selected_key` metadata and Dify/client templates, but must never
+  return or replay the raw `api_key` secret.
 - Raw query approval workflow:
   `POST /services/{sid}/runtime-logs/{trace_id}/raw-query-view-requests`,
   `POST /services/{sid}/raw-query-view-requests/{request_id}:approve`,
@@ -145,8 +151,8 @@ Keep using `FutureFeatureNotice` for unsupported capabilities:
 
 ## Current Role Gates
 
-- `system_admin`: all Services, service creation, API key lifecycle, release
-  create/activate/rollback, emergency operations.
+- `system_admin`: all Services, service creation, C-3 runtime setup and API key
+  lifecycle, release create/activate/rollback, emergency operations.
 - `service_owner`: scoped Service catalog work and future owner approval flows.
 - `service_developer`: scoped Intent Catalog, examples, policy/catalog versions,
   and test runs.

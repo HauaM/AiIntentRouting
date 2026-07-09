@@ -87,8 +87,14 @@ def test_admin_ui_v04_records_authorization_first_onboarding_flow() -> None:
         "C-3: Runtime Integration And Operations",
         "Service picker options come from `/me/services`",
         "Do not send `X-Admin-Token`",
+        "GET /admin/v1/services/{service_id}/api-keys",
+        "GET /admin/v1/services/{service_id}/runtime-setup",
+        "Do not run a browser",
+        "`selected_key` metadata only",
     ):
         assert expected in onboarding
 
     assert "Authorization-first onboarding" in pattern_kit
+    assert "Runtime setup guidance" in pattern_kit
+    assert "`POST /services/{sid}/api-keys`" in pattern_kit
     assert "ONBOARDING_FLOW.md" in readme

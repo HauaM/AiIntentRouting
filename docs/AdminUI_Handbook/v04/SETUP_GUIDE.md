@@ -75,4 +75,7 @@ export async function listAccessibleServices() {
 4. Add Phase 1 write actions after read screens and account RBAC are stable.
 5. Keep Phase 2 action buttons disabled until frontend routes, service functions, role gates, and UX tests are implemented.
 6. Use the implemented backend contracts for raw query approval, release diff/approval, and masked export when building those Phase 2 UI flows.
-7. Continue rendering unsupported pagination, compound filters, and live polling with `FutureFeatureNotice`.
+7. Build C-3 runtime setup from service-scoped API key endpoints and
+   `GET /services/{service_id}/runtime-setup`; do not make browser sample
+   runtime calls with the one-time secret.
+8. Continue rendering unsupported pagination, compound filters, and live polling with `FutureFeatureNotice`.

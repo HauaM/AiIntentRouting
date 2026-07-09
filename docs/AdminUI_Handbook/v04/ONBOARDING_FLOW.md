@@ -105,15 +105,20 @@ Expected UX:
 - Show the API key secret once.
 - Keep API key inventory free of raw secrets.
 - Provide runtime setup guidance for Dify or another client system.
-- Support a safe sample runtime call or checklist once the backend contract is
-  available.
+- Use checklist and docs guidance for runtime validation. Do not run a browser
+  sample call with the one-time secret.
 - Show masked Runtime Logs and append-only Audit Logs after runtime usage.
 
 Backend contract note:
 
 - Runtime API `/v1/intent-route` exists.
-- Admin UI runtime setup guidance and optional browser-driven test call are
-  future C-3 work.
+- Admin UI C-3 uses service-scoped API key lifecycle endpoints:
+  `GET /admin/v1/services/{service_id}/api-keys`,
+  `POST /admin/v1/services/{service_id}/api-keys`, and
+  `POST /admin/v1/services/{service_id}/api-keys/{key_id}:revoke`.
+- Runtime setup guidance comes from
+  `GET /admin/v1/services/{service_id}/runtime-setup` and returns
+  `selected_key` metadata only, never the raw secret.
 
 ## Non-Negotiables
 
@@ -127,8 +132,8 @@ Backend contract note:
 - Dangerous or operationally meaningful writes use confirmation.
 - Runtime logs show `query_masked` by default.
 - Audit logs remain append-only.
-- C-2 and C-3 future capabilities must render as disabled or informational
-  until backend contracts exist.
+- C-2 and C-3 capabilities must render as disabled or informational until the
+  relevant backend contract exists.
 
 ## Manual QA Implications
 

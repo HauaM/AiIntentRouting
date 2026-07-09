@@ -6,6 +6,7 @@ import {
   canEditCatalog,
   canManageApiKeys,
   canManageReleases,
+  canManageRuntimeSetup,
   canSelectServiceFromScope,
   canUseServicesPage,
   getDisplayRoles,
@@ -153,6 +154,7 @@ describe('admin session model helpers', () => {
 
     expect(canManageReleases(session)).toBe(true);
     expect(canManageApiKeys(session)).toBe(true);
+    expect(canManageRuntimeSetup(session)).toBe(true);
   });
 
   it('allows only global system admins to create services', () => {
@@ -198,5 +200,6 @@ describe('admin session model helpers', () => {
     expect(canEditCatalog(session)).toBe(false);
     expect(canManageReleases(session)).toBe(false);
     expect(canManageApiKeys(session)).toBe(false);
+    expect(canManageRuntimeSetup(session)).toBe(false);
   });
 });

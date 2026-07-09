@@ -62,3 +62,73 @@ def test_check_scope_denies_mismatched_service_id() -> None:
 
     assert result.allowed is False
     assert result.error_code == ErrorCode.SERVICE_SCOPE_DENIED
+
+
+def test_check_scope_denies_mismatched_app_id() -> None:
+    record = _active_record()
+
+    result = check_scope(
+        record,
+        app_id="app-b",
+        service_id="svc-a",
+        route_key=None,
+        intent_id=None,
+    )
+
+    assert result.allowed is False
+    assert result.error_code == ErrorCode.SERVICE_SCOPE_DENIED
+
+
+def test_check_scope_denies_disallowed_route_key() -> None:
+    record = ApiKeyRecord(
+        **{
+            **_active_record().__dict__,
+            "allowed_route_keys": ["billing.refund.request"],
+        }
+    )
+
+    result = check_scope(
+        record,
+        app_id="app-a",
+        service_id="svc-a",
+        route_key="billing.internal.manual",
+        intent_id=None,
+    )
+
+    assert result.allowed is False
+    assert result.error_code == ErrorCode.SERVICE_SCOPE_DENIED
+
+
+def test_check_scope_denies_disallowed_intent_id() -> None:
+    record = ApiKeyRecord(
+        **{
+            **_active_record().__dict__,
+            "allowed_intents": ["billing_refund"],
+        }
+    )
+
+    result = check_scope(
+        record,
+        app_id="app-a",
+        service_id="svc-a",
+        route_key=None,
+        intent_id="billing_internal",
+    )
+
+    assert result.allowed is False
+    assert result.error_code == ErrorCode.SERVICE_SCOPE_DENIED
+
+
+def test_check_scope_allows_unrestricted_intent_and_route_lists() -> None:
+    record = _active_record()
+
+    result = check_scope(
+        record,
+        app_id="app-a",
+        service_id="svc-a",
+        route_key="billing.internal.manual",
+        intent_id="billing_internal",
+    )
+
+    assert result.allowed is True
+    assert result.error_code is None
