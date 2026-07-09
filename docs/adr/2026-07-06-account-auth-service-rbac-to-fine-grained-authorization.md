@@ -33,6 +33,30 @@ The first milestone will not implement full fine-grained authorization. Instead,
 
 `ADMIN_BOOTSTRAP_TOKEN` should be reduced to bootstrap or break-glass use, such as initial system administrator creation or controlled local setup. It should not remain the normal Admin UI authentication mechanism.
 
+For the C-2 Service membership and role-assignment slice, update this accepted
+decision as follows:
+
+- Use the existing Service-scoped RBAC model and update this ADR rather than
+  creating a separate C-2 ADR.
+- Implement role assignment as a Service-scoped API under
+  `/admin/v1/services/{service_id}/members`.
+- Use existing `user_service_roles` storage for the baseline C-2 contract. No
+  new migration is required unless the scope expands to invitations, role
+  expiry, revocation history outside audit logs, team inheritance, or
+  environment-specific permissions.
+- Make `system_admin` the only role that can grant or revoke Service roles in
+  the first C-2 implementation.
+- Keep `service_owner` delegation as a future increment. A later change may let
+  `service_owner` manage lower roles only within their assigned Service, but
+  that requires explicit guardrail tests and documentation before enablement.
+- Continue to require normal browser Admin UI requests to use the
+  `irt_admin_session` cookie. Browser UI must not send `X-Admin-Token`,
+  `X-Actor-Id`, `X-Actor-Roles`, or `X-Service-Scope`.
+- Place the first C-2 Admin UI membership controls inside the existing
+  `/services` page as a selected-Service membership panel. A dedicated
+  `/services/:serviceId/members` page can be revisited if the panel becomes too
+  dense.
+
 ## Alternatives Considered
 
 ### Option 1: Admin-Only Login
@@ -72,6 +96,11 @@ The first implementation will give real users a login flow and will enforce Serv
 
 The system must record actors from authenticated sessions instead of trusting UI-provided actor headers. Audit logs should identify the authenticated user and the Service/action being accessed.
 
+For C-2, Service role grant and revoke operations become auditable product
+events. The baseline implementation remains simple because `system_admin` owns
+membership changes, but Service teams still depend on system administrators for
+every membership update until owner delegation is explicitly approved.
+
 Future work remains mandatory for the final fine-grained authorization model. That future work is tracked separately in `docs/security/fine-grained-authorization-todo.md`.
 
 ## Implementation Notes
@@ -94,6 +123,21 @@ Expected initial roles:
 - `service_operator`
 - `auditor`
 
+C-2 expected API shape:
+
+- `GET /admin/v1/users?query={email_or_name}&limit=25`
+- `GET /admin/v1/services/{service_id}/members`
+- `POST /admin/v1/services/{service_id}/members/{user_id}/roles`
+- `DELETE /admin/v1/services/{service_id}/members/{user_id}/roles/{role}`
+
+C-2 expected audit events:
+
+- `service_membership.role_granted`
+- `service_membership.role_revoked`
+
+The detailed implementation plan is recorded in
+`docs/superpowers/plans/2026-07-08-admin-ui-c2-service-membership-roles.md`.
+
 ## Verification
 
 The first milestone is valid only if tests prove:
@@ -106,6 +150,21 @@ The first milestone is valid only if tests prove:
 - `system_admin` can access all Services.
 - Audit records use the authenticated user identity.
 
+C-2 verification must additionally prove:
+
+- `system_admin` can grant and revoke Service-scoped roles.
+- `/me/services` returns only Services derived from persisted membership for
+  non-system-admin users.
+- A user with a role on Service A cannot inspect or mutate Service B.
+- A user without Service membership receives `403 Forbidden` for Service
+  inspect and mutate paths.
+- `service_developer` can manage Intents, examples, policy versions, catalog
+  versions, and test runs only inside assigned Services.
+- `service_operator` and `auditor` have only their approved read paths.
+- Membership grant and revoke operations write append-only audit events.
+- Normal browser Admin UI requests use the `irt_admin_session` cookie and do
+  not send trusted actor headers.
+
 ## Rollback Or Revisit Conditions
 
 Revisit this decision if:
@@ -114,3 +173,7 @@ Revisit this decision if:
 - Environment-specific permissions become mandatory for the first release.
 - Two-person approval is required for every Intent change in the first release.
 - External identity provider integration becomes mandatory before local account authentication is accepted.
+- Service owner delegation becomes mandatory for C-2 rather than a future
+  increment.
+- membership status, invitation, expiry, revocation history, team inheritance,
+  or environment-specific role scope becomes mandatory for C-2.
