@@ -892,7 +892,7 @@ def _system_admin_session_context() -> SimpleNamespace:
 
 
 def _service_role_session_context(role: str | None) -> SimpleNamespace:
-    service_roles = ()
+    service_roles: tuple[SimpleNamespace, ...] = ()
     if role is not None:
         service_roles = (SimpleNamespace(service_id="svc-a", role=role),)
     return SimpleNamespace(

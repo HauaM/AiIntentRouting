@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, TypedDict, cast
 
 import pytest
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint, text
@@ -10,6 +10,16 @@ from sqlalchemy.orm import Session
 
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository, normalize_admin_email
+
+
+class _AdminUserValues(TypedDict):
+    user_id: str
+    email: str
+    display_name: str
+    password_hash: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
 
 
 def test_account_auth_models_expose_expected_tables_and_constraints() -> None:
@@ -363,7 +373,7 @@ def test_repository_searches_admin_users_without_secret_fields(
 ) -> None:
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(db_session)
-    users = [
+    users: list[_AdminUserValues] = [
         {
             "user_id": "repo-search-alpha-user",
             "email": "Repo.Search.Alpha@example.com",
@@ -568,7 +578,7 @@ class _FakeNestedTransaction:
     def __enter__(self) -> "_FakeNestedTransaction":
         return self
 
-    def __exit__(self, *_exc_info: object) -> bool:
+    def __exit__(self, *_exc_info: object) -> Literal[False]:
         return False
 
 
