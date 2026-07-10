@@ -43,6 +43,17 @@ future C-2 and C-3 work begins.
 - C-2 Service membership and validation: Service roles are assigned before
   developers configure Intents, examples, policy/catalog versions, and test
   runs for assigned Services.
+- C-2 Service Membership / Role Assignment UI/API is in implementation scope:
+  user search, selected-Service member listing, Service role grant, Service role
+  revoke, and post-change scope refresh.
+- Baseline C-2 membership administration is `system_admin` only:
+  `system_admin` can search users, list members, grant roles, and revoke roles.
+- `service_owner delegation` is future/non-baseline. Do not let
+  `service_owner` search users, list members, grant roles, or revoke roles until
+  a later decision and guardrail tests explicitly approve owner delegation.
+- Grant and revoke must write append-only audit events:
+  `service_membership.role_granted` and
+  `service_membership.role_revoked`.
 - C-3 runtime integration and operations: service-scoped API keys, Dify/client
   setup guidance, masked Runtime Logs, and append-only Audit Logs complete the
   onboarding loop.
@@ -120,10 +131,18 @@ Keep using `FutureFeatureNotice` for unsupported capabilities:
   `/me/services`, `withCredentials: true`, and the server-issued
   `irt_admin_session` HttpOnly cookie.
 - Service paths: `/services/{service_id}/...`.
+- C-2 membership API contract:
+  - `GET /admin/v1/users?query={email_or_name}&limit=25`
+  - `GET /admin/v1/services/{service_id}/members`
+  - `POST /admin/v1/services/{service_id}/members/{user_id}/roles`
+  - `DELETE /admin/v1/services/{service_id}/members/{user_id}/roles/{role}`
 - Do not send `X-Admin-Token`, `X-Actor-Id`, `X-Actor-Roles`, or
   `X-Service-Scope` from normal Admin UI requests. Those trusted headers are
   reserved for controlled bootstrap, break-glass, or explicitly configured
   internal automation paths.
+- C-2 frontend must not send `X-Admin-Token`, `X-Actor-Id`, `X-Actor-Roles`,
+  `X-Service-Scope`, or `Authorization: Bearer` from normal browser Admin UI
+  requests.
 - Service picker options must come from `GET /me/services`.
 - Runtime metrics: `window_hours`.
 - Runtime logs: `limit`.

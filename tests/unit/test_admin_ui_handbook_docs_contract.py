@@ -98,3 +98,26 @@ def test_admin_ui_v04_records_authorization_first_onboarding_flow() -> None:
     assert "Runtime setup guidance" in pattern_kit
     assert "`POST /services/{sid}/api-keys`" in pattern_kit
     assert "ONBOARDING_FLOW.md" in readme
+
+
+def test_admin_ui_v04_records_c2_membership_role_assignment_contract() -> None:
+    onboarding = _read(V04 / "ONBOARDING_FLOW.md")
+    pattern_kit = _read(V04 / "PATTERN_KIT.md")
+    contract = f"{onboarding}\n{pattern_kit}"
+
+    for expected in (
+        "GET /admin/v1/users?query={email_or_name}&limit=25",
+        "GET /admin/v1/services/{service_id}/members",
+        "POST /admin/v1/services/{service_id}/members/{user_id}/roles",
+        "DELETE /admin/v1/services/{service_id}/members/{user_id}/roles/{role}",
+        "service_membership.role_granted",
+        "service_membership.role_revoked",
+        "`system_admin` can search users, list members, grant roles, and revoke roles",
+        "service_owner delegation",
+        "future/non-baseline",
+        "irt_admin_session",
+        "C-2 frontend must not send `X-Admin-Token`, `X-Actor-Id`, "
+        "`X-Actor-Roles`, `X-Service-Scope`, or `Authorization: Bearer`",
+        "Do not add React Query or axios",
+    ):
+        assert expected in contract

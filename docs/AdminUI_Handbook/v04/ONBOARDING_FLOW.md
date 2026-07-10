@@ -91,8 +91,23 @@ Backend contract note:
 
 - Account login and Service-scoped RBAC exist as the first authorization
   milestone.
-- Any new role-assignment UI must use server-derived identity and roles. It must
-  not reintroduce trusted browser headers.
+- C-2 Service Membership / Role Assignment UI/API is in implementation scope.
+  The browser UI should expose user search, selected-Service member listing,
+  role grant, and role revoke from the selected Service flow.
+- C-2 API contract:
+  - `GET /admin/v1/users?query={email_or_name}&limit=25`
+  - `GET /admin/v1/services/{service_id}/members`
+  - `POST /admin/v1/services/{service_id}/members/{user_id}/roles`
+  - `DELETE /admin/v1/services/{service_id}/members/{user_id}/roles/{role}`
+- Baseline authorization: `system_admin` can search users, list members, grant
+  roles, and revoke roles. `service_owner delegation` is future/non-baseline and
+  must not be enabled without a later approved decision and guardrail tests.
+- C-2 grant/revoke writes append-only audit events:
+  `service_membership.role_granted` and
+  `service_membership.role_revoked`.
+- Any role-assignment UI must use server-derived identity and roles. It must not
+  reintroduce trusted browser headers.
+- C-2 frontend must not send `X-Admin-Token`, `X-Actor-Id`, `X-Actor-Roles`, `X-Service-Scope`, or `Authorization: Bearer` from normal browser Admin UI requests.
 
 ## C-3: Runtime Integration And Operations
 
@@ -126,6 +141,8 @@ Backend contract note:
   `irt_admin_session` cookie.
 - Do not send `X-Admin-Token`, `X-Actor-Id`, `X-Actor-Roles`, or
   `X-Service-Scope` from normal browser UI requests.
+- Legacy, dev, test, bootstrap, or controlled internal automation references to
+  trusted headers are not the C-2 browser baseline.
 - Service picker options come from `/me/services`.
 - Every write action is gated from server-derived global roles and selected
   Service roles.

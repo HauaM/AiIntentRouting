@@ -20,9 +20,9 @@ import {
 import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
 import { FieldHelpLabel } from '@/components/FieldHelpLabel';
-import { FutureFeatureNotice } from '@/components/FutureFeatureNotice';
 import {
   canCreateServices,
+  canManageServiceMembers,
   canSelectServiceFromScope,
   canUseServicesPage,
 } from '@/models/adminSession';
@@ -32,6 +32,7 @@ import {
   toServiceCreateRequest,
   type ServiceFormValues,
 } from './serviceForm';
+import { ServiceMembershipPanel } from './ServiceMembershipPanel';
 
 const serviceIdPattern = /^[a-z][a-z0-9_-]{1,62}$/;
 
@@ -70,6 +71,7 @@ export default function ServicesPage() {
   const [createdService, setCreatedService] = useState<API.Service>();
   const ready = canUseServicesPage(session);
   const canCreate = canCreateServices(session);
+  const canManageMembers = canManageServiceMembers(session);
 
   const selectedService = session.services.find(
     (service) => service.service_id === session.serviceId,
@@ -164,37 +166,39 @@ export default function ServicesPage() {
               message="C-1 Service onboarding"
               description="Service 등록은 권한 우선 온보딩의 첫 단계입니다. 이후 C-2에서 서비스별 사용자 권한 부여 흐름이 연결됩니다."
             />
-            <FutureFeatureNotice
-              compact
-              title="Service membership and role assignment"
-              backendRequirement="C-2 role-assignment API/UI contracts are required before this console can grant service_developer, service_operator, or auditor roles."
-            />
             {selectedService ? (
-              <Card title="Selected Service">
-                <Descriptions bordered size="small" column={{ xs: 1, md: 3 }}>
-                  <Descriptions.Item label="Service ID">
-                    <Typography.Text code>{selectedService.service_id}</Typography.Text>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Display name">
-                    {selectedService.display_name}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Environment">
-                    <Tag color="blue">{selectedService.environment}</Tag>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Status">
-                    <Tag color={selectedService.status === 'active' ? 'green' : 'default'}>
-                      {selectedService.status}
-                    </Tag>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Roles">
-                    <Space wrap size={4}>
-                      {selectedService.roles.map((role) => (
-                        <Tag key={`${selectedService.service_id}:${role}`}>{role}</Tag>
-                      ))}
-                    </Space>
-                  </Descriptions.Item>
-                </Descriptions>
-              </Card>
+              <>
+                <Card title="Selected Service">
+                  <Descriptions bordered size="small" column={{ xs: 1, md: 3 }}>
+                    <Descriptions.Item label="Service ID">
+                      <Typography.Text code>{selectedService.service_id}</Typography.Text>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Display name">
+                      {selectedService.display_name}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Environment">
+                      <Tag color="blue">{selectedService.environment}</Tag>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Status">
+                      <Tag color={selectedService.status === 'active' ? 'green' : 'default'}>
+                        {selectedService.status}
+                      </Tag>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Roles">
+                      <Space wrap size={4}>
+                        {selectedService.roles.map((role) => (
+                          <Tag key={`${selectedService.service_id}:${role}`}>{role}</Tag>
+                        ))}
+                      </Space>
+                    </Descriptions.Item>
+                  </Descriptions>
+                </Card>
+                <ServiceMembershipPanel
+                  selectedService={selectedService}
+                  canManage={canManageMembers}
+                  onMembershipChanged={restoreSession}
+                />
+              </>
             ) : null}
             {canCreate ? (
               <Card title="Create Service">

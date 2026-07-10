@@ -19,6 +19,52 @@ export async function createService(payload: API.ServiceCreateRequest) {
   });
 }
 
+export async function listAdminUsers(
+  params: { query?: string; limit?: number } = {},
+) {
+  return request<API.AdminUserLookup[]>('/users', {
+    method: 'GET',
+    params: {
+      query: params.query,
+      limit: params.limit ?? 25,
+    },
+  });
+}
+
+export async function listServiceMembers(serviceId: string) {
+  return request<API.ServiceMember[]>(servicePath(serviceId, '/members'), {
+    method: 'GET',
+  });
+}
+
+export async function grantServiceRole(
+  serviceId: string,
+  userId: string,
+  payload: API.ServiceRoleGrantRequest,
+) {
+  return request<API.ServiceRoleGrantResponse>(
+    servicePath(serviceId, `/members/${encodeURIComponent(userId)}/roles`),
+    {
+      method: 'POST',
+      data: payload,
+    },
+  );
+}
+
+export async function revokeServiceRole(
+  serviceId: string,
+  userId: string,
+  role: API.ServiceRole,
+) {
+  return request<API.ServiceRoleRevokeResponse>(
+    servicePath(
+      serviceId,
+      `/members/${encodeURIComponent(userId)}/roles/${encodeURIComponent(role)}`,
+    ),
+    { method: 'DELETE' },
+  );
+}
+
 export async function fetchRuntimeMetrics(serviceId: string, windowHours: number) {
   return request<API.RuntimeMetrics>(servicePath(serviceId, '/runtime-metrics'), {
     method: 'GET',

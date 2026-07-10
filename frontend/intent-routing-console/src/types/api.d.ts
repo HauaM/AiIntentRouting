@@ -14,6 +14,47 @@ declare namespace API {
     role: string;
   };
 
+  type ServiceRole = 'service_owner' | 'service_developer' | 'service_operator' | 'auditor';
+
+  type AdminUserLookup = {
+    user_id: string;
+    email: string;
+    display_name: string;
+    status: string;
+  };
+
+  type ServiceMemberRole = {
+    role: ServiceRole;
+    assigned_by: string;
+    assigned_at: string;
+  };
+
+  type ServiceMember = {
+    service_id: string;
+    user: AdminUserLookup;
+    roles: ServiceMemberRole[];
+  };
+
+  type ServiceRoleGrantRequest = {
+    role: ServiceRole;
+  };
+
+  type ServiceRoleGrantResponse = {
+    service_id: string;
+    user_id: string;
+    role: ServiceRole;
+    assigned_by: string;
+    assigned_at: string;
+  };
+
+  type ServiceRoleRevokeResponse = {
+    service_id: string;
+    user_id: string;
+    role: ServiceRole;
+    revoked_by: string;
+    revoked_at: string;
+  };
+
   type AdminCurrentUserResponse = {
     user: AdminUser;
     global_roles: string[];
