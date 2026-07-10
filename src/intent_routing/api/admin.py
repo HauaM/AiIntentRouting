@@ -13,7 +13,7 @@ from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID, uuid4
 
 from cryptography.exceptions import InvalidTag
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -27,6 +27,7 @@ from intent_routing.api.admin_dependencies import (
 )
 from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekError
 from intent_routing.db.models import (
+    AdminUser,
     ApiKey,
     GovernedActionRequest,
     Intent,
@@ -38,6 +39,7 @@ from intent_routing.db.models import (
     TestDataset,
     TestResult,
     TestRun,
+    UserServiceRole,
 )
 from intent_routing.db.repositories import (
     MASKED_RUNTIME_LOG_FIELD_NAMES,
@@ -121,6 +123,62 @@ class AccessibleServiceResponse(BaseModel):
     environment: str
     status: str
     roles: list[str]
+
+
+class AdminUserLookupResponse(BaseModel):
+    user_id: str
+    email: str
+    display_name: str
+    status: str
+
+
+class ServiceMemberRoleResponse(BaseModel):
+    role: str
+    assigned_by: str
+    assigned_at: datetime
+
+
+class ServiceMemberResponse(BaseModel):
+    service_id: str
+    user: AdminUserLookupResponse
+    roles: list[ServiceMemberRoleResponse]
+
+
+ServiceAdminRole = Literal[
+    "service_owner",
+    "service_developer",
+    "service_operator",
+    "auditor",
+]
+
+
+class ServiceRoleGrantRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: ServiceAdminRole
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def role_must_be_stripped(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class ServiceRoleGrantResponse(BaseModel):
+    service_id: str
+    user_id: str
+    role: str
+    assigned_by: str
+    assigned_at: datetime
+
+
+class ServiceRoleRevokeResponse(BaseModel):
+    service_id: str
+    user_id: str
+    role: str
+    revoked_by: str
+    revoked_at: datetime
 
 
 class ApiKeyCreateRequest(BaseModel):
@@ -1119,6 +1177,65 @@ def _accessible_service_response(
     )
 
 
+def _admin_user_lookup_response(user: AdminUser) -> AdminUserLookupResponse:
+    return AdminUserLookupResponse(
+        user_id=user.user_id,
+        email=user.email,
+        display_name=user.display_name,
+        status=user.status,
+    )
+
+
+def _service_member_responses(
+    role_rows: list[UserServiceRole],
+) -> list[ServiceMemberResponse]:
+    members: dict[str, ServiceMemberResponse] = {}
+    for role_row in role_rows:
+        member = members.get(role_row.user_id)
+        if member is None:
+            member = ServiceMemberResponse(
+                service_id=role_row.service_id,
+                user=_admin_user_lookup_response(role_row.user),
+                roles=[],
+            )
+            members[role_row.user_id] = member
+        member.roles.append(
+            ServiceMemberRoleResponse(
+                role=role_row.role,
+                assigned_by=role_row.assigned_by,
+                assigned_at=role_row.assigned_at,
+            )
+        )
+    return list(members.values())
+
+
+def _service_role_grant_response(
+    role_record: UserServiceRole,
+) -> ServiceRoleGrantResponse:
+    return ServiceRoleGrantResponse(
+        service_id=role_record.service_id,
+        user_id=role_record.user_id,
+        role=role_record.role,
+        assigned_by=role_record.assigned_by,
+        assigned_at=role_record.assigned_at,
+    )
+
+
+def _service_role_revoke_response(
+    role_record: UserServiceRole,
+    *,
+    revoked_by: str,
+    revoked_at: datetime,
+) -> ServiceRoleRevokeResponse:
+    return ServiceRoleRevokeResponse(
+        service_id=role_record.service_id,
+        user_id=role_record.user_id,
+        role=role_record.role,
+        revoked_by=revoked_by,
+        revoked_at=revoked_at,
+    )
+
+
 def _api_key_response(api_key: ApiKey) -> ApiKeyResponse:
     return ApiKeyResponse(
         key_id=api_key.key_id,
@@ -1804,6 +1921,144 @@ def list_accessible_services(
         )
         for service in repository.list_services_for_user(context.actor_id)
     ]
+
+
+@router.get("/users", response_model=list[AdminUserLookupResponse])
+def list_admin_users(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+    query: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=25)] = 25,
+) -> list[AdminUserLookupResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    return [
+        _admin_user_lookup_response(user)
+        for user in repository.list_admin_users(query=query, limit=limit)
+    ]
+
+
+@router.get(
+    "/services/{service_id}/members",
+    response_model=list[ServiceMemberResponse],
+)
+def list_service_members(
+    service_id: str,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> list[ServiceMemberResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    if repository.get_service(service_id) is None:
+        _raise_not_found("Service does not exist.")
+    return _service_member_responses(repository.list_service_member_roles(service_id))
+
+
+@router.post(
+    "/services/{service_id}/members/{user_id}/roles",
+    response_model=ServiceRoleGrantResponse,
+)
+def grant_service_member_role(
+    service_id: str,
+    user_id: str,
+    request: ServiceRoleGrantRequest,
+    http_request: Request,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ServiceRoleGrantResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    if repository.get_service(service_id) is None:
+        _raise_not_found("Service does not exist.")
+    user = repository.get_admin_user(user_id)
+    if user is None:
+        _raise_not_found("Admin user does not exist.")
+    if user.status != "active":
+        _raise_bad_request("Admin user is not active.")
+    now = datetime.now(UTC)
+    role_record, role_created = repository.ensure_user_service_role_with_created(
+        user_id=user_id,
+        service_id=service_id,
+        role=request.role,
+        assigned_by=context.actor_id,
+        assigned_at=now,
+    )
+    grant_response = _service_role_grant_response(role_record)
+    if role_created:
+        repository.insert_audit_log(
+            event_type="service_membership.role_granted",
+            actor_id=context.actor_id,
+            service_id=service_id,
+            trace_id=None,
+            target_type="user_service_role",
+            target_id=f"{service_id}:{user_id}:{request.role}",
+            view_reason=None,
+            source_ip=source_ip_from_request(http_request),
+            before_state=None,
+            after_state=grant_response.model_dump(mode="json"),
+            created_at=now,
+        )
+    session.commit()
+    return grant_response
+
+
+@router.delete(
+    "/services/{service_id}/members/{user_id}/roles/{role}",
+    response_model=ServiceRoleRevokeResponse,
+)
+def revoke_service_member_role(
+    service_id: str,
+    user_id: str,
+    role: Annotated[ServiceAdminRole, Path()],
+    http_request: Request,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ServiceRoleRevokeResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    if repository.get_service(service_id) is None:
+        _raise_not_found("Service does not exist.")
+    role_record = repository.delete_user_service_role_by_key(user_id, service_id, role)
+    if role_record is None:
+        _raise_not_found("Service role does not exist.")
+    now = datetime.now(UTC)
+    before_state = _service_role_grant_response(role_record).model_dump(mode="json")
+    response = _service_role_revoke_response(
+        role_record,
+        revoked_by=context.actor_id,
+        revoked_at=now,
+    )
+    repository.insert_audit_log(
+        event_type="service_membership.role_revoked",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="user_service_role",
+        target_id=f"{service_id}:{user_id}:{role}",
+        view_reason=None,
+        source_ip=source_ip_from_request(http_request),
+        before_state=before_state,
+        after_state=response.model_dump(mode="json"),
+        created_at=now,
+    )
+    session.commit()
+    return response
 
 
 @router.post(

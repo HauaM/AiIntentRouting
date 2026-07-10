@@ -15,17 +15,21 @@ import {
   fetchRuntimeSetupGuidance,
   fetchTestRun,
   fetchTestRunResults,
+  grantServiceRole,
   listApiKeys,
+  listAdminUsers,
   listCatalogVersions,
   listExamples,
   listIntentRouteCandidates,
   listPolicyVersions,
   listReleases,
   listReleaseCandidates,
+  listServiceMembers,
   listServiceApiKeys,
   listTestRuns,
   patchIntent,
   revokeApiKey,
+  revokeServiceRole,
   revokeServiceApiKey,
   rollbackRelease,
 } from './adminServices';
@@ -291,6 +295,51 @@ describe('admin service Phase 1 write flow requests', () => {
     for (const [, options] of calls) {
       expect(options).not.toHaveProperty('headers');
     }
+  });
+
+  it('uses C-2 membership endpoints without trusted headers', async () => {
+    await listAdminUsers({ query: 'developer@example.com' });
+    await listServiceMembers('svc/admin');
+    await grantServiceRole('svc/admin', 'user/a', { role: 'service_developer' });
+    await revokeServiceRole('svc/admin', 'user/a', 'service_developer');
+
+    expect(requestMock).toHaveBeenNthCalledWith(1, '/users', {
+      method: 'GET',
+      params: { query: 'developer@example.com', limit: 25 },
+    });
+    expect(requestMock).toHaveBeenNthCalledWith(
+      2,
+      '/services/svc%2Fadmin/members',
+      { method: 'GET' },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      3,
+      '/services/svc%2Fadmin/members/user%2Fa/roles',
+      {
+        method: 'POST',
+        data: { role: 'service_developer' },
+      },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      4,
+      '/services/svc%2Fadmin/members/user%2Fa/roles/service_developer',
+      { method: 'DELETE' },
+    );
+    const calls = requestMock.mock.calls as unknown as Array<
+      [string, Record<string, unknown>]
+    >;
+    for (const [, options] of calls) {
+      expect(options).not.toHaveProperty('headers');
+    }
+  });
+
+  it('lists admin users with a default limit and optional empty query', async () => {
+    await listAdminUsers();
+
+    expect(requestMock).toHaveBeenCalledWith('/users', {
+      method: 'GET',
+      params: { query: undefined, limit: 25 },
+    });
   });
 
   it('loads workflow candidate paths', async () => {

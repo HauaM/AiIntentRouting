@@ -7,6 +7,7 @@ import {
   canManageApiKeys,
   canManageReleases,
   canManageRuntimeSetup,
+  canManageServiceMembers,
   canSelectServiceFromScope,
   canUseServicesPage,
   getDisplayRoles,
@@ -174,6 +175,36 @@ describe('admin session model helpers', () => {
     expect(canCreateServices(session)).toBe(false);
   });
 
+  it('allows only system admins to manage service memberships in C-2 baseline', () => {
+    const systemAdminSession = normalizeAuthSession(currentUser, services, 'svc-a');
+    const serviceOwnerSession = normalizeAuthSession(
+      { ...currentUser, global_roles: [], service_roles: [] },
+      [{ ...services[0], roles: ['service_owner'] }],
+      'svc-a',
+    );
+    const serviceDeveloperSession = normalizeAuthSession(
+      { ...currentUser, global_roles: [], service_roles: [] },
+      [{ ...services[0], roles: ['service_developer'] }],
+      'svc-a',
+    );
+    const serviceOperatorSession = normalizeAuthSession(
+      { ...currentUser, global_roles: [], service_roles: [] },
+      [{ ...services[0], roles: ['service_operator'] }],
+      'svc-a',
+    );
+    const auditorSession = normalizeAuthSession(
+      { ...currentUser, global_roles: [], service_roles: [] },
+      [{ ...services[0], roles: ['auditor'] }],
+      'svc-a',
+    );
+
+    expect(canManageServiceMembers(systemAdminSession)).toBe(true);
+    expect(canManageServiceMembers(serviceOwnerSession)).toBe(false);
+    expect(canManageServiceMembers(serviceDeveloperSession)).toBe(false);
+    expect(canManageServiceMembers(serviceOperatorSession)).toBe(false);
+    expect(canManageServiceMembers(auditorSession)).toBe(false);
+  });
+
   it('selects created services only when they come from server-derived scope', () => {
     const session = normalizeAuthSession(currentUser, services, 'svc-a');
 
@@ -201,5 +232,6 @@ describe('admin session model helpers', () => {
     expect(canManageReleases(session)).toBe(false);
     expect(canManageApiKeys(session)).toBe(false);
     expect(canManageRuntimeSetup(session)).toBe(false);
+    expect(canManageServiceMembers(session)).toBe(false);
   });
 });

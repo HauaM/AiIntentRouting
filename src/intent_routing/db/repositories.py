@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
 from sqlalchemy import bindparam, func, or_, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from intent_routing.db import models
@@ -191,6 +192,32 @@ class IntentRoutingRepository:
             )
         )
 
+    def list_admin_users(
+        self,
+        query: str | None = None,
+        limit: int = 25,
+    ) -> list[models.AdminUser]:
+        limit = max(1, min(limit, 25))
+        statement = select(models.AdminUser)
+        if query is not None and query.strip():
+            pattern = f"%{query.strip().lower()}%"
+            statement = statement.where(
+                or_(
+                    func.lower(models.AdminUser.email_normalized).like(pattern),
+                    func.lower(models.AdminUser.email).like(pattern),
+                    func.lower(models.AdminUser.display_name).like(pattern),
+                    func.lower(models.AdminUser.user_id).like(pattern),
+                )
+            )
+        return list(
+            self.session.scalars(
+                statement.order_by(
+                    models.AdminUser.email_normalized,
+                    models.AdminUser.user_id,
+                ).limit(limit)
+            )
+        )
+
     def update_admin_user_login(
         self,
         user: models.AdminUser,
@@ -327,6 +354,80 @@ class IntentRoutingRepository:
         )
         return self._add_and_flush(models.UserServiceRole(**values))
 
+    def ensure_user_service_role(self, **values: Any) -> models.UserServiceRole:
+        role_record, _created = self.ensure_user_service_role_with_created(**values)
+        return role_record
+
+    def ensure_user_service_role_with_created(
+        self,
+        **values: Any,
+    ) -> tuple[models.UserServiceRole, bool]:
+        user_id = _require_nonblank_string(
+            values.get("user_id"),
+            field_name="user service role user_id",
+        )
+        service_id = _require_nonblank_string(
+            values.get("service_id"),
+            field_name="user service role service_id",
+        )
+        role = _require_allowed_value(
+            values.get("role"),
+            field_name="user service role",
+            allowed=SERVICE_ADMIN_ROLES,
+        )
+        existing = self.get_user_service_role(user_id, service_id, role)
+        if existing is not None:
+            return existing, False
+        try:
+            with self.session.begin_nested():
+                return self.assign_user_service_role(**values), True
+        except IntegrityError:
+            existing = self.get_user_service_role(user_id, service_id, role)
+            if existing is None:
+                raise
+            return existing, False
+
+    def get_user_service_role(
+        self,
+        user_id: str,
+        service_id: str,
+        role: str,
+    ) -> models.UserServiceRole | None:
+        role = _require_allowed_value(
+            role,
+            field_name="user service role",
+            allowed=SERVICE_ADMIN_ROLES,
+        )
+        return self.session.get(models.UserServiceRole, (user_id, service_id, role))
+
+    def delete_user_service_role(self, role_record: models.UserServiceRole) -> None:
+        self.session.delete(role_record)
+        self.session.flush()
+
+    def delete_user_service_role_by_key(
+        self,
+        user_id: str,
+        service_id: str,
+        role: str,
+    ) -> models.UserServiceRole | None:
+        role = _require_allowed_value(
+            role,
+            field_name="user service role",
+            allowed=SERVICE_ADMIN_ROLES,
+        )
+        role_record = self.session.scalar(
+            select(models.UserServiceRole)
+            .where(models.UserServiceRole.user_id == user_id)
+            .where(models.UserServiceRole.service_id == service_id)
+            .where(models.UserServiceRole.role == role)
+            .with_for_update()
+        )
+        if role_record is None:
+            return None
+        self.session.delete(role_record)
+        self.session.flush()
+        return role_record
+
     def list_user_service_roles(
         self,
         user_id: str,
@@ -338,6 +439,20 @@ class IntentRoutingRepository:
                 .where(models.UserServiceRole.user_id == user_id)
                 .where(models.UserServiceRole.service_id == service_id)
                 .order_by(models.UserServiceRole.role)
+            )
+        )
+
+    def list_service_member_roles(self, service_id: str) -> list[models.UserServiceRole]:
+        return list(
+            self.session.scalars(
+                select(models.UserServiceRole)
+                .join(models.AdminUser)
+                .where(models.UserServiceRole.service_id == service_id)
+                .order_by(
+                    models.AdminUser.email_normalized,
+                    models.UserServiceRole.role,
+                    models.UserServiceRole.user_id,
+                )
             )
         )
 

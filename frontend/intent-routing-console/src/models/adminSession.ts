@@ -111,6 +111,9 @@ export const canManageRuntimeSetup = (session: AdminSession) =>
 export const canCreateServices = (session: AdminSession) =>
   session.globalRoles.includes('system_admin');
 
+export const canManageServiceMembers = (session: AdminSession) =>
+  session.globalRoles.includes('system_admin');
+
 export const canUseServicesPage = (session: AdminSession) =>
   Boolean(
     session.authenticated &&
