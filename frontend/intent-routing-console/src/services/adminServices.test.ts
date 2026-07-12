@@ -32,6 +32,7 @@ import {
   revokeServiceRole,
   revokeServiceApiKey,
   rollbackRelease,
+  searchAdminUsers,
 } from './adminServices';
 
 vi.mock('@umijs/max', () => ({
@@ -298,7 +299,7 @@ describe('admin service Phase 1 write flow requests', () => {
   });
 
   it('uses C-2 membership endpoints without trusted headers', async () => {
-    await listAdminUsers({ query: 'developer@example.com' });
+    await searchAdminUsers({ query: 'developer@example.com' });
     await listServiceMembers('svc/admin');
     await grantServiceRole('svc/admin', 'user/a', { role: 'service_developer' });
     await revokeServiceRole('svc/admin', 'user/a', 'service_developer');
@@ -334,11 +335,20 @@ describe('admin service Phase 1 write flow requests', () => {
   });
 
   it('lists admin users with a default limit and optional empty query', async () => {
-    await listAdminUsers();
+    await searchAdminUsers();
 
     expect(requestMock).toHaveBeenCalledWith('/users', {
       method: 'GET',
       params: { query: undefined, limit: 25 },
+    });
+  });
+
+  it('keeps listAdminUsers as a compatibility alias for user search', async () => {
+    await listAdminUsers({ query: 'owner@example.com', limit: 10 });
+
+    expect(requestMock).toHaveBeenCalledWith('/users', {
+      method: 'GET',
+      params: { query: 'owner@example.com', limit: 10 },
     });
   });
 
