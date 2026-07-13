@@ -19,7 +19,7 @@ export async function createService(payload: API.ServiceCreateRequest) {
   });
 }
 
-export async function listAdminUsers(
+export async function searchAdminUsers(
   params: { query?: string; limit?: number } = {},
 ) {
   return request<API.AdminUserLookup[]>('/users', {
@@ -30,6 +30,8 @@ export async function listAdminUsers(
     },
   });
 }
+
+export const listAdminUsers = searchAdminUsers;
 
 export async function listServiceMembers(serviceId: string) {
   return request<API.ServiceMember[]>(servicePath(serviceId, '/members'), {

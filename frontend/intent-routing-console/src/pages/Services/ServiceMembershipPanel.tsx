@@ -4,9 +4,9 @@ import { Alert, Button, Card, Select, Space, Table, Tag, Typography, message } f
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import {
   grantServiceRole,
-  listAdminUsers,
   listServiceMembers,
   revokeServiceRole,
+  searchAdminUsers,
 } from '@/services/adminServices';
 import {
   isCurrentServiceRequest,
@@ -139,7 +139,7 @@ export function ServiceMembershipPanel({
 
     setSearchingUsers(true);
     try {
-      const users = await listAdminUsers({ query, limit: 25 });
+      const users = await searchAdminUsers({ query, limit: 25 });
       if (!isCurrentRequest()) return;
       setUserOptions(users.map(toUserOption));
     } catch (error) {

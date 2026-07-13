@@ -1,0 +1,53 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const readSource = (relativePath: string) =>
+  readFileSync(resolve(process.cwd(), 'src/pages/Services', relativePath), 'utf8');
+
+describe('Services membership panel contract', () => {
+  it('replaces the C-2 future notice with the real selected-Service panel', () => {
+    const source = readSource('index.tsx');
+    const selectedServiceIndex = source.indexOf('<Card title="Selected Service">');
+    const membershipPanelIndex = source.indexOf('<ServiceMembershipPanel');
+
+    expect(source).toContain("import { ServiceMembershipPanel } from './ServiceMembershipPanel'");
+    expect(source).toContain('canManageServiceMembers(session)');
+    expect(source).toContain('onMembershipChanged={restoreSession}');
+    expect(source).not.toContain('FutureFeatureNotice');
+    expect(selectedServiceIndex).toBeGreaterThan(-1);
+    expect(membershipPanelIndex).toBeGreaterThan(selectedServiceIndex);
+  });
+
+  it('loads and clears membership state when the selected Service changes', () => {
+    const source = readSource('ServiceMembershipPanel.tsx');
+    const effectIndex = source.indexOf('useEffect(() => {');
+    const clearIndex = source.indexOf('clearMembershipState();', effectIndex);
+    const loadIndex = source.indexOf('loadMembers(selectedServiceId);', effectIndex);
+
+    expect(source).toContain('shouldClearMembershipState(previousServiceId, selectedServiceId)');
+    expect(source).toContain('serviceIdRef.current = selectedServiceId');
+    expect(source).toContain(
+      '}, [clearMembershipState, loadMembers, selectedServiceId]);',
+    );
+    expect(clearIndex).toBeGreaterThan(effectIndex);
+    expect(loadIndex).toBeGreaterThan(clearIndex);
+  });
+
+  it('reloads members and refreshes session scope after grant and revoke', () => {
+    const source = readSource('ServiceMembershipPanel.tsx');
+    const grantIndex = source.indexOf('await grantServiceRole(');
+    const grantReloadIndex = source.indexOf('await loadMembers(expectedServiceId);', grantIndex);
+    const grantRefreshIndex = source.indexOf('await onMembershipChanged();', grantReloadIndex);
+    const revokeIndex = source.indexOf('await revokeServiceRole(');
+    const revokeReloadIndex = source.indexOf('await loadMembers(expectedServiceId);', revokeIndex);
+    const revokeRefreshIndex = source.indexOf('await onMembershipChanged();', revokeReloadIndex);
+
+    expect(source).toContain('searchAdminUsers({ query, limit: 25 })');
+    expect(source).toContain('listServiceMembers(expectedServiceId)');
+    expect(grantReloadIndex).toBeGreaterThan(grantIndex);
+    expect(grantRefreshIndex).toBeGreaterThan(grantReloadIndex);
+    expect(revokeReloadIndex).toBeGreaterThan(revokeIndex);
+    expect(revokeRefreshIndex).toBeGreaterThan(revokeReloadIndex);
+  });
+});
