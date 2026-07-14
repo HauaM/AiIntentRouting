@@ -49,6 +49,7 @@ from intent_routing.db.repositories import (
     AdminSessionContextRecord,
     IntentRoutingRepository,
     PermissionAdminUserSummaryRecord,
+    PermissionServiceRoleAssignmentRecord,
     PermissionServiceRoleSummaryRecord,
 )
 from intent_routing.domain.enums import (
@@ -344,6 +345,31 @@ class PermissionOrganizationUserSummaryResponse(BaseModel):
 class PermissionServiceRoleSummaryResponse(BaseModel):
     service_id: str
     service_display_name: str
+    role: str
+    assigned_by: str
+    assigned_at: datetime
+
+
+class PermissionServiceRoleAdminUserResponse(BaseModel):
+    user_id: str
+    email: str
+    display_name: str
+    status: str
+
+
+class PermissionServiceRoleOrganizationUserResponse(BaseModel):
+    id: UUID
+    user_number: str
+    name: str
+    use_yn: str
+    department_name: str | None
+
+
+class PermissionServiceRoleAssignmentResponse(BaseModel):
+    service_id: str
+    service_display_name: str
+    user: PermissionServiceRoleAdminUserResponse
+    organization_user: PermissionServiceRoleOrganizationUserResponse | None
     role: str
     assigned_by: str
     assigned_at: datetime
@@ -1637,6 +1663,36 @@ def _permission_service_role_summary_response(
     )
 
 
+def _permission_service_role_assignment_response(
+    service_role: PermissionServiceRoleAssignmentRecord,
+) -> PermissionServiceRoleAssignmentResponse:
+    organization_user = service_role.organization_user
+    return PermissionServiceRoleAssignmentResponse(
+        service_id=service_role.service_id,
+        service_display_name=service_role.service_display_name,
+        user=PermissionServiceRoleAdminUserResponse(
+            user_id=service_role.user.user_id,
+            email=service_role.user.email,
+            display_name=service_role.user.display_name,
+            status=service_role.user.status,
+        ),
+        organization_user=(
+            PermissionServiceRoleOrganizationUserResponse(
+                id=organization_user.id,
+                user_number=organization_user.user_number,
+                name=organization_user.name,
+                use_yn=organization_user.use_yn,
+                department_name=service_role.department_name,
+            )
+            if organization_user is not None
+            else None
+        ),
+        role=service_role.role,
+        assigned_by=service_role.assigned_by,
+        assigned_at=service_role.assigned_at,
+    )
+
+
 def _permission_admin_user_summary_response(
     summary: PermissionAdminUserSummaryRecord,
 ) -> PermissionAdminUserSummaryResponse:
@@ -2693,6 +2749,37 @@ def list_permission_management_admin_users(
             global_role=global_role,
             organization_link=organization_link,
             organization_use_yn=organization_use_yn,
+            limit=limit,
+        )
+    ]
+
+
+@router.get(
+    "/permission-management/service-roles",
+    response_model=list[PermissionServiceRoleAssignmentResponse],
+)
+def list_permission_management_service_roles(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+    service_id: Annotated[str | None, Query(min_length=1)] = None,
+    user_id: Annotated[str | None, Query(min_length=1)] = None,
+    role: ServiceAdminRole | None = None,
+    query: Annotated[str | None, Query(min_length=1)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> list[PermissionServiceRoleAssignmentResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    return [
+        _permission_service_role_assignment_response(service_role)
+        for service_role in repository.list_permission_service_role_summaries(
+            service_id=service_id,
+            user_id=user_id,
+            role=role,
+            query=query,
             limit=limit,
         )
     ]

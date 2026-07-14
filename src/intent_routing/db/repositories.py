@@ -7,7 +7,7 @@ from uuid import UUID
 from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
 from sqlalchemy import bindparam, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from intent_routing.db import models
 
@@ -104,6 +104,18 @@ class AdminSessionContextRecord:
 class PermissionServiceRoleSummaryRecord:
     service_id: str
     service_display_name: str
+    role: str
+    assigned_by: str
+    assigned_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class PermissionServiceRoleAssignmentRecord:
+    service_id: str
+    service_display_name: str
+    user: models.AdminUser
+    organization_user: models.OrganizationUser | None
+    department_name: str | None
     role: str
     assigned_by: str
     assigned_at: datetime
@@ -442,6 +454,93 @@ class IntentRoutingRepository:
                 ).limit(limit)
             )
         )
+
+    def list_permission_service_role_summaries(
+        self,
+        *,
+        service_id: str | None = None,
+        user_id: str | None = None,
+        role: str | None = None,
+        query: str | None = None,
+        limit: int = 200,
+    ) -> list[PermissionServiceRoleAssignmentRecord]:
+        limit = max(1, min(limit, 500))
+        if role is not None:
+            role = _require_allowed_value(
+                role,
+                field_name="user service role",
+                allowed=SERVICE_ADMIN_ROLES,
+            )
+
+        statement = (
+            select(models.UserServiceRole)
+            .join(models.UserServiceRole.user)
+            .join(models.UserServiceRole.service)
+            .outerjoin(models.AdminUser.organization_user)
+            .outerjoin(models.OrganizationUser.department)
+            .options(
+                joinedload(models.UserServiceRole.service),
+                joinedload(models.UserServiceRole.user)
+                .joinedload(models.AdminUser.organization_user)
+                .joinedload(models.OrganizationUser.department),
+            )
+        )
+        if service_id is not None:
+            statement = statement.where(models.UserServiceRole.service_id == service_id)
+        if user_id is not None:
+            statement = statement.where(models.UserServiceRole.user_id == user_id)
+        if role is not None:
+            statement = statement.where(models.UserServiceRole.role == role)
+        if query is not None and query.strip():
+            pattern = f"%{query.strip().lower()}%"
+            statement = statement.where(
+                or_(
+                    func.lower(models.UserServiceRole.user_id).like(pattern),
+                    func.lower(models.AdminUser.email_normalized).like(pattern),
+                    func.lower(models.AdminUser.email).like(pattern),
+                    func.lower(models.AdminUser.display_name).like(pattern),
+                    func.lower(models.AdminUser.user_id).like(pattern),
+                    func.lower(models.UserServiceRole.service_id).like(pattern),
+                    func.lower(models.Service.display_name).like(pattern),
+                    func.lower(models.OrganizationUser.user_number).like(pattern),
+                    func.lower(models.OrganizationUser.name).like(pattern),
+                    func.lower(models.Department.name).like(pattern),
+                )
+            )
+
+        role_records = list(
+            self.session.scalars(
+                statement.order_by(
+                    models.Service.display_name,
+                    models.UserServiceRole.service_id,
+                    models.AdminUser.email_normalized,
+                    models.UserServiceRole.user_id,
+                    models.UserServiceRole.role,
+                ).limit(limit)
+            )
+        )
+        summaries: list[PermissionServiceRoleAssignmentRecord] = []
+        for role_record in role_records:
+            organization_user = role_record.user.organization_user
+            department_name = (
+                organization_user.department.name
+                if organization_user is not None
+                and organization_user.department is not None
+                else None
+            )
+            summaries.append(
+                PermissionServiceRoleAssignmentRecord(
+                    service_id=role_record.service_id,
+                    service_display_name=role_record.service.display_name,
+                    user=role_record.user,
+                    organization_user=organization_user,
+                    department_name=department_name,
+                    role=role_record.role,
+                    assigned_by=role_record.assigned_by,
+                    assigned_at=role_record.assigned_at,
+                )
+            )
+        return summaries
 
     def list_permission_admin_user_summaries(
         self,

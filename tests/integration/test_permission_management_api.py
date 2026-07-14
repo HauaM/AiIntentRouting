@@ -65,6 +65,15 @@ def test_permission_management_audit_logs_requires_system_admin_without_db() -> 
     assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
 
 
+def test_permission_management_service_roles_requires_system_admin_without_db() -> None:
+    response = _client_with_fake_session(global_roles=frozenset()).get(
+        "/admin/v1/permission-management/service-roles",
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+
+
 def _client(
     db_session: Session,
     *,
@@ -274,6 +283,180 @@ def test_permission_management_summary_requires_system_admin(
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+
+
+def test_system_admin_lists_permission_service_roles_with_filters_and_metadata(
+    db_session: Session,
+) -> None:
+    suffix = uuid4().hex[:8]
+    admin_user_id = f"perm-service-role-admin-{suffix}"
+    other_admin_user_id = f"perm-service-role-other-{suffix}"
+    service_id = f"perm-service-role-service-{suffix}"
+    other_service_id = f"perm-service-role-other-service-{suffix}"
+    dept_number = f"perm-service-role-dept-{suffix}"
+    user_number = f"perm-service-role-user-{suffix}"
+    now = datetime.now(UTC).replace(microsecond=0)
+
+    _purge_rows(
+        db_session,
+        admin_user_ids=[admin_user_id, other_admin_user_id],
+        service_ids=[service_id, other_service_id],
+        dept_numbers=[dept_number],
+        user_numbers=[user_number],
+    )
+    try:
+        repository = IntentRoutingRepository(db_session)
+        department = repository.create_department(
+            dept_number=dept_number,
+            name=f"Permission Service Roles Department {suffix}",
+            use_yn="Y",
+            created_by="integration-test",
+            updated_by="integration-test",
+            created_at=now,
+            updated_at=now,
+        )
+        organization_user = repository.create_organization_user(
+            user_number=user_number,
+            name=f"Permission Service Roles User {suffix}",
+            department_id=department.id,
+            use_yn="Y",
+            created_by="integration-test",
+            updated_by="integration-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_user(
+            user_id=admin_user_id,
+            organization_user_id=organization_user.id,
+            email=f"{admin_user_id}@example.com",
+            display_name="Permission Service Roles Admin",
+            password_hash="target-password-hash",
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_user(
+            user_id=other_admin_user_id,
+            email=f"{other_admin_user_id}@example.com",
+            display_name="Permission Service Roles Other",
+            password_hash="other-password-hash",
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_service(
+            service_id=service_id,
+            display_name="Permission Service Roles Service",
+            environment="test",
+            default_threshold_preset="balanced",
+            max_input_tokens=256,
+            status="active",
+            created_by="integration-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_service(
+            service_id=other_service_id,
+            display_name="Permission Service Roles Other Service",
+            environment="test",
+            default_threshold_preset="balanced",
+            max_input_tokens=256,
+            status="active",
+            created_by="integration-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.assign_user_service_role(
+            user_id=admin_user_id,
+            service_id=service_id,
+            role="service_developer",
+            assigned_by="integration-test",
+            assigned_at=now,
+        )
+        repository.assign_user_service_role(
+            user_id=other_admin_user_id,
+            service_id=other_service_id,
+            role="auditor",
+            assigned_by="integration-test",
+            assigned_at=now,
+        )
+        db_session.commit()
+
+        client = _client(db_session)
+        filtered_response = client.get(
+            "/admin/v1/permission-management/service-roles",
+            params={
+                "service_id": service_id,
+                "user_id": admin_user_id,
+                "role": "service_developer",
+            },
+        )
+        query_response = client.get(
+            "/admin/v1/permission-management/service-roles",
+            params={
+                "query": f"Permission Service Roles Department {suffix}",
+                "limit": 10,
+            },
+        )
+
+        assert filtered_response.status_code == 200
+        assert query_response.status_code == 200
+        response_text = filtered_response.text + query_response.text
+        for forbidden_field in (
+            "admin_yn",
+            "adminYn",
+            "password_hash",
+            "target-password-hash",
+            "other-password-hash",
+            "token_hash",
+            "session_token",
+            "before_state",
+            "after_state",
+        ):
+            assert forbidden_field not in response_text
+
+        items = filtered_response.json()
+        assert len(items) == 1
+        item = items[0]
+        assert set(item) == {
+            "service_id",
+            "service_display_name",
+            "user",
+            "organization_user",
+            "role",
+            "assigned_by",
+            "assigned_at",
+        }
+        assert item["service_id"] == service_id
+        assert item["service_display_name"] == "Permission Service Roles Service"
+        assert item["role"] == "service_developer"
+        assert item["assigned_by"] == "integration-test"
+        assert item["assigned_at"] == now.isoformat().replace("+00:00", "Z")
+        assert item["user"] == {
+            "user_id": admin_user_id,
+            "email": f"{admin_user_id}@example.com",
+            "display_name": "Permission Service Roles Admin",
+            "status": "active",
+        }
+        assert item["organization_user"] == {
+            "id": str(organization_user.id),
+            "user_number": user_number,
+            "name": f"Permission Service Roles User {suffix}",
+            "use_yn": "Y",
+            "department_name": f"Permission Service Roles Department {suffix}",
+        }
+        assert [
+            (matched["service_id"], matched["user"]["user_id"], matched["role"])
+            for matched in query_response.json()
+        ] == [(service_id, admin_user_id, "service_developer")]
+    finally:
+        _purge_rows(
+            db_session,
+            admin_user_ids=[admin_user_id, other_admin_user_id],
+            service_ids=[service_id, other_service_id],
+            dept_numbers=[dept_number],
+            user_numbers=[user_number],
+        )
 
 
 def test_permission_management_audit_logs_filter_groups_and_sanitize_states(

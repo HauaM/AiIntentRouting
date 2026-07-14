@@ -14,6 +14,155 @@ def test_repository_exposes_permission_summary_helper() -> None:
     assert "list_permission_admin_user_summaries" in dir(IntentRoutingRepository)
 
 
+def test_repository_lists_permission_service_role_summaries_with_metadata_and_filters(
+    db_session: Session,
+) -> None:
+    suffix = uuid4().hex[:8]
+    admin_user_id = f"perm-role-repo-admin-{suffix}"
+    other_admin_user_id = f"perm-role-repo-other-{suffix}"
+    service_id = f"perm-role-repo-service-{suffix}"
+    other_service_id = f"perm-role-repo-other-service-{suffix}"
+    dept_number = f"perm-role-repo-dept-{suffix}"
+    user_number = f"perm-role-repo-user-{suffix}"
+    now = datetime.now(UTC).replace(microsecond=0)
+
+    _purge_rows(
+        db_session,
+        admin_user_ids=[admin_user_id, other_admin_user_id],
+        service_ids=[service_id, other_service_id],
+        dept_numbers=[dept_number],
+        user_numbers=[user_number],
+    )
+    try:
+        repository = IntentRoutingRepository(db_session)
+        department = repository.create_department(
+            dept_number=dept_number,
+            name=f"Repository Service Roles Department {suffix}",
+            use_yn="Y",
+            created_by="unit-test",
+            updated_by="unit-test",
+            created_at=now,
+            updated_at=now,
+        )
+        organization_user = repository.create_organization_user(
+            user_number=user_number,
+            name=f"Repository Service Roles User {suffix}",
+            department_id=department.id,
+            use_yn="Y",
+            created_by="unit-test",
+            updated_by="unit-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_service(
+            service_id=service_id,
+            display_name="Repository Service Roles Service",
+            environment="test",
+            default_threshold_preset="balanced",
+            max_input_tokens=256,
+            status="active",
+            created_by="unit-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_service(
+            service_id=other_service_id,
+            display_name="Repository Service Roles Other Service",
+            environment="test",
+            default_threshold_preset="balanced",
+            max_input_tokens=256,
+            status="active",
+            created_by="unit-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_user(
+            user_id=admin_user_id,
+            organization_user_id=organization_user.id,
+            email=f"{admin_user_id}@example.com",
+            display_name="Repository Service Roles Admin",
+            password_hash="target-password-hash",
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_user(
+            user_id=other_admin_user_id,
+            email=f"{other_admin_user_id}@example.com",
+            display_name="Repository Service Roles Other",
+            password_hash="other-password-hash",
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.assign_user_service_role(
+            user_id=admin_user_id,
+            service_id=service_id,
+            role="service_developer",
+            assigned_by="unit-test",
+            assigned_at=now,
+        )
+        repository.assign_user_service_role(
+            user_id=other_admin_user_id,
+            service_id=other_service_id,
+            role="auditor",
+            assigned_by="unit-test",
+            assigned_at=now,
+        )
+        db_session.commit()
+
+        summaries = repository.list_permission_service_role_summaries(
+            service_id=service_id,
+            user_id=admin_user_id,
+            role="service_developer",
+            limit=10,
+        )
+
+        assert len(summaries) == 1
+        summary = summaries[0]
+        assert summary.service_id == service_id
+        assert summary.service_display_name == "Repository Service Roles Service"
+        assert summary.user.user_id == admin_user_id
+        assert summary.user.email == f"{admin_user_id}@example.com"
+        assert summary.user.display_name == "Repository Service Roles Admin"
+        assert summary.user.status == "active"
+        assert summary.organization_user is organization_user
+        assert summary.department_name == f"Repository Service Roles Department {suffix}"
+        assert summary.role == "service_developer"
+        assert summary.assigned_by == "unit-test"
+        assert summary.assigned_at == now
+
+        assert [
+            (matched.service_id, matched.user.user_id, matched.role)
+            for matched in repository.list_permission_service_role_summaries(
+                query=f"Repository Service Roles Department {suffix}",
+                limit=10,
+            )
+        ] == [(service_id, admin_user_id, "service_developer")]
+        assert [
+            (matched.service_id, matched.user.user_id, matched.role)
+            for matched in repository.list_permission_service_role_summaries(
+                query=dept_number,
+                limit=10,
+            )
+        ] == [(service_id, admin_user_id, "service_developer")]
+
+        unlinked_summary = repository.list_permission_service_role_summaries(
+            user_id=other_admin_user_id,
+            limit=10,
+        )[0]
+        assert unlinked_summary.organization_user is None
+        assert unlinked_summary.department_name is None
+    finally:
+        _purge_rows(
+            db_session,
+            admin_user_ids=[admin_user_id, other_admin_user_id],
+            service_ids=[service_id, other_service_id],
+            dept_numbers=[dept_number],
+            user_numbers=[user_number],
+        )
+
+
 def test_permission_summary_flags_single_active_system_admin_count_without_db() -> None:
     repository = IntentRoutingRepository.__new__(IntentRoutingRepository)
     now = datetime.now(UTC)
