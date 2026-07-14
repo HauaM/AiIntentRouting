@@ -1,9 +1,14 @@
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint, inspect
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from intent_routing.db import models
+from intent_routing.db.repositories import IntentRoutingRepository
 
 
 def test_organization_directory_models_expose_expected_tables_and_constraints() -> None:
@@ -81,6 +86,185 @@ def test_organization_directory_tables_exist(db_session):
     assert "organization_user_id" in admin_columns
 
 
+def test_repository_exposes_organization_directory_helpers() -> None:
+    assert {
+        "create_department",
+        "list_departments",
+        "update_department",
+        "deactivate_department",
+        "create_organization_user",
+        "list_organization_users",
+        "update_organization_user",
+        "deactivate_organization_user",
+    }.issubset(dir(IntentRoutingRepository))
+
+
+def test_repository_creates_and_lists_departments(db_session: Session) -> None:
+    repository = IntentRoutingRepository(db_session)
+    now = datetime.now(UTC)
+    dept_number = "0969"
+
+    _purge_organization_directory_rows(db_session, dept_numbers=[dept_number])
+    try:
+        department = repository.create_department(
+            dept_number=dept_number,
+            name="IT지원부",
+            use_yn="Y",
+            created_by="admin-a",
+            updated_by="admin-a",
+            created_at=now,
+            updated_at=now,
+        )
+
+        assert department.dept_number == dept_number
+        assert (
+            repository.list_departments(query="IT", use_yn="Y", limit=20)[0].id
+            == department.id
+        )
+    finally:
+        _purge_organization_directory_rows(db_session, dept_numbers=[dept_number])
+
+
+def test_repository_rejects_duplicate_department_number(db_session: Session) -> None:
+    repository = IntentRoutingRepository(db_session)
+    now = datetime.now(UTC)
+    payload = {
+        "dept_number": "0969",
+        "name": "IT지원부",
+        "use_yn": "Y",
+        "created_by": "admin-a",
+        "updated_by": "admin-a",
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    _purge_organization_directory_rows(db_session, dept_numbers=[payload["dept_number"]])
+    try:
+        repository.create_department(**payload)
+        with pytest.raises(IntegrityError):
+            repository.create_department(**payload)
+    finally:
+        db_session.rollback()
+        _purge_organization_directory_rows(db_session, dept_numbers=[payload["dept_number"]])
+
+
+def test_repository_creates_and_lists_organization_users(db_session: Session) -> None:
+    repository = IntentRoutingRepository(db_session)
+    now = datetime.now(UTC)
+    dept_number = "0970"
+    user_number = "21P0031"
+
+    _purge_organization_directory_rows(
+        db_session,
+        dept_numbers=[dept_number],
+        user_numbers=[user_number],
+    )
+    try:
+        department = repository.create_department(
+            dept_number=dept_number,
+            name="총무부",
+            use_yn="Y",
+            created_by="admin-b",
+            updated_by="admin-b",
+            created_at=now,
+            updated_at=now,
+        )
+        organization_user = repository.create_organization_user(
+            user_number=user_number,
+            name="홍길동",
+            department_id=department.id,
+            use_yn="Y",
+            created_by="admin-b",
+            updated_by="admin-b",
+            created_at=now,
+            updated_at=now,
+        )
+
+        listed_users = repository.list_organization_users(
+            query="총무",
+            department_id=department.id,
+            use_yn="Y",
+            limit=20,
+        )
+
+        assert len(listed_users) == 1
+        assert listed_users[0].id == organization_user.id
+    finally:
+        _purge_organization_directory_rows(
+            db_session,
+            dept_numbers=[dept_number],
+            user_numbers=[user_number],
+        )
+
+
+def test_repository_denies_session_for_inactive_linked_organization_user(
+    db_session: Session,
+) -> None:
+    repository = IntentRoutingRepository(db_session)
+    now = datetime.now(UTC)
+    dept_number = "0971"
+    user_number = "21P0032"
+    admin_user_id = "org-linked-admin"
+    token_hash = "org-linked-admin-session"
+
+    _purge_account_auth_rows(db_session, user_id=admin_user_id)
+    _purge_organization_directory_rows(
+        db_session,
+        dept_numbers=[dept_number],
+        user_numbers=[user_number],
+    )
+    try:
+        department = repository.create_department(
+            dept_number=dept_number,
+            name="보안부",
+            use_yn="Y",
+            created_by="admin-c",
+            updated_by="admin-c",
+            created_at=now,
+            updated_at=now,
+        )
+        organization_user = repository.create_organization_user(
+            user_number=user_number,
+            name="김보안",
+            department_id=department.id,
+            use_yn="N",
+            created_by="admin-c",
+            updated_by="admin-c",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_user(
+            user_id=admin_user_id,
+            email="org-linked-admin@example.com",
+            display_name="Org Linked Admin",
+            password_hash="password-hash",
+            status="active",
+            organization_user_id=organization_user.id,
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_session(
+            session_id="org-linked-admin-session-id",
+            user_id=admin_user_id,
+            token_hash=token_hash,
+            created_at=now,
+            expires_at=now + timedelta(hours=8),
+        )
+        db_session.commit()
+
+        assert repository.get_active_admin_session_context(
+            token_hash,
+            now=now + timedelta(minutes=1),
+        ) is None
+    finally:
+        _purge_account_auth_rows(db_session, user_id=admin_user_id)
+        _purge_organization_directory_rows(
+            db_session,
+            dept_numbers=[dept_number],
+            user_numbers=[user_number],
+        )
+
+
 def _has_fk(table: Any, column_names: list[str], target_table: str) -> bool:
     return any(
         isinstance(constraint, ForeignKeyConstraint)
@@ -109,3 +293,41 @@ def _has_unique_constraint(table: Any, column_names: list[str]) -> bool:
         and list(constraint.columns.keys()) == column_names
         for constraint in table.constraints
     )
+
+
+def _purge_account_auth_rows(db_session: Session, *, user_id: str) -> None:
+    db_session.execute(
+        models.AdminSession.__table__.delete().where(models.AdminSession.user_id == user_id)
+    )
+    db_session.execute(
+        models.AdminUserRole.__table__.delete().where(models.AdminUserRole.user_id == user_id)
+    )
+    db_session.execute(
+        models.UserServiceRole.__table__.delete().where(models.UserServiceRole.user_id == user_id)
+    )
+    db_session.execute(
+        models.AdminUser.__table__.delete().where(models.AdminUser.user_id == user_id)
+    )
+    db_session.commit()
+
+
+def _purge_organization_directory_rows(
+    db_session: Session,
+    *,
+    dept_numbers: list[str],
+    user_numbers: list[str] | None = None,
+) -> None:
+    user_numbers = user_numbers or []
+    if user_numbers:
+        db_session.execute(
+            models.OrganizationUser.__table__.delete().where(
+                models.OrganizationUser.user_number.in_(user_numbers)
+            )
+        )
+    if dept_numbers:
+        db_session.execute(
+            models.Department.__table__.delete().where(
+                models.Department.dept_number.in_(dept_numbers)
+            )
+        )
+    db_session.commit()
