@@ -5,7 +5,7 @@
 - Built `PermissionManagementPage` at `/permission-management` with `AdminShell title="권한관리"` and a server-derived `session.globalRoles` guard for `system_admin`.
 - Added five ProTable-based tabs: `Admin 계정`, `전역 권한`, `서비스 권한`, `권한 변경 이력`, and `운영 점검`.
 - Wired Admin account status/global role actions to `patchManagedAdminUser` through `ConfirmActionButton`; the last active login-eligible `system_admin` state is disabled in the UI.
-- Wired Service role grant/revoke to `searchAdminUsers`, `grantServiceRole`, `revokeServiceRole`, and `listPermissionServiceRoles`; revoke uses confirm.
+- Wired Service role grant/revoke to `searchAdminUsers`, `grantServiceRole`, `revokeServiceRole`, and `listPermissionServiceRoles`; grant and revoke use confirm.
 - Added Permission Management audit/risk views without rendering before/after raw JSON.
 - Added the OrganizationDirectory Admin Access shortcut to `/permission-management?admin_user_id=...` while preserving the existing modal controls.
 
@@ -17,6 +17,7 @@
 - Modified: `frontend/intent-routing-console/src/pages/OrganizationDirectory/index.tsx`
 - Modified: `frontend/intent-routing-console/src/pages/OrganizationDirectory/directoryForms.ts`
 - Modified: `frontend/intent-routing-console/src/pages/OrganizationDirectory/directoryForms.test.ts`
+- Review fix: `frontend/intent-routing-console/src/pages/PermissionManagement/index.tsx` now wraps Service role grant in `ConfirmActionButton`, with a regression test in `permissionManagement.test.ts`.
 
 ## Verification
 

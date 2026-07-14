@@ -217,7 +217,6 @@ export default function PermissionManagementPage() {
         grantRequest.userId,
         grantRequest.payload,
       );
-      message.success('Service role granted.');
       setGrantUserId(undefined);
       setGrantRole(undefined);
       if (grantRequest.userId === session.user?.user_id) {
@@ -755,14 +754,21 @@ export default function PermissionManagementPage() {
                               onChange={setGrantRole}
                             />
                           </Space>
-                          <Button
+                          <ConfirmActionButton
                             type="primary"
-                            loading={grantingServiceRole}
-                            disabled={!grantServiceId.trim() || !grantUserId || !grantRole}
-                            onClick={handleGrantServiceRole}
+                            title="Grant Service role?"
+                            okText="Grant role"
+                            content={`${grantServiceId.trim()}에서 선택한 Admin 계정에 ${grantRole ?? '-'} 권한을 부여합니다.`}
+                            disabled={
+                              grantingServiceRole ||
+                              !grantServiceId.trim() ||
+                              !grantUserId ||
+                              !grantRole
+                            }
+                            onConfirm={handleGrantServiceRole}
                           >
                             Grant role
-                          </Button>
+                          </ConfirmActionButton>
                         </Space>
                       </Card>
                       <ProTable<API.PermissionServiceRoleSummary>

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   canAccessPermissionManagement,
@@ -19,6 +22,12 @@ import {
   toPermissionServiceRoleGrantRequest,
   toPermissionServiceRolesQueryParams,
 } from './permissionManagement';
+
+const pageSource = () =>
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), 'index.tsx'),
+    'utf8',
+  );
 
 describe('Permission Management helpers', () => {
   const systemAdminRow: API.PermissionAdminUserSummary = {
@@ -199,5 +208,15 @@ describe('Permission Management helpers', () => {
         details: { source: 'permission-management' },
       }),
     ).toEqual(['active_system_admins: 1', 'stale_users: 2 items', 'details: object']);
+  });
+
+  it('requires confirmation before granting a service role', () => {
+    const grantCardSource = pageSource().match(
+      /<Card title="Service role grant">[\s\S]*?<\/Card>/,
+    )?.[0];
+
+    expect(grantCardSource).toContain('<ConfirmActionButton');
+    expect(grantCardSource).toContain('onConfirm={handleGrantServiceRole}');
+    expect(grantCardSource).not.toContain('onClick={handleGrantServiceRole}');
   });
 });
