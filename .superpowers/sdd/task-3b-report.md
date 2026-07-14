@@ -13,7 +13,7 @@
 - `organization_user.department_name`은 nullable string으로 반환합니다.
 - repository helper `list_permission_service_role_summaries`를 추가해 `user_service_roles` 중심으로 `AdminUser`, `Service`, optional `OrganizationUser`, `Department` metadata를 조회합니다.
 - 필터 `service_id`, `user_id`, `role`, `query`, `limit(1..500, default 200)`를 지원합니다.
-- query는 admin user id/email/display name, service id/display name, organization user number/name, department name을 검색합니다.
+- query는 admin user id/email/display name, service id/display name, organization user number/name, department number/name을 검색합니다.
 - 기존 Service membership grant/revoke helper는 변경하지 않았습니다.
 
 ## 테스트
