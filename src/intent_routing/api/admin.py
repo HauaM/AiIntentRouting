@@ -2321,6 +2321,13 @@ def patch_organization_user(
             request.department_id,
         ).id
     if "use_yn" in request.model_fields_set:
+        if request.use_yn == "Y":
+            effective_department_id = (
+                request.department_id
+                if request.department_id is not None
+                else organization_user.department_id
+            )
+            _require_active_department(session, effective_department_id)
         updates["use_yn"] = request.use_yn
     updates["updated_by"] = context.actor_id
     updates["updated_at"] = datetime.now(UTC)

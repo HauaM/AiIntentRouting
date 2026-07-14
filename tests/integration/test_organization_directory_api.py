@@ -224,6 +224,59 @@ def test_patch_organization_user_rejects_move_to_inactive_department(
     assert persisted_user.department_id == UUID(active_department["id"])
 
 
+def test_patch_organization_user_rejects_reactivation_in_inactive_department(
+    db_session: Session,
+) -> None:
+    client = _client(db_session)
+    suffix = uuid4().hex[:8]
+
+    dept_response = client.post(
+        "/admin/v1/departments",
+        json={"dept_number": f"1202-{suffix}", "name": "휴면예정부서"},
+    )
+    assert dept_response.status_code == 201
+    department = dept_response.json()
+
+    user_response = client.post(
+        "/admin/v1/organization-users",
+        json={
+            "user_number": f"33P0002-{suffix}",
+            "name": "한지우",
+            "department_id": department["id"],
+        },
+    )
+    assert user_response.status_code == 201
+    organization_user = user_response.json()
+
+    deactivate_user_response = client.patch(
+        f"/admin/v1/organization-users/{organization_user['id']}",
+        json={"use_yn": "N"},
+    )
+    assert deactivate_user_response.status_code == 200
+
+    deactivate_department_response = client.patch(
+        f"/admin/v1/departments/{department['id']}",
+        json={"use_yn": "N"},
+    )
+    assert deactivate_department_response.status_code == 200
+
+    reactivate_response = client.patch(
+        f"/admin/v1/organization-users/{organization_user['id']}",
+        json={"use_yn": "Y"},
+    )
+
+    assert reactivate_response.status_code == 409
+    assert reactivate_response.json()["error"]["code"] == "INVALID_REQUEST"
+
+    persisted_user = db_session.scalar(
+        select(models.OrganizationUser).where(
+            models.OrganizationUser.id == organization_user["id"]
+        )
+    )
+    assert persisted_user is not None
+    assert persisted_user.use_yn == "N"
+
+
 def test_department_delete_conflicts_when_active_organization_users_remain(
     db_session: Session,
 ) -> None:
