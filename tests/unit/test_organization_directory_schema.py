@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     ForeignKeyConstraint,
     UniqueConstraint,
+    delete,
     inspect,
     select,
 )
@@ -58,8 +59,8 @@ def test_organization_directory_migration_creates_required_tables_and_links() ->
     assert "fk_admin_users_organization_user_id_users" in migration
 
 
-def test_organization_directory_tables_exist(db_session):
-    inspector = inspect(db_session.bind)
+def test_organization_directory_tables_exist(db_session: Session) -> None:
+    inspector = inspect(db_session.get_bind())
 
     assert "departments" in inspector.get_table_names()
     assert "users" in inspector.get_table_names()
@@ -134,8 +135,9 @@ def test_repository_creates_and_lists_departments(db_session: Session) -> None:
 def test_repository_rejects_duplicate_department_number(db_session: Session) -> None:
     repository = IntentRoutingRepository(db_session)
     now = datetime.now(UTC)
+    dept_number = "0969"
     payload = {
-        "dept_number": "0969",
+        "dept_number": dept_number,
         "name": "IT지원부",
         "use_yn": "Y",
         "created_by": "admin-a",
@@ -144,14 +146,14 @@ def test_repository_rejects_duplicate_department_number(db_session: Session) -> 
         "updated_at": now,
     }
 
-    _purge_organization_directory_rows(db_session, dept_numbers=[payload["dept_number"]])
+    _purge_organization_directory_rows(db_session, dept_numbers=[dept_number])
     try:
         repository.create_department(**payload)
         with pytest.raises(IntegrityError):
             repository.create_department(**payload)
     finally:
         db_session.rollback()
-        _purge_organization_directory_rows(db_session, dept_numbers=[payload["dept_number"]])
+        _purge_organization_directory_rows(db_session, dept_numbers=[dept_number])
 
 
 def test_repository_creates_and_lists_organization_users(db_session: Session) -> None:
@@ -302,18 +304,12 @@ def _has_unique_constraint(table: Any, column_names: list[str]) -> bool:
 
 
 def _purge_account_auth_rows(db_session: Session, *, user_id: str) -> None:
+    db_session.execute(delete(models.AdminSession).where(models.AdminSession.user_id == user_id))
+    db_session.execute(delete(models.AdminUserRole).where(models.AdminUserRole.user_id == user_id))
     db_session.execute(
-        models.AdminSession.__table__.delete().where(models.AdminSession.user_id == user_id)
+        delete(models.UserServiceRole).where(models.UserServiceRole.user_id == user_id)
     )
-    db_session.execute(
-        models.AdminUserRole.__table__.delete().where(models.AdminUserRole.user_id == user_id)
-    )
-    db_session.execute(
-        models.UserServiceRole.__table__.delete().where(models.UserServiceRole.user_id == user_id)
-    )
-    db_session.execute(
-        models.AdminUser.__table__.delete().where(models.AdminUser.user_id == user_id)
-    )
+    db_session.execute(delete(models.AdminUser).where(models.AdminUser.user_id == user_id))
     db_session.commit()
 
 
@@ -334,19 +330,19 @@ def _purge_organization_directory_rows(
         )
         if department_ids:
             db_session.execute(
-                models.OrganizationUser.__table__.delete().where(
+                delete(models.OrganizationUser).where(
                     models.OrganizationUser.department_id.in_(department_ids)
                 )
             )
     if user_numbers:
         db_session.execute(
-            models.OrganizationUser.__table__.delete().where(
+            delete(models.OrganizationUser).where(
                 models.OrganizationUser.user_number.in_(user_numbers)
             )
         )
     if dept_numbers:
         db_session.execute(
-            models.Department.__table__.delete().where(
+            delete(models.Department).where(
                 models.Department.dept_number.in_(dept_numbers)
             )
         )
