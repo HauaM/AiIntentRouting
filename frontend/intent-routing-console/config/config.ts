@@ -16,6 +16,7 @@ export default defineConfig({
     { path: '/dashboard', component: './Dashboard' },
     { path: '/services', component: './Services' },
     { path: '/organization-directory', component: './OrganizationDirectory' },
+    { path: '/permission-management', component: './PermissionManagement' },
     { path: '/intents', component: './Intents' },
     { path: '/releases', component: './Releases' },
     { path: '/test-runs', component: './TestRuns' },
