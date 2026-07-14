@@ -504,6 +504,7 @@ class IntentRoutingRepository:
                     func.lower(models.Service.display_name).like(pattern),
                     func.lower(models.OrganizationUser.user_number).like(pattern),
                     func.lower(models.OrganizationUser.name).like(pattern),
+                    func.lower(models.Department.dept_number).like(pattern),
                     func.lower(models.Department.name).like(pattern),
                 )
             )
