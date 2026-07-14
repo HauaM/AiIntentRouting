@@ -364,6 +364,17 @@ class PermissionAdminUserSummaryResponse(BaseModel):
     risk_flags: list[str]
 
 
+class PermissionRiskFindingResponse(BaseModel):
+    finding_id: str
+    severity: Literal["low", "medium", "high"]
+    category: str
+    title: str
+    admin_user_id: str | None
+    service_id: str | None
+    evidence: dict[str, object]
+    recommended_action: str
+
+
 ServiceAdminRole = Literal[
     "service_owner",
     "service_developer",
@@ -927,7 +938,7 @@ class AuditLogResponse(BaseModel):
     audit_id: UUID
     event_type: str
     actor_id: str
-    service_id: str
+    service_id: str | None
     trace_id: str | None
     target_type: str
     target_id: str
@@ -2684,6 +2695,59 @@ def list_permission_management_admin_users(
             organization_use_yn=organization_use_yn,
             limit=limit,
         )
+    ]
+
+
+@router.get(
+    "/permission-management/audit-logs",
+    response_model=list[AuditLogResponse],
+)
+def list_permission_management_audit_logs(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+    event_group: Literal["admin_user", "service_membership", "all"] = "all",
+    event_type: Annotated[str | None, Query(min_length=1)] = None,
+    actor_id: Annotated[str | None, Query(min_length=1)] = None,
+    target_id: Annotated[str | None, Query(min_length=1)] = None,
+    service_id: Annotated[str | None, Query(min_length=1)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> list[AuditLogResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    return [
+        AuditLogResponse.model_validate(safe_audit_log_item(audit_log))
+        for audit_log in repository.list_permission_audit_logs(
+            event_group=event_group,
+            event_type=event_type,
+            actor_id=actor_id,
+            target_id=target_id,
+            service_id=service_id,
+            limit=limit,
+        )
+    ]
+
+
+@router.get(
+    "/permission-management/risk-findings",
+    response_model=list[PermissionRiskFindingResponse],
+)
+def list_permission_management_risk_findings(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> list[PermissionRiskFindingResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    return [
+        PermissionRiskFindingResponse.model_validate(finding)
+        for finding in repository.list_permission_risk_findings()
     ]
 
 

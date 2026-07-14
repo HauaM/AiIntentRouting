@@ -63,6 +63,21 @@ GOVERNED_REQUEST_STATUSES = frozenset(
         "completed",
     }
 )
+PERMISSION_AUDIT_EVENT_GROUPS = frozenset(
+    {"admin_user", "service_membership", "all"}
+)
+PERMISSION_ADMIN_USER_AUDIT_EVENT_TYPES = (
+    "admin_user.created",
+    "admin_user.updated",
+    "admin_user.activated",
+    "admin_user.disabled",
+    "admin_user.global_role_granted",
+    "admin_user.global_role_revoked",
+)
+PERMISSION_SERVICE_MEMBERSHIP_AUDIT_EVENT_TYPES = (
+    "service_membership.role_granted",
+    "service_membership.role_revoked",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +133,33 @@ def _require_nonblank_string(value: object, *, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field_name} must not be blank")
     return value
+
+
+def _permission_risk_finding(
+    *,
+    category: str,
+    severity: str,
+    title: str,
+    admin_user_id: str | None,
+    service_id: str | None,
+    evidence: dict[str, object],
+    recommended_action: str,
+) -> dict[str, Any]:
+    finding_id = category
+    if admin_user_id is not None:
+        finding_id = f"{finding_id}:{admin_user_id}"
+    if service_id is not None:
+        finding_id = f"{finding_id}:{service_id}"
+    return {
+        "finding_id": finding_id,
+        "severity": severity,
+        "category": category,
+        "title": title,
+        "admin_user_id": admin_user_id,
+        "service_id": service_id,
+        "evidence": evidence,
+        "recommended_action": recommended_action,
+    }
 
 
 class IntentRoutingRepository:
@@ -489,6 +531,37 @@ class IntentRoutingRepository:
                 ).limit(limit)
             )
         )
+        return self._permission_admin_user_summary_records(users)
+
+    def list_permission_risk_findings(self) -> list[dict[str, Any]]:
+        users = list(
+            self.session.scalars(
+                select(models.AdminUser)
+                .outerjoin(models.AdminUser.organization_user)
+                .outerjoin(models.OrganizationUser.department)
+                .order_by(
+                    models.AdminUser.email_normalized,
+                    models.AdminUser.user_id,
+                )
+            )
+        )
+        findings: list[dict[str, Any]] = []
+        for summary in self._permission_admin_user_summary_records(users):
+            findings.extend(self._permission_risk_findings_for_summary(summary))
+        return sorted(
+            findings,
+            key=lambda finding: (
+                finding["category"],
+                finding["admin_user_id"] or "",
+                finding["service_id"] or "",
+                finding["finding_id"],
+            ),
+        )
+
+    def _permission_admin_user_summary_records(
+        self,
+        users: list[models.AdminUser],
+    ) -> list[PermissionAdminUserSummaryRecord]:
         user_ids = [user.user_id for user in users]
         if not user_ids:
             return []
@@ -542,6 +615,135 @@ class IntentRoutingRepository:
             )
             for user in users
         ]
+
+    def _permission_risk_findings_for_summary(
+        self,
+        summary: PermissionAdminUserSummaryRecord,
+    ) -> list[dict[str, Any]]:
+        user = summary.user
+        organization_user = summary.organization_user
+        findings: list[dict[str, Any]] = []
+
+        if "linked_inactive_organization_user" in summary.risk_flags:
+            findings.append(
+                _permission_risk_finding(
+                    category="linked_inactive_organization_user",
+                    severity="high",
+                    title="비활성 조직 사용자와 연결된 Admin 계정",
+                    admin_user_id=user.user_id,
+                    service_id=None,
+                    evidence={
+                        "admin_user_status": user.status,
+                        "organization_user_id": (
+                            str(organization_user.id)
+                            if organization_user is not None
+                            else None
+                        ),
+                        "organization_user_use_yn": (
+                            organization_user.use_yn
+                            if organization_user is not None
+                            else None
+                        ),
+                    },
+                    recommended_action=(
+                        "조직 사용자 상태를 활성화하거나 Admin 계정 연결 및 상태를 정리하세요."
+                    ),
+                )
+            )
+
+        if "disabled_admin_has_service_roles" in summary.risk_flags:
+            roles_by_service: dict[
+                str,
+                list[PermissionServiceRoleSummaryRecord],
+            ] = {}
+            for service_role in summary.service_roles:
+                roles_by_service.setdefault(service_role.service_id, []).append(
+                    service_role
+                )
+            for service_id, service_roles in sorted(roles_by_service.items()):
+                findings.append(
+                    _permission_risk_finding(
+                        category="disabled_admin_has_service_roles",
+                        severity="medium",
+                        title="비활성 Admin 계정에 서비스 역할이 남아 있음",
+                        admin_user_id=user.user_id,
+                        service_id=service_id,
+                        evidence={
+                            "admin_user_status": user.status,
+                            "service_display_name": (
+                                service_roles[0].service_display_name
+                                if service_roles
+                                else None
+                            ),
+                            "roles": sorted(
+                                service_role.role for service_role in service_roles
+                            ),
+                        },
+                        recommended_action=(
+                            "비활성 Admin 계정에 남아 있는 서비스 역할을 회수하세요."
+                        ),
+                    )
+                )
+
+        if "active_admin_without_roles" in summary.risk_flags:
+            findings.append(
+                _permission_risk_finding(
+                    category="active_admin_without_roles",
+                    severity="low",
+                    title="활성 Admin 계정에 역할이 없음",
+                    admin_user_id=user.user_id,
+                    service_id=None,
+                    evidence={
+                        "admin_user_status": user.status,
+                        "global_roles": list(summary.global_roles),
+                        "service_role_count": len(summary.service_roles),
+                    },
+                    recommended_action=(
+                        "필요한 전역 또는 서비스 역할을 부여하거나 계정을 비활성화하세요."
+                    ),
+                )
+            )
+
+        if "unlinked_admin_user" in summary.risk_flags:
+            findings.append(
+                _permission_risk_finding(
+                    category="unlinked_admin_user",
+                    severity="medium",
+                    title="조직 사용자와 연결되지 않은 Admin 계정",
+                    admin_user_id=user.user_id,
+                    service_id=None,
+                    evidence={
+                        "admin_user_status": user.status,
+                        "organization_user_id": None,
+                    },
+                    recommended_action=(
+                        "조직 사용자 연결 필요성을 확인하고 계정을 연결하거나 예외 근거를 남기세요."
+                    ),
+                )
+            )
+
+        if "single_active_system_admin" in summary.risk_flags:
+            findings.append(
+                _permission_risk_finding(
+                    category="single_active_system_admin",
+                    severity="high",
+                    title="단일 활성 system_admin 계정",
+                    admin_user_id=user.user_id,
+                    service_id=None,
+                    evidence={
+                        "admin_user_status": user.status,
+                        "global_roles": list(summary.global_roles),
+                        "is_last_active_system_admin": (
+                            summary.is_last_active_system_admin
+                        ),
+                    },
+                    recommended_action=(
+                        "비상 접근을 위해 로그인 가능한 system_admin 계정을 2개 이상 유지하세요."
+                    ),
+                )
+            )
+
+        return findings
 
     def _permission_admin_user_summary_record(
         self,
@@ -1756,6 +1958,73 @@ class IntentRoutingRepository:
             statement = statement.where(models.AuditLog.event_type == event_type)
         if trace_id is not None:
             statement = statement.where(models.AuditLog.trace_id == trace_id)
+        statement = statement.order_by(
+            models.AuditLog.created_at.desc(),
+            models.AuditLog.audit_id,
+        ).limit(limit)
+        return list(self.session.scalars(statement))
+
+    def list_permission_audit_logs(
+        self,
+        *,
+        event_group: str,
+        event_type: str | None,
+        actor_id: str | None,
+        target_id: str | None,
+        service_id: str | None,
+        limit: int,
+    ) -> list[models.AuditLog]:
+        event_group = _require_allowed_value(
+            event_group,
+            field_name="permission audit event group",
+            allowed=PERMISSION_AUDIT_EVENT_GROUPS,
+        )
+        limit = max(1, min(limit, 500))
+        statement = select(models.AuditLog)
+        if event_group == "admin_user":
+            statement = statement.where(
+                models.AuditLog.event_type.in_(
+                    PERMISSION_ADMIN_USER_AUDIT_EVENT_TYPES
+                )
+            )
+        elif event_group == "service_membership":
+            statement = statement.where(
+                models.AuditLog.event_type.in_(
+                    PERMISSION_SERVICE_MEMBERSHIP_AUDIT_EVENT_TYPES
+                )
+            )
+        if event_type is not None:
+            statement = statement.where(
+                models.AuditLog.event_type
+                == _require_nonblank_string(
+                    event_type,
+                    field_name="permission audit event_type",
+                ).strip()
+            )
+        if actor_id is not None:
+            statement = statement.where(
+                models.AuditLog.actor_id
+                == _require_nonblank_string(
+                    actor_id,
+                    field_name="permission audit actor_id",
+                ).strip()
+            )
+        if target_id is not None:
+            statement = statement.where(
+                models.AuditLog.target_id
+                == _require_nonblank_string(
+                    target_id,
+                    field_name="permission audit target_id",
+                ).strip()
+            )
+        if service_id is not None:
+            statement = statement.where(
+                models.AuditLog.service_id
+                == _require_nonblank_string(
+                    service_id,
+                    field_name="permission audit service_id",
+                ).strip()
+            )
         statement = statement.order_by(
             models.AuditLog.created_at.desc(),
             models.AuditLog.audit_id,
