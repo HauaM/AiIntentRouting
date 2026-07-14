@@ -134,6 +134,16 @@ class DepartmentCreateRequest(BaseModel):
     dept_number: str = Field(min_length=1)
     name: str = Field(min_length=1)
 
+    @field_validator("dept_number", "name", mode="before")
+    @classmethod
+    def department_text_must_not_be_blank(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("department fields must not be blank")
+            return stripped
+        return value
+
 
 class DepartmentPatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -141,6 +151,18 @@ class DepartmentPatchRequest(BaseModel):
     dept_number: str | None = Field(default=None, min_length=1)
     name: str | None = Field(default=None, min_length=1)
     use_yn: Literal["Y", "N"] | None = None
+
+    @field_validator("dept_number", "name", mode="before")
+    @classmethod
+    def department_patch_text_must_not_be_blank(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("department fields must not be blank")
+            return stripped
+        return value
 
 
 class DepartmentResponse(BaseModel):
@@ -161,6 +183,16 @@ class OrganizationUserCreateRequest(BaseModel):
     name: str = Field(min_length=1)
     department_id: UUID
 
+    @field_validator("user_number", "name", mode="before")
+    @classmethod
+    def organization_user_text_must_not_be_blank(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("organization user fields must not be blank")
+            return stripped
+        return value
+
 
 class OrganizationUserPatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -169,6 +201,18 @@ class OrganizationUserPatchRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     department_id: UUID | None = None
     use_yn: Literal["Y", "N"] | None = None
+
+    @field_validator("user_number", "name", mode="before")
+    @classmethod
+    def organization_user_patch_text_must_not_be_blank(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("organization user fields must not be blank")
+            return stripped
+        return value
 
 
 class OrganizationUserResponse(BaseModel):
@@ -2125,6 +2169,11 @@ def patch_department(
     if "name" in request.model_fields_set and request.name is not None:
         updates["name"] = request.name.strip()
     if "use_yn" in request.model_fields_set:
+        if (
+            request.use_yn == "N"
+            and _department_has_active_organization_users(session, department_id)
+        ):
+            _raise_conflict("Department has active organization users.")
         updates["use_yn"] = request.use_yn
     updates["updated_by"] = context.actor_id
     updates["updated_at"] = datetime.now(UTC)
