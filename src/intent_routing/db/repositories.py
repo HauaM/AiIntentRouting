@@ -81,6 +81,25 @@ class AdminSessionContextRecord:
     service_roles: tuple[models.UserServiceRole, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class PermissionServiceRoleSummaryRecord:
+    service_id: str
+    service_display_name: str
+    role: str
+    assigned_by: str
+    assigned_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class PermissionAdminUserSummaryRecord:
+    user: models.AdminUser
+    global_roles: tuple[str, ...]
+    is_last_active_system_admin: bool
+    organization_user: models.OrganizationUser | None
+    service_roles: tuple[PermissionServiceRoleSummaryRecord, ...]
+    risk_flags: tuple[str, ...]
+
+
 def normalize_admin_email(email: str) -> str:
     normalized = email.strip().lower()
     if not normalized:
@@ -376,6 +395,194 @@ class IntentRoutingRepository:
                     models.AdminUser.user_id,
                 ).limit(limit)
             )
+        )
+
+    def list_permission_admin_user_summaries(
+        self,
+        *,
+        query: str | None = None,
+        status: str | None = None,
+        global_role: str | None = None,
+        organization_link: str | None = None,
+        organization_use_yn: str | None = None,
+        limit: int = 100,
+    ) -> list[PermissionAdminUserSummaryRecord]:
+        limit = max(1, min(limit, 200))
+        if status is not None:
+            status = _require_allowed_value(
+                status,
+                field_name="admin user status",
+                allowed=ADMIN_USER_STATUSES,
+            )
+        if global_role is not None:
+            global_role = _require_allowed_value(
+                global_role,
+                field_name="admin user role",
+                allowed=GLOBAL_ADMIN_ROLES,
+            )
+        if organization_link is not None:
+            organization_link = _require_allowed_value(
+                organization_link,
+                field_name="organization link",
+                allowed=frozenset({"linked", "unlinked"}),
+            )
+        if organization_use_yn is not None:
+            organization_use_yn = _require_allowed_value(
+                organization_use_yn,
+                field_name="organization user use_yn",
+                allowed=frozenset({"Y", "N"}),
+            )
+
+        statement = (
+            select(models.AdminUser)
+            .outerjoin(models.AdminUser.organization_user)
+            .outerjoin(models.OrganizationUser.department)
+        )
+        if query is not None and query.strip():
+            pattern = f"%{query.strip().lower()}%"
+            service_match_user_ids = (
+                select(models.UserServiceRole.user_id)
+                .join(models.Service)
+                .where(
+                    or_(
+                        func.lower(models.UserServiceRole.service_id).like(pattern),
+                        func.lower(models.Service.display_name).like(pattern),
+                    )
+                )
+            )
+            statement = statement.where(
+                or_(
+                    func.lower(models.AdminUser.email_normalized).like(pattern),
+                    func.lower(models.AdminUser.email).like(pattern),
+                    func.lower(models.AdminUser.display_name).like(pattern),
+                    func.lower(models.AdminUser.user_id).like(pattern),
+                    func.lower(models.OrganizationUser.user_number).like(pattern),
+                    func.lower(models.OrganizationUser.name).like(pattern),
+                    func.lower(models.Department.dept_number).like(pattern),
+                    func.lower(models.Department.name).like(pattern),
+                    models.AdminUser.user_id.in_(service_match_user_ids),
+                )
+            )
+        if status is not None:
+            statement = statement.where(models.AdminUser.status == status)
+        if global_role is not None:
+            role_user_ids = select(models.AdminUserRole.user_id).where(
+                models.AdminUserRole.role == global_role
+            )
+            statement = statement.where(models.AdminUser.user_id.in_(role_user_ids))
+        if organization_link == "linked":
+            statement = statement.where(
+                models.AdminUser.organization_user_id.is_not(None)
+            )
+        elif organization_link == "unlinked":
+            statement = statement.where(models.AdminUser.organization_user_id.is_(None))
+        if organization_use_yn is not None:
+            statement = statement.where(
+                models.OrganizationUser.use_yn == organization_use_yn
+            )
+
+        users = list(
+            self.session.scalars(
+                statement.order_by(
+                    models.AdminUser.email_normalized,
+                    models.AdminUser.user_id,
+                ).limit(limit)
+            )
+        )
+        user_ids = [user.user_id for user in users]
+        if not user_ids:
+            return []
+
+        global_roles_by_user_id: dict[str, list[str]] = {
+            user_id: [] for user_id in user_ids
+        }
+        for role_record in self.session.scalars(
+            select(models.AdminUserRole)
+            .where(models.AdminUserRole.user_id.in_(user_ids))
+            .order_by(models.AdminUserRole.user_id, models.AdminUserRole.role)
+        ):
+            global_roles_by_user_id.setdefault(role_record.user_id, []).append(
+                role_record.role
+            )
+
+        service_roles_by_user_id: dict[
+            str,
+            list[PermissionServiceRoleSummaryRecord],
+        ] = {user_id: [] for user_id in user_ids}
+        for role_record in self.session.scalars(
+            select(models.UserServiceRole)
+            .join(models.Service)
+            .where(models.UserServiceRole.user_id.in_(user_ids))
+            .order_by(
+                models.UserServiceRole.user_id,
+                models.Service.display_name,
+                models.UserServiceRole.service_id,
+                models.UserServiceRole.role,
+            )
+        ):
+            service_roles_by_user_id.setdefault(role_record.user_id, []).append(
+                PermissionServiceRoleSummaryRecord(
+                    service_id=role_record.service_id,
+                    service_display_name=role_record.service.display_name,
+                    role=role_record.role,
+                    assigned_by=role_record.assigned_by,
+                    assigned_at=role_record.assigned_at,
+                )
+            )
+
+        active_system_admin_count = self.count_login_eligible_admin_users_with_role(
+            "system_admin"
+        )
+        return [
+            self._permission_admin_user_summary_record(
+                user,
+                global_roles=tuple(sorted(global_roles_by_user_id[user.user_id])),
+                service_roles=tuple(service_roles_by_user_id[user.user_id]),
+                active_system_admin_count=active_system_admin_count,
+            )
+            for user in users
+        ]
+
+    def _permission_admin_user_summary_record(
+        self,
+        user: models.AdminUser,
+        *,
+        global_roles: tuple[str, ...],
+        service_roles: tuple[PermissionServiceRoleSummaryRecord, ...],
+        active_system_admin_count: int,
+    ) -> PermissionAdminUserSummaryRecord:
+        organization_user = user.organization_user
+        is_login_eligible_system_admin = (
+            user.status == "active"
+            and "system_admin" in global_roles
+            and (
+                user.organization_user_id is None
+                or (organization_user is not None and organization_user.use_yn == "Y")
+            )
+        )
+        is_last_active_system_admin = (
+            is_login_eligible_system_admin and active_system_admin_count == 1
+        )
+
+        risk_flags: list[str] = []
+        if organization_user is not None and organization_user.use_yn != "Y":
+            risk_flags.append("linked_inactive_organization_user")
+        if user.status == "disabled" and service_roles:
+            risk_flags.append("disabled_admin_has_service_roles")
+        if user.status == "active" and not global_roles and not service_roles:
+            risk_flags.append("active_admin_without_roles")
+        if user.organization_user_id is None:
+            risk_flags.append("unlinked_admin_user")
+        if is_last_active_system_admin:
+            risk_flags.append("single_active_system_admin")
+
+        return PermissionAdminUserSummaryRecord(
+            user=user,
+            global_roles=global_roles,
+            is_last_active_system_admin=is_last_active_system_admin,
+            organization_user=organization_user,
+            service_roles=service_roles,
+            risk_flags=tuple(risk_flags),
         )
 
     def get_admin_user_by_organization_user_id(
