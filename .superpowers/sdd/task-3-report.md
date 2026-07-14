@@ -92,3 +92,12 @@ All checks passed!
 - The risk findings endpoint is unpaginated by brief. It scans admin users and their roles to derive findings from existing tables.
 - The integration test temporarily removes and restores existing `system_admin` role rows to make `single_active_system_admin` deterministic; cleanup restores captured rows in `finally`.
 - Test output still includes the existing Starlette/httpx deprecation warning from `fastapi.testclient`.
+
+## Review Fix
+
+- Fixed C1 audit scope: `event_group=all` now applies the union of `admin_user.*` and `service_membership.*` allow-lists before optional filters, so non-permission events such as `api_key.created` return an empty result even when requested with `event_type`.
+- Added regression coverage in `test_permission_management_audit_logs_filter_groups_and_sanitize_states` for default `event_group=all`, `event_type=api_key.created`, `actor_id`, `target_id`, and `limit` filtering.
+- Hardened `test_permission_management_risk_findings_returns_baseline_findings` cleanup by moving system_admin role backup/delete inside the protected `try` block and always attempting role restore after cleanup.
+- Verification:
+  - `TEST_DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing uv run pytest tests/integration/test_permission_management_api.py -q` -> `7 passed, 1 warning`
+  - `uv run ruff check src/intent_routing/api/admin.py src/intent_routing/db/repositories.py tests/integration/test_permission_management_api.py` -> `All checks passed!`

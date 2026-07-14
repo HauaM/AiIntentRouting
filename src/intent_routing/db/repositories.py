@@ -78,6 +78,10 @@ PERMISSION_SERVICE_MEMBERSHIP_AUDIT_EVENT_TYPES = (
     "service_membership.role_granted",
     "service_membership.role_revoked",
 )
+PERMISSION_AUDIT_EVENT_TYPES = (
+    *PERMISSION_ADMIN_USER_AUDIT_EVENT_TYPES,
+    *PERMISSION_SERVICE_MEMBERSHIP_AUDIT_EVENT_TYPES,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1982,17 +1986,12 @@ class IntentRoutingRepository:
         limit = max(1, min(limit, 500))
         statement = select(models.AuditLog)
         if event_group == "admin_user":
-            statement = statement.where(
-                models.AuditLog.event_type.in_(
-                    PERMISSION_ADMIN_USER_AUDIT_EVENT_TYPES
-                )
-            )
+            allowed_event_types = PERMISSION_ADMIN_USER_AUDIT_EVENT_TYPES
         elif event_group == "service_membership":
-            statement = statement.where(
-                models.AuditLog.event_type.in_(
-                    PERMISSION_SERVICE_MEMBERSHIP_AUDIT_EVENT_TYPES
-                )
-            )
+            allowed_event_types = PERMISSION_SERVICE_MEMBERSHIP_AUDIT_EVENT_TYPES
+        else:
+            allowed_event_types = PERMISSION_AUDIT_EVENT_TYPES
+        statement = statement.where(models.AuditLog.event_type.in_(allowed_event_types))
         if event_type is not None:
             statement = statement.where(
                 models.AuditLog.event_type

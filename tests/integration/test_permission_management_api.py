@@ -360,17 +360,41 @@ def test_permission_management_audit_logs_filter_groups_and_sanitize_states(
             "/admin/v1/permission-management/audit-logs",
             params={"event_group": "service_membership", "service_id": service_id},
         )
+        all_response = client.get(
+            "/admin/v1/permission-management/audit-logs",
+            params={"actor_id": "system-admin", "limit": 2},
+        )
+        unrelated_event_type_response = client.get(
+            "/admin/v1/permission-management/audit-logs",
+            params={
+                "event_type": "api_key.created",
+                "actor_id": "system-admin",
+                "target_id": f"ignored-{suffix}",
+                "limit": 1,
+            },
+        )
 
         assert admin_user_response.status_code == 200
         assert service_membership_response.status_code == 200
+        assert all_response.status_code == 200
+        assert unrelated_event_type_response.status_code == 200
         assert [item["event_type"] for item in admin_user_response.json()] == [
             "admin_user.created"
         ]
         assert [item["event_type"] for item in service_membership_response.json()] == [
             "service_membership.role_granted"
         ]
+        assert [item["event_type"] for item in all_response.json()] == [
+            "service_membership.role_granted",
+            "admin_user.created",
+        ]
+        assert unrelated_event_type_response.json() == []
         assert admin_user_response.json()[0]["service_id"] is None
-        response_text = admin_user_response.text + service_membership_response.text
+        response_text = (
+            admin_user_response.text
+            + service_membership_response.text
+            + all_response.text
+        )
         for forbidden_fragment in (
             "before_state",
             "after_state",
@@ -427,15 +451,16 @@ def test_permission_management_risk_findings_returns_baseline_findings(
         inactive_user_number,
         disabled_user_number,
     ]
-    system_admin_role_rows = _backup_and_delete_system_admin_roles(db_session)
-    _purge_rows(
-        db_session,
-        admin_user_ids=admin_user_ids,
-        service_ids=service_ids,
-        dept_numbers=dept_numbers,
-        user_numbers=user_numbers,
-    )
+    system_admin_role_rows: list[dict[str, object]] = []
     try:
+        system_admin_role_rows = _backup_and_delete_system_admin_roles(db_session)
+        _purge_rows(
+            db_session,
+            admin_user_ids=admin_user_ids,
+            service_ids=service_ids,
+            dept_numbers=dept_numbers,
+            user_numbers=user_numbers,
+        )
         repository = IntentRoutingRepository(db_session)
         active_user = _create_permission_organization_user(
             repository,
@@ -587,14 +612,17 @@ def test_permission_management_risk_findings_returns_baseline_findings(
         ):
             assert forbidden_fragment not in response_text
     finally:
-        _purge_rows(
-            db_session,
-            admin_user_ids=admin_user_ids,
-            service_ids=service_ids,
-            dept_numbers=dept_numbers,
-            user_numbers=user_numbers,
-        )
-        _restore_system_admin_roles(db_session, system_admin_role_rows)
+        try:
+            _purge_rows(
+                db_session,
+                admin_user_ids=admin_user_ids,
+                service_ids=service_ids,
+                dept_numbers=dept_numbers,
+                user_numbers=user_numbers,
+            )
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)
 
 
 def _purge_rows(
