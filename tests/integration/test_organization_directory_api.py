@@ -1,8 +1,10 @@
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -12,7 +14,12 @@ from intent_routing.api.admin_dependencies import (
     require_admin_session_context,
 )
 from intent_routing.db import models
+from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.main import create_app
+from intent_routing.security.admin_sessions import (
+    ADMIN_SESSION_COOKIE_NAME,
+    hash_admin_session_token,
+)
 
 
 def _client(db_session: Session) -> TestClient:
@@ -341,3 +348,115 @@ def test_organization_directory_routes_require_system_admin(
             response = getattr(client, method)(path, json=payload)
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+
+
+def test_inactive_linked_organization_user_session_is_rejected(
+    db_session: Session,
+) -> None:
+    app = create_app()
+    suffix = uuid4().hex[:8]
+    dept_number = f"guardrail-{suffix}"
+    user_number = f"guardrail-user-{suffix}"
+    admin_user_id = f"guardrail-admin-{suffix}"
+    token = f"guardrail-session-{suffix}"
+    token_hash = hash_admin_session_token(token)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(db_session)
+
+    def override_session() -> Iterator[Session]:
+        yield db_session
+
+    app.dependency_overrides[get_admin_session] = override_session
+    _purge_guardrail_rows(
+        db_session,
+        admin_user_id=admin_user_id,
+        dept_number=dept_number,
+        user_number=user_number,
+    )
+    try:
+        department = repository.create_department(
+            dept_number=dept_number,
+            name="보안운영부",
+            use_yn="Y",
+            created_by="guardrail-test",
+            updated_by="guardrail-test",
+            created_at=now,
+            updated_at=now,
+        )
+        organization_user = repository.create_organization_user(
+            user_number=user_number,
+            name="비활성관리자",
+            department_id=department.id,
+            use_yn="N",
+            created_by="guardrail-test",
+            updated_by="guardrail-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_user(
+            user_id=admin_user_id,
+            email=f"{admin_user_id}@example.com",
+            display_name="Inactive Linked Admin",
+            password_hash="password-hash",
+            status="active",
+            organization_user_id=organization_user.id,
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_session(
+            session_id=f"ads-{suffix}",
+            user_id=admin_user_id,
+            token_hash=token_hash,
+            created_at=now,
+            expires_at=now + timedelta(hours=8),
+        )
+        db_session.commit()
+
+        client = TestClient(app)
+        client.cookies.set(ADMIN_SESSION_COOKIE_NAME, token)
+
+        response = client.get("/admin/v1/auth/me")
+
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
+    finally:
+        _purge_guardrail_rows(
+            db_session,
+            admin_user_id=admin_user_id,
+            dept_number=dept_number,
+            user_number=user_number,
+        )
+
+
+def _purge_guardrail_rows(
+    db_session: Session,
+    *,
+    admin_user_id: str,
+    dept_number: str,
+    user_number: str,
+) -> None:
+    db_session.execute(
+        text("delete from admin_sessions where user_id = :user_id"),
+        {"user_id": admin_user_id},
+    )
+    db_session.execute(
+        text("delete from admin_user_roles where user_id = :user_id"),
+        {"user_id": admin_user_id},
+    )
+    db_session.execute(
+        text("delete from user_service_roles where user_id = :user_id"),
+        {"user_id": admin_user_id},
+    )
+    db_session.execute(
+        text("delete from admin_users where user_id = :user_id"),
+        {"user_id": admin_user_id},
+    )
+    db_session.execute(
+        text("delete from users where user_number = :user_number"),
+        {"user_number": user_number},
+    )
+    db_session.execute(
+        text("delete from departments where dept_number = :dept_number"),
+        {"dept_number": dept_number},
+    )
+    db_session.commit()

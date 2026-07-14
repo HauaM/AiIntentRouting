@@ -3,7 +3,13 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint, inspect
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKeyConstraint,
+    UniqueConstraint,
+    inspect,
+    select,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -318,6 +324,20 @@ def _purge_organization_directory_rows(
     user_numbers: list[str] | None = None,
 ) -> None:
     user_numbers = user_numbers or []
+    if dept_numbers:
+        department_ids = list(
+            db_session.scalars(
+                select(models.Department.id).where(
+                    models.Department.dept_number.in_(dept_numbers)
+                )
+            )
+        )
+        if department_ids:
+            db_session.execute(
+                models.OrganizationUser.__table__.delete().where(
+                    models.OrganizationUser.department_id.in_(department_ids)
+                )
+            )
     if user_numbers:
         db_session.execute(
             models.OrganizationUser.__table__.delete().where(
