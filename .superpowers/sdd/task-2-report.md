@@ -91,3 +91,52 @@ Result: `3 passed, 3 skipped, 1 warning`.
 - `ruff format --diff` still wants to reflow unrelated legacy wrapping in
   `admin.py` and `repositories.py`; that broad churn was intentionally not
   applied.
+
+## Review Fix
+
+### Cause
+
+- The original DB-backed evidence was weak because the target tests skipped
+  without a DB URL.
+- The repository test had a loose
+  `[] or ["single_active_system_admin"]` assertion, so it did not prove the
+  exact count-sensitive risk behavior.
+- The forbidden response-field check did not include `admin_yn` or `adminYn`.
+- Once the DB-backed tests actually ran, the repository fixture also exposed a
+  duplicate department number in test data.
+
+### Solution
+
+- Added a DB-independent repository helper test that verifies
+  `active_system_admin_count=1` sets both `is_last_active_system_admin` and
+  `single_active_system_admin`, while `active_system_admin_count=2` clears both.
+- Removed the loose risk-flag OR assertions from broad DB-backed tests.
+- Added `admin_yn` and `adminYn` to the forbidden API response-field check.
+- Split the disabled test user's department number so the DB-backed repository
+  test can run cleanly against Postgres.
+
+### Verification
+
+```bash
+DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing uv run alembic upgrade head
+```
+
+Result: migration command completed successfully. A prior attempt with only
+`TEST_DATABASE_URL` failed because Alembic reads `DATABASE_URL`.
+
+```bash
+TEST_DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing uv run pytest tests/integration/test_permission_management_api.py tests/unit/test_permission_management_repository.py -q
+```
+
+Result: `7 passed, 1 warning`.
+
+```bash
+uv run ruff check tests/integration/test_permission_management_api.py tests/unit/test_permission_management_repository.py
+```
+
+Result: `All checks passed!`
+
+### Concerns
+
+- Pytest still emits the existing `StarletteDeprecationWarning` from
+  `fastapi.testclient`.

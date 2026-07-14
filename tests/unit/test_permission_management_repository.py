@@ -14,6 +14,41 @@ def test_repository_exposes_permission_summary_helper() -> None:
     assert "list_permission_admin_user_summaries" in dir(IntentRoutingRepository)
 
 
+def test_permission_summary_flags_single_active_system_admin_count_without_db() -> None:
+    repository = IntentRoutingRepository.__new__(IntentRoutingRepository)
+    now = datetime.now(UTC)
+    user = models.AdminUser(
+        user_id="single-active-system-admin",
+        email="single-active-system-admin@example.com",
+        email_normalized="single-active-system-admin@example.com",
+        display_name="Single Active System Admin",
+        password_hash="password-hash",
+        status="active",
+        created_at=now,
+        updated_at=now,
+        last_login_at=None,
+        organization_user_id=None,
+    )
+
+    single_summary = repository._permission_admin_user_summary_record(
+        user,
+        global_roles=("system_admin",),
+        service_roles=(),
+        active_system_admin_count=1,
+    )
+    multiple_summary = repository._permission_admin_user_summary_record(
+        user,
+        global_roles=("system_admin",),
+        service_roles=(),
+        active_system_admin_count=2,
+    )
+
+    assert single_summary.is_last_active_system_admin is True
+    assert "single_active_system_admin" in single_summary.risk_flags
+    assert multiple_summary.is_last_active_system_admin is False
+    assert "single_active_system_admin" not in multiple_summary.risk_flags
+
+
 def test_repository_lists_permission_admin_user_summaries_with_metadata_and_risks(
     db_session: Session,
 ) -> None:
@@ -26,6 +61,7 @@ def test_repository_lists_permission_admin_user_summaries_with_metadata_and_risk
     service_id = f"{prefix}-service"
     active_dept_number = f"{prefix}-dept-active"
     inactive_dept_number = f"{prefix}-dept-inactive"
+    disabled_dept_number = f"{prefix}-dept-disabled"
     active_user_number = f"{prefix}-user-active"
     inactive_user_number = f"{prefix}-user-inactive"
     disabled_user_number = f"{prefix}-user-disabled"
@@ -40,7 +76,7 @@ def test_repository_lists_permission_admin_user_summaries_with_metadata_and_risk
             unlinked_admin_id,
         ],
         service_ids=[service_id],
-        dept_numbers=[active_dept_number, inactive_dept_number],
+        dept_numbers=[active_dept_number, inactive_dept_number, disabled_dept_number],
         user_numbers=[active_user_number, inactive_user_number, disabled_user_number],
     )
     try:
@@ -61,7 +97,7 @@ def test_repository_lists_permission_admin_user_summaries_with_metadata_and_risk
         )
         disabled_user = _create_organization_user(
             repository,
-            dept_number=active_dept_number,
+            dept_number=disabled_dept_number,
             user_number=disabled_user_number,
             use_yn="Y",
             now=now,
@@ -175,9 +211,7 @@ def test_repository_lists_permission_admin_user_summaries_with_metadata_and_risk
             "unit-test",
             now,
         )
-        assert active_summary.risk_flags == () or active_summary.risk_flags == (
-            "single_active_system_admin",
-        )
+        assert isinstance(active_summary.risk_flags, tuple)
 
         inactive_link_summary = by_user_id[inactive_link_admin_id]
         assert inactive_link_summary.organization_user is inactive_user
@@ -231,7 +265,7 @@ def test_repository_lists_permission_admin_user_summaries_with_metadata_and_risk
                 unlinked_admin_id,
             ],
             service_ids=[service_id],
-            dept_numbers=[active_dept_number, inactive_dept_number],
+            dept_numbers=[active_dept_number, inactive_dept_number, disabled_dept_number],
             user_numbers=[active_user_number, inactive_user_number, disabled_user_number],
         )
 
