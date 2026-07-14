@@ -60,6 +60,46 @@ class ApiKey(Base):
     service: Mapped[Service] = relationship()
 
 
+class Department(Base):
+    __tablename__ = "departments"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    dept_number: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    use_yn: Mapped[str] = mapped_column(Text, server_default=text("'Y'"))
+    created_by: Mapped[str] = mapped_column(Text)
+    updated_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("use_yn in ('Y', 'N')", name="ck_departments_use_yn"),
+        UniqueConstraint("dept_number", name="uq_departments_dept_number"),
+    )
+
+
+class OrganizationUser(Base):
+    __tablename__ = "users"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_number: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    department_id: Mapped[UUID] = mapped_column(ForeignKey("departments.id"))
+    use_yn: Mapped[str] = mapped_column(Text, server_default=text("'Y'"))
+    created_by: Mapped[str] = mapped_column(Text)
+    updated_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    department: Mapped[Department] = relationship()
+
+    __table_args__ = (
+        CheckConstraint("use_yn in ('Y', 'N')", name="ck_users_use_yn"),
+        UniqueConstraint("user_number", name="uq_users_user_number"),
+        Index("ix_users_department_id", "department_id"),
+    )
+
+
 class AdminUser(Base):
     __tablename__ = "admin_users"
 
@@ -72,6 +112,11 @@ class AdminUser(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    organization_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id"),
+    )
+
+    organization_user: Mapped[OrganizationUser | None] = relationship()
 
     __table_args__ = (
         CheckConstraint(
@@ -80,6 +125,10 @@ class AdminUser(Base):
         ),
         UniqueConstraint("email"),
         UniqueConstraint("email_normalized"),
+        UniqueConstraint(
+            "organization_user_id",
+            name="uq_admin_users_organization_user_id",
+        ),
     )
 
 
