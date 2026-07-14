@@ -23,6 +23,38 @@ declare namespace API {
     status: string;
   };
 
+  type ManagedAdminUserStatus = 'active' | 'disabled';
+  type GlobalAdminRole = 'system_admin';
+
+  type ManagedAdminUser = {
+    user_id: string;
+    email: string;
+    display_name: string;
+    status: ManagedAdminUserStatus;
+    organization_user_id: string | null;
+    global_roles: GlobalAdminRole[];
+    is_last_active_system_admin: boolean;
+    created_at: string;
+    updated_at: string;
+    last_login_at: string | null;
+  };
+
+  type ManagedAdminUserCreateRequest = {
+    user_id?: string;
+    organization_user_id: string;
+    email: string;
+    display_name: string;
+    status?: ManagedAdminUserStatus;
+    global_roles?: GlobalAdminRole[];
+  };
+
+  type ManagedAdminUserPatchRequest = {
+    email?: string;
+    display_name?: string;
+    status?: ManagedAdminUserStatus;
+    global_roles?: GlobalAdminRole[];
+  };
+
   type ServiceMemberRole = {
     role: ServiceRole;
     assigned_by: string;

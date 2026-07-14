@@ -14,6 +14,7 @@ import {
   createServiceApiKey,
   createService,
   createTestRun,
+  createManagedAdminUser,
   fetchRuntimeSetupGuidance,
   fetchTestRun,
   fetchTestRunResults,
@@ -22,6 +23,7 @@ import {
   listAdminUsers,
   listCatalogVersions,
   listDepartments,
+  listManagedAdminUsers,
   listExamples,
   listIntentRouteCandidates,
   listOrganizationUsers,
@@ -32,6 +34,7 @@ import {
   listServiceApiKeys,
   listTestRuns,
   patchIntent,
+  patchManagedAdminUser,
   patchDepartment,
   patchOrganizationUser,
   revokeApiKey,
@@ -394,6 +397,42 @@ describe('admin service Phase 1 write flow requests', () => {
     });
     expect(requestMock).toHaveBeenNthCalledWith(8, '/organization-users/user%2F1', {
       method: 'DELETE',
+    });
+    const calls = requestMock.mock.calls as unknown as Array<
+      [string, Record<string, unknown>]
+    >;
+    for (const [, options] of calls) {
+      expect(options).not.toHaveProperty('headers');
+    }
+  });
+
+  it('uses admin user management endpoints without trusted headers', async () => {
+    const createPayload: API.ManagedAdminUserCreateRequest = {
+      organization_user_id: 'org/user/1',
+      email: 'admin@example.com',
+      display_name: 'Admin User',
+      status: 'disabled',
+      global_roles: [],
+    };
+
+    await listManagedAdminUsers({ organization_user_id: 'org/user/1' });
+    await createManagedAdminUser(createPayload);
+    await patchManagedAdminUser('admin/user/1', {
+      status: 'active',
+      global_roles: ['system_admin'],
+    });
+
+    expect(requestMock).toHaveBeenNthCalledWith(1, '/admin-users', {
+      method: 'GET',
+      params: { organization_user_id: 'org/user/1', query: undefined, limit: 25 },
+    });
+    expect(requestMock).toHaveBeenNthCalledWith(2, '/admin-users', {
+      method: 'POST',
+      data: createPayload,
+    });
+    expect(requestMock).toHaveBeenNthCalledWith(3, '/admin-users/admin%2Fuser%2F1', {
+      method: 'PATCH',
+      data: { status: 'active', global_roles: ['system_admin'] },
     });
     const calls = requestMock.mock.calls as unknown as Array<
       [string, Record<string, unknown>]

@@ -40,6 +40,9 @@ def test_organization_directory_openapi_contract_is_registered() -> None:
     assert "post" in paths["/admin/v1/organization-users"]
     assert "patch" in paths["/admin/v1/organization-users/{organization_user_id}"]
     assert "delete" in paths["/admin/v1/organization-users/{organization_user_id}"]
+    assert "get" in paths["/admin/v1/admin-users"]
+    assert "post" in paths["/admin/v1/admin-users"]
+    assert "patch" in paths["/admin/v1/admin-users/{user_id}"]
 
 
 def test_app_startup_runs_system_admin_provisioning(

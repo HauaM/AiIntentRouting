@@ -9,6 +9,11 @@ export type OrganizationUserFormValues = {
   department_id: string;
 };
 
+export type AdminAccessCreateFormValues = {
+  email: string;
+  display_name: string;
+};
+
 export type DepartmentOption = {
   label: string;
   value: string;
@@ -69,3 +74,35 @@ export const toOrganizationUserUseYnPatchRequest = (
 ): API.OrganizationUserPatchRequest => ({
   use_yn: useYn,
 });
+
+export const toAdminUserCreateRequest = (
+  values: AdminAccessCreateFormValues,
+  organizationUser: API.OrganizationUser,
+): API.ManagedAdminUserCreateRequest => ({
+  organization_user_id: organizationUser.id,
+  email: values.email.trim(),
+  display_name: values.display_name.trim(),
+  status: 'disabled',
+  global_roles: [],
+});
+
+export const toAdminUserStatusPatchRequest = (
+  status: API.ManagedAdminUserStatus,
+): API.ManagedAdminUserPatchRequest => ({
+  status,
+});
+
+export const hasSystemAdminRole = (adminUser: API.ManagedAdminUser) =>
+  adminUser.global_roles.includes('system_admin');
+
+export const toSystemAdminRolesPatchRequest = (
+  adminUser: API.ManagedAdminUser,
+  grant: boolean,
+): API.ManagedAdminUserPatchRequest => {
+  const roleSet = new Set(adminUser.global_roles);
+  if (grant) roleSet.add('system_admin');
+  else roleSet.delete('system_admin');
+  return {
+    global_roles: Array.from(roleSet).sort(),
+  };
+};
