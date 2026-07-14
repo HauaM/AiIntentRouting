@@ -61,6 +61,13 @@ future C-2 and C-3 work begins.
   setup. Do not add UI shortcuts that bypass server-derived roles or Service
   scope.
 
+### Central Permission Management
+
+The Permission Management page is the central IAM surface for system administrators.
+It may show Admin accounts, global roles, Service roles, sanitized permission audit
+events, and derived risk findings. It must not make `users` an authorization source.
+Service-scoped role writes continue to use the existing Service membership model.
+
 ### Workflow candidate selectors
 
 Admin UI write screens must prefer service-scoped selectors over manual internal
