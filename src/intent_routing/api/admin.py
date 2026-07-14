@@ -152,11 +152,16 @@ class DepartmentPatchRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     use_yn: Literal["Y", "N"] | None = None
 
+    @field_validator("dept_number", "name", "use_yn", mode="before")
+    @classmethod
+    def department_patch_fields_must_not_be_null(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("department patch fields must not be null")
+        return value
+
     @field_validator("dept_number", "name", mode="before")
     @classmethod
     def department_patch_text_must_not_be_blank(cls, value: Any) -> Any:
-        if value is None:
-            return None
         if isinstance(value, str):
             stripped = value.strip()
             if not stripped:
@@ -202,11 +207,16 @@ class OrganizationUserPatchRequest(BaseModel):
     department_id: UUID | None = None
     use_yn: Literal["Y", "N"] | None = None
 
+    @field_validator("user_number", "name", "department_id", "use_yn", mode="before")
+    @classmethod
+    def organization_user_patch_fields_must_not_be_null(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("organization user patch fields must not be null")
+        return value
+
     @field_validator("user_number", "name", mode="before")
     @classmethod
     def organization_user_patch_text_must_not_be_blank(cls, value: Any) -> Any:
-        if value is None:
-            return None
         if isinstance(value, str):
             stripped = value.strip()
             if not stripped:
@@ -1045,6 +1055,13 @@ def _department_or_404(session: Session, department_id: UUID) -> Department:
     department = session.get(Department, department_id)
     if department is None:
         _raise_not_found("Department does not exist.")
+    return department
+
+
+def _require_active_department(session: Session, department_id: UUID) -> Department:
+    department = _department_or_404(session, department_id)
+    if department.use_yn != "Y":
+        _raise_conflict("Department must be active.")
     return department
 
 
@@ -2227,7 +2244,7 @@ def create_organization_user(
     context = admin_context_from_session_record(session_context)
     _require_system_admin(context)
     repository = IntentRoutingRepository(session)
-    department = _department_or_404(session, request.department_id)
+    department = _require_active_department(session, request.department_id)
     now = datetime.now(UTC)
     try:
         organization_user = repository.create_organization_user(
@@ -2299,7 +2316,10 @@ def patch_organization_user(
     if "name" in request.model_fields_set and request.name is not None:
         updates["name"] = request.name.strip()
     if "department_id" in request.model_fields_set and request.department_id is not None:
-        updates["department_id"] = _department_or_404(session, request.department_id).id
+        updates["department_id"] = _require_active_department(
+            session,
+            request.department_id,
+        ).id
     if "use_yn" in request.model_fields_set:
         updates["use_yn"] = request.use_yn
     updates["updated_by"] = context.actor_id

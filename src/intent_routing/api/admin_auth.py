@@ -205,12 +205,8 @@ def login(
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> AdminAuthCurrentUserResponse:
     repository = IntentRoutingRepository(session)
-    user = repository.get_admin_user_by_email(request.email)
-    if (
-        user is None
-        or user.status != "active"
-        or not verify_admin_password(request.password, user.password_hash)
-    ):
+    user = repository.get_login_eligible_admin_user_by_email(request.email)
+    if user is None or not verify_admin_password(request.password, user.password_hash):
         _raise_authentication_failed()
 
     now = datetime.now(UTC)

@@ -302,6 +302,24 @@ class IntentRoutingRepository:
             )
         )
 
+    def get_login_eligible_admin_user_by_email(
+        self,
+        email: str,
+    ) -> models.AdminUser | None:
+        email_normalized = normalize_admin_email(email)
+        return self.session.scalar(
+            select(models.AdminUser)
+            .outerjoin(models.OrganizationUser)
+            .where(models.AdminUser.email_normalized == email_normalized)
+            .where(models.AdminUser.status == "active")
+            .where(
+                or_(
+                    models.AdminUser.organization_user_id.is_(None),
+                    models.OrganizationUser.use_yn == "Y",
+                )
+            )
+        )
+
     def list_admin_users(
         self,
         query: str | None = None,

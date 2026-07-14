@@ -37,10 +37,11 @@ describe('directoryForms', () => {
   });
 
   it('builds searchable department option params from the latest query', () => {
-    expect(toDepartmentOptionSearchParams()).toEqual({ limit: 100 });
-    expect(toDepartmentOptionSearchParams('   ')).toEqual({ limit: 100 });
+    expect(toDepartmentOptionSearchParams()).toEqual({ use_yn: 'Y', limit: 100 });
+    expect(toDepartmentOptionSearchParams('   ')).toEqual({ use_yn: 'Y', limit: 100 });
     expect(toDepartmentOptionSearchParams(' 0969 IT지원부 ')).toEqual({
       query: '0969 IT지원부',
+      use_yn: 'Y',
       limit: 100,
     });
   });

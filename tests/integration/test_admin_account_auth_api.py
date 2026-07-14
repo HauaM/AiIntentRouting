@@ -11,6 +11,7 @@ from intent_routing.api.admin_dependencies import get_admin_session
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.main import create_app
+from intent_routing.security.admin_passwords import hash_admin_password
 from intent_routing.security.admin_sessions import ADMIN_SESSION_COOKIE_NAME
 
 
@@ -249,6 +250,88 @@ def test_admin_auth_api_bootstrap_login_me_logout_flow(
         )
 
 
+def test_admin_auth_login_rejects_active_admin_linked_to_inactive_organization_user(
+    db_session: Session,
+) -> None:
+    user_id = "inactive-org-login-admin"
+    email = "inactive-org-login@example.com"
+    password = "correct horse battery staple"
+    dept_number = "inactive-org-login-dept"
+    user_number = "inactive-org-login-user"
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(db_session)
+    app = create_app()
+
+    def override_session() -> Iterator[Session]:
+        yield db_session
+
+    app.dependency_overrides[get_admin_session] = override_session
+    client = TestClient(app)
+
+    _purge_linked_org_admin_rows(
+        db_session,
+        user_id=user_id,
+        email=email,
+        dept_number=dept_number,
+        user_number=user_number,
+    )
+    try:
+        department = repository.create_department(
+            dept_number=dept_number,
+            name="보안운영부",
+            use_yn="Y",
+            created_by="integration-test",
+            updated_by="integration-test",
+            created_at=now,
+            updated_at=now,
+        )
+        organization_user = repository.create_organization_user(
+            user_number=user_number,
+            name="비활성관리자",
+            department_id=department.id,
+            use_yn="N",
+            created_by="integration-test",
+            updated_by="integration-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_user(
+            user_id=user_id,
+            email=email,
+            display_name="Inactive Linked Admin",
+            password_hash=hash_admin_password(password),
+            status="active",
+            organization_user_id=organization_user.id,
+            created_at=now,
+            updated_at=now,
+        )
+        db_session.commit()
+
+        response = client.post(
+            "/admin/v1/auth/login",
+            json={"email": email, "password": password},
+        )
+
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
+        assert ADMIN_SESSION_COOKIE_NAME not in response.cookies
+        assert ADMIN_SESSION_COOKIE_NAME not in response.headers.get("set-cookie", "")
+        assert repository.get_admin_user_by_email(email) is not None
+        assert repository.list_admin_user_roles(user_id) == []
+        assert db_session.scalar(
+            text("select count(*) from admin_sessions where user_id = :user_id"),
+            {"user_id": user_id},
+        ) == 0
+    finally:
+        _purge_linked_org_admin_rows(
+            db_session,
+            user_id=user_id,
+            email=email,
+            dept_number=dept_number,
+            user_number=user_number,
+        )
+
+
 def test_admin_startup_provisioning_creates_login_account(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -314,6 +397,30 @@ def _purge_admin_by_email(db_session: Session, email: str) -> None:
     db_session.execute(
         text("delete from admin_users where user_id = :user_id"),
         {"user_id": existing.user_id},
+    )
+    db_session.commit()
+
+
+def _purge_linked_org_admin_rows(
+    db_session: Session,
+    *,
+    user_id: str,
+    email: str,
+    dept_number: str,
+    user_number: str,
+) -> None:
+    _purge_admin_by_email(db_session, email)
+    db_session.execute(
+        text("delete from admin_users where user_id = :user_id"),
+        {"user_id": user_id},
+    )
+    db_session.execute(
+        text("delete from users where user_number = :user_number"),
+        {"user_number": user_number},
+    )
+    db_session.execute(
+        text("delete from departments where dept_number = :dept_number"),
+        {"dept_number": dept_number},
     )
     db_session.commit()
 

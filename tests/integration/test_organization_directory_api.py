@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -136,6 +136,92 @@ def test_organization_directory_patch_updates_records(
     assert patched_user["department_id"] == second_department["id"]
     assert patched_user["department"]["id"] == second_department["id"]
     assert patched_user["use_yn"] == "N"
+
+
+def test_create_organization_user_rejects_inactive_department(
+    db_session: Session,
+) -> None:
+    client = _client(db_session)
+    suffix = uuid4().hex[:8]
+
+    dept_response = client.post(
+        "/admin/v1/departments",
+        json={"dept_number": f"1100-{suffix}", "name": "휴면부서"},
+    )
+    assert dept_response.status_code == 201
+    department = dept_response.json()
+
+    deactivate_response = client.patch(
+        f"/admin/v1/departments/{department['id']}",
+        json={"use_yn": "N"},
+    )
+    assert deactivate_response.status_code == 200
+
+    create_response = client.post(
+        "/admin/v1/organization-users",
+        json={
+            "user_number": f"32P0001-{suffix}",
+            "name": "오하나",
+            "department_id": department["id"],
+        },
+    )
+
+    assert create_response.status_code == 409
+    assert create_response.json()["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_patch_organization_user_rejects_move_to_inactive_department(
+    db_session: Session,
+) -> None:
+    client = _client(db_session)
+    suffix = uuid4().hex[:8]
+
+    active_dept_response = client.post(
+        "/admin/v1/departments",
+        json={"dept_number": f"1200-{suffix}", "name": "운영부"},
+    )
+    assert active_dept_response.status_code == 201
+    active_department = active_dept_response.json()
+
+    inactive_dept_response = client.post(
+        "/admin/v1/departments",
+        json={"dept_number": f"1201-{suffix}", "name": "휴면운영부"},
+    )
+    assert inactive_dept_response.status_code == 201
+    inactive_department = inactive_dept_response.json()
+
+    deactivate_response = client.patch(
+        f"/admin/v1/departments/{inactive_department['id']}",
+        json={"use_yn": "N"},
+    )
+    assert deactivate_response.status_code == 200
+
+    user_response = client.post(
+        "/admin/v1/organization-users",
+        json={
+            "user_number": f"33P0001-{suffix}",
+            "name": "장민지",
+            "department_id": active_department["id"],
+        },
+    )
+    assert user_response.status_code == 201
+    organization_user = user_response.json()
+
+    move_response = client.patch(
+        f"/admin/v1/organization-users/{organization_user['id']}",
+        json={"department_id": inactive_department["id"]},
+    )
+
+    assert move_response.status_code == 409
+    assert move_response.json()["error"]["code"] == "INVALID_REQUEST"
+
+    persisted_user = db_session.scalar(
+        select(models.OrganizationUser).where(
+            models.OrganizationUser.id == organization_user["id"]
+        )
+    )
+    assert persisted_user is not None
+    assert persisted_user.department_id == UUID(active_department["id"])
 
 
 def test_department_delete_conflicts_when_active_organization_users_remain(
@@ -310,6 +396,68 @@ def test_organization_directory_rejects_whitespace_only_directory_fields(
     assert persisted_user is not None
     assert persisted_user.user_number == f"43P0001-{suffix}"
     assert persisted_user.name == "정다은"
+
+
+def test_organization_directory_patch_rejects_explicit_null_fields(
+    db_session: Session,
+) -> None:
+    client = _client(db_session)
+    suffix = uuid4().hex[:8]
+
+    department_response = client.post(
+        "/admin/v1/departments",
+        json={"dept_number": f"3300-{suffix}", "name": "플랫폼운영부"},
+    )
+    assert department_response.status_code == 201
+    department = department_response.json()
+
+    second_department_response = client.post(
+        "/admin/v1/departments",
+        json={"dept_number": f"3301-{suffix}", "name": "백오피스운영부"},
+    )
+    assert second_department_response.status_code == 201
+    second_department = second_department_response.json()
+
+    user_response = client.post(
+        "/admin/v1/organization-users",
+        json={
+            "user_number": f"44P0001-{suffix}",
+            "name": "정다은",
+            "department_id": department["id"],
+        },
+    )
+    assert user_response.status_code == 201
+    organization_user = user_response.json()
+
+    invalid_patch_requests = [
+        (f"/admin/v1/departments/{department['id']}", {"dept_number": None}),
+        (f"/admin/v1/departments/{department['id']}", {"name": None}),
+        (f"/admin/v1/departments/{department['id']}", {"use_yn": None}),
+        (f"/admin/v1/organization-users/{organization_user['id']}", {"user_number": None}),
+        (f"/admin/v1/organization-users/{organization_user['id']}", {"name": None}),
+        (
+            f"/admin/v1/organization-users/{organization_user['id']}",
+            {"department_id": None},
+        ),
+        (f"/admin/v1/organization-users/{organization_user['id']}", {"use_yn": None}),
+    ]
+
+    for path, payload in invalid_patch_requests:
+        response = client.patch(path, json=payload)
+        body = response.json()
+        assert response.status_code == 422
+        assert body["error"]["code"] == "INVALID_REQUEST"
+
+    persisted_department = db_session.get(models.Department, department["id"])
+    assert persisted_department is not None
+    assert persisted_department.dept_number == f"3300-{suffix}"
+    assert persisted_department.name == "플랫폼운영부"
+
+    persisted_user = db_session.get(models.OrganizationUser, organization_user["id"])
+    assert persisted_user is not None
+    assert persisted_user.user_number == f"44P0001-{suffix}"
+    assert persisted_user.name == "정다은"
+    assert persisted_user.department_id == UUID(department["id"])
 
 
 def test_organization_directory_routes_require_system_admin(

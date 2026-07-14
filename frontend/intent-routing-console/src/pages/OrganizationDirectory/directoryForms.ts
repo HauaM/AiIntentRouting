@@ -18,7 +18,8 @@ export const toDepartmentOptionSearchParams = (query?: string) => {
   const trimmedQuery = query?.trim();
 
   return {
-    query: trimmedQuery || undefined,
+    ...(trimmedQuery ? { query: trimmedQuery } : {}),
+    use_yn: 'Y' as const,
     limit: DIRECTORY_DEPARTMENT_OPTION_LIMIT,
   };
 };
