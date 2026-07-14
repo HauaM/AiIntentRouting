@@ -9,6 +9,20 @@ export type OrganizationUserFormValues = {
   department_id: string;
 };
 
+export const DIRECTORY_DEPARTMENT_OPTION_LIMIT = 100;
+
+export const canAccessOrganizationDirectory = (globalRoles: string[]) =>
+  globalRoles.includes('system_admin');
+
+export const toDepartmentOptionSearchParams = (query?: string) => {
+  const trimmedQuery = query?.trim();
+
+  return {
+    query: trimmedQuery || undefined,
+    limit: DIRECTORY_DEPARTMENT_OPTION_LIMIT,
+  };
+};
+
 export const toDepartmentCreateRequest = (
   values: DepartmentFormValues,
 ): API.DepartmentCreateRequest => ({

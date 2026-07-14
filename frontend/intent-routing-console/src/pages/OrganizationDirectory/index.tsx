@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { useModel } from '@umijs/max';
 import {
@@ -28,6 +28,8 @@ import {
   patchOrganizationUser,
 } from '@/services/adminServices';
 import {
+  canAccessOrganizationDirectory,
+  toDepartmentOptionSearchParams,
   toDepartmentCreateRequest,
   toOrganizationUserCreateRequest,
   type DepartmentFormValues,
@@ -68,38 +70,104 @@ export default function OrganizationDirectoryPage() {
   const [editingUser, setEditingUser] = useState<API.OrganizationUser>();
   const [departmentSaving, setDepartmentSaving] = useState(false);
   const [userSaving, setUserSaving] = useState(false);
-  const [departmentOptions, setDepartmentOptions] = useState<DepartmentOption[]>([]);
-  const [loadingDepartmentOptions, setLoadingDepartmentOptions] = useState(false);
+  const [departmentFilterOptions, setDepartmentFilterOptions] = useState<DepartmentOption[]>([]);
+  const [departmentSelectOptions, setDepartmentSelectOptions] = useState<DepartmentOption[]>([]);
+  const [loadingDepartmentFilterOptions, setLoadingDepartmentFilterOptions] = useState(false);
+  const [loadingDepartmentSelectOptions, setLoadingDepartmentSelectOptions] = useState(false);
   const departmentActionRef = useRef<ActionType>();
   const userActionRef = useRef<ActionType>();
+  const departmentFilterRequestSeqRef = useRef(0);
+  const departmentSelectRequestSeqRef = useRef(0);
   const ready = Boolean(session.authenticated && session.user);
-  const canManage = session.globalRoles.includes('system_admin');
+  const canManage = canAccessOrganizationDirectory(session.globalRoles);
 
-  const loadDepartmentOptions = useCallback(async () => {
-    setLoadingDepartmentOptions(true);
+  const clearDepartmentOptions = useCallback(() => {
+    departmentFilterRequestSeqRef.current += 1;
+    departmentSelectRequestSeqRef.current += 1;
+    setDepartmentFilterOptions([]);
+    setDepartmentSelectOptions([]);
+    setLoadingDepartmentFilterOptions(false);
+    setLoadingDepartmentSelectOptions(false);
+  }, []);
+
+  const loadDepartmentOptions = useCallback(
+    async (query: string | undefined, target: 'filter' | 'form') => {
+      const requestSeqRef =
+        target === 'filter' ? departmentFilterRequestSeqRef : departmentSelectRequestSeqRef;
+      const setOptions =
+        target === 'filter' ? setDepartmentFilterOptions : setDepartmentSelectOptions;
+      const setLoading =
+        target === 'filter' ? setLoadingDepartmentFilterOptions : setLoadingDepartmentSelectOptions;
+      const requestSeq = (requestSeqRef.current += 1);
+
+      setLoading(true);
+      try {
+        const rows = await listDepartments(toDepartmentOptionSearchParams(query));
+        if (requestSeq !== requestSeqRef.current) return;
+        setOptions(rows.map(toDepartmentOption));
+      } catch {
+        if (requestSeq !== requestSeqRef.current) return;
+        setOptions([]);
+        message.error('Failed to load department options.');
+      } finally {
+        if (requestSeq === requestSeqRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  const primeDepartmentOptions = useCallback(async () => {
+    const filterRequestSeq = (departmentFilterRequestSeqRef.current += 1);
+    const selectRequestSeq = (departmentSelectRequestSeqRef.current += 1);
+
+    setLoadingDepartmentFilterOptions(true);
+    setLoadingDepartmentSelectOptions(true);
     try {
-      const rows = await listDepartments({ limit: 100 });
-      setDepartmentOptions(rows.map(toDepartmentOption));
+      const rows = await listDepartments(toDepartmentOptionSearchParams());
+      const options = rows.map(toDepartmentOption);
+      if (
+        filterRequestSeq !== departmentFilterRequestSeqRef.current ||
+        selectRequestSeq !== departmentSelectRequestSeqRef.current
+      ) {
+        return;
+      }
+      setDepartmentFilterOptions(options);
+      setDepartmentSelectOptions(options);
     } catch {
+      if (
+        filterRequestSeq !== departmentFilterRequestSeqRef.current ||
+        selectRequestSeq !== departmentSelectRequestSeqRef.current
+      ) {
+        return;
+      }
+      setDepartmentFilterOptions([]);
+      setDepartmentSelectOptions([]);
       message.error('Failed to load department options.');
     } finally {
-      setLoadingDepartmentOptions(false);
+      if (filterRequestSeq === departmentFilterRequestSeqRef.current) {
+        setLoadingDepartmentFilterOptions(false);
+      }
+      if (selectRequestSeq === departmentSelectRequestSeqRef.current) {
+        setLoadingDepartmentSelectOptions(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (!ready) {
-      setDepartmentOptions([]);
+    if (!ready || !canManage) {
+      clearDepartmentOptions();
       return;
     }
-    void loadDepartmentOptions();
-  }, [loadDepartmentOptions, ready]);
+    void primeDepartmentOptions();
+  }, [canManage, clearDepartmentOptions, primeDepartmentOptions, ready]);
 
   const reloadDepartmentViews = useCallback(() => {
     departmentActionRef.current?.reload();
     userActionRef.current?.reload();
-    void loadDepartmentOptions();
-  }, [loadDepartmentOptions]);
+    void primeDepartmentOptions();
+  }, [primeDepartmentOptions]);
 
   const reloadUserTable = useCallback(() => {
     userActionRef.current?.reload();
@@ -139,12 +207,18 @@ export default function OrganizationDirectoryPage() {
     setUserFormMode('create');
     setEditingUser(undefined);
     userForm.resetFields();
+    void loadDepartmentOptions(undefined, 'form');
     setUserModalOpen(true);
   };
 
   const openEditUserModal = (user: API.OrganizationUser) => {
     setUserFormMode('edit');
     setEditingUser(user);
+    setDepartmentSelectOptions((current) =>
+      current.some((option) => option.value === user.department_id)
+        ? current
+        : [toDepartmentOption(user.department), ...current],
+    );
     userForm.resetFields();
     userForm.setFieldsValue({
       user_number: user.user_number,
@@ -189,11 +263,6 @@ export default function OrganizationDirectoryPage() {
       setUserSaving(false);
     }
   };
-
-  const departmentFilterOptions = useMemo(
-    () => departmentOptions.map((option) => ({ label: option.label, value: option.value })),
-    [departmentOptions],
-  );
 
   const departmentColumns: ProColumns<API.Department>[] = [
     {
@@ -274,7 +343,11 @@ export default function OrganizationDirectoryPage() {
       fieldProps: {
         options: departmentFilterOptions,
         showSearch: true,
-        optionFilterProp: 'label',
+        filterOption: false,
+        loading: loadingDepartmentFilterOptions,
+        onSearch: (value: string) => {
+          void loadDepartmentOptions(value, 'filter');
+        },
       },
     },
     {
@@ -345,176 +418,175 @@ export default function OrganizationDirectoryPage() {
   return (
     <AdminShell title="Users & Departments">
       {ready ? (
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          {!canManage ? (
-            <Alert
-              type="info"
-              showIcon
-              message="Read-only access"
-              description="Department and user changes require system_admin."
-            />
-          ) : null}
-          <Tabs
-            destroyInactiveTabPane
-            items={[
-              {
-                key: 'departments',
-                label: 'Departments',
-                children: (
-                  <ProTable<API.Department>
-                    rowKey="id"
-                    actionRef={departmentActionRef}
-                    columns={departmentColumns}
-                    request={async (params) => {
-                      const rows = await listDepartments({
-                        query: typeof params.keyword === 'string' ? params.keyword : undefined,
-                        use_yn: params.use_yn as API.UseYn | undefined,
-                        limit: 100,
-                      });
-                      return { data: rows, total: rows.length, success: true };
-                    }}
-                    pagination={false}
-                    search={{ labelWidth: 88 }}
-                    options={{ density: true, fullScreen: false, reload: true, setting: true }}
-                    toolBarRender={() =>
-                      canManage
-                        ? [
-                            <Button
-                              key="create-department"
-                              type="primary"
-                              onClick={openCreateDepartmentModal}
-                            >
-                              Department 추가
-                            </Button>,
-                          ]
-                        : []
-                    }
-                  />
-                ),
-              },
-              {
-                key: 'users',
-                label: 'Users',
-                children: (
-                  <ProTable<API.OrganizationUser>
-                    rowKey="id"
-                    actionRef={userActionRef}
-                    columns={userColumns}
-                    request={async (params) => {
-                      const rows = await listOrganizationUsers({
-                        query: typeof params.keyword === 'string' ? params.keyword : undefined,
-                        department_id:
-                          typeof params.department_id === 'string'
-                            ? params.department_id
-                            : undefined,
-                        use_yn: params.use_yn as API.UseYn | undefined,
-                        limit: 100,
-                      });
-                      return { data: rows, total: rows.length, success: true };
-                    }}
-                    pagination={false}
-                    search={{ labelWidth: 88 }}
-                    options={{ density: true, fullScreen: false, reload: true, setting: true }}
-                    toolBarRender={() =>
-                      canManage
-                        ? [
-                            <Button
-                              key="create-user"
-                              type="primary"
-                              onClick={openCreateUserModal}
-                            >
-                              User 추가
-                            </Button>,
-                          ]
-                        : []
-                    }
-                  />
-                ),
-              },
-            ]}
+        !canManage ? (
+          <Alert
+            type="info"
+            showIcon
+            message="Organization directory access requires system_admin."
           />
-          <Modal
-            destroyOnClose
-            open={departmentModalOpen}
-            title={departmentFormMode === 'create' ? 'Create Department' : 'Edit Department'}
-            okText={departmentFormMode === 'create' ? 'Create' : 'Save'}
-            cancelText="취소"
-            confirmLoading={departmentSaving}
-            onCancel={closeDepartmentModal}
-            onOk={() => departmentForm.submit()}
-          >
-            <Form<DepartmentFormValues>
-              form={departmentForm}
-              layout="vertical"
-              requiredMark={false}
-              onFinish={handleDepartmentSubmit}
+        ) : (
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Tabs
+              destroyInactiveTabPane
+              items={[
+                {
+                  key: 'departments',
+                  label: 'Departments',
+                  children: (
+                    <ProTable<API.Department>
+                      rowKey="id"
+                      actionRef={departmentActionRef}
+                      columns={departmentColumns}
+                      request={async (params) => {
+                        const rows = await listDepartments({
+                          query: typeof params.keyword === 'string' ? params.keyword : undefined,
+                          use_yn: params.use_yn as API.UseYn | undefined,
+                          limit: 100,
+                        });
+                        return { data: rows, total: rows.length, success: true };
+                      }}
+                      pagination={false}
+                      search={{ labelWidth: 88 }}
+                      options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                      toolBarRender={() =>
+                        canManage
+                          ? [
+                              <Button
+                                key="create-department"
+                                type="primary"
+                                onClick={openCreateDepartmentModal}
+                              >
+                                Department 추가
+                              </Button>,
+                            ]
+                          : []
+                      }
+                    />
+                  ),
+                },
+                {
+                  key: 'users',
+                  label: 'Users',
+                  children: (
+                    <ProTable<API.OrganizationUser>
+                      rowKey="id"
+                      actionRef={userActionRef}
+                      columns={userColumns}
+                      request={async (params) => {
+                        const rows = await listOrganizationUsers({
+                          query: typeof params.keyword === 'string' ? params.keyword : undefined,
+                          department_id:
+                            typeof params.department_id === 'string'
+                              ? params.department_id
+                              : undefined,
+                          use_yn: params.use_yn as API.UseYn | undefined,
+                          limit: 100,
+                        });
+                        return { data: rows, total: rows.length, success: true };
+                      }}
+                      pagination={false}
+                      search={{ labelWidth: 88 }}
+                      options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                      toolBarRender={() =>
+                        canManage
+                          ? [
+                              <Button key="create-user" type="primary" onClick={openCreateUserModal}>
+                                User 추가
+                              </Button>,
+                            ]
+                          : []
+                      }
+                    />
+                  ),
+                },
+              ]}
+            />
+            <Modal
+              destroyOnClose
+              open={departmentModalOpen}
+              title={departmentFormMode === 'create' ? 'Create Department' : 'Edit Department'}
+              okText={departmentFormMode === 'create' ? 'Create' : 'Save'}
+              cancelText="취소"
+              confirmLoading={departmentSaving}
+              onCancel={closeDepartmentModal}
+              onOk={() => departmentForm.submit()}
             >
-              <Form.Item
-                name="dept_number"
-                label="Dept number"
-                rules={[
-                  { required: true, whitespace: true, message: 'Dept number is required.' },
-                ]}
+              <Form<DepartmentFormValues>
+                form={departmentForm}
+                layout="vertical"
+                requiredMark={false}
+                onFinish={handleDepartmentSubmit}
               >
-                <Input placeholder="0969" />
-              </Form.Item>
-              <Form.Item
-                name="name"
-                label="Name"
-                rules={[{ required: true, whitespace: true, message: 'Name is required.' }]}
-              >
-                <Input placeholder="IT지원부" />
-              </Form.Item>
-            </Form>
-          </Modal>
-          <Modal
-            destroyOnClose
-            open={userModalOpen}
-            title={userFormMode === 'create' ? 'Create User' : 'Edit User'}
-            okText={userFormMode === 'create' ? 'Create' : 'Save'}
-            cancelText="취소"
-            confirmLoading={userSaving}
-            onCancel={closeUserModal}
-            onOk={() => userForm.submit()}
-          >
-            <Form<OrganizationUserFormValues>
-              form={userForm}
-              layout="vertical"
-              requiredMark={false}
-              onFinish={handleUserSubmit}
+                <Form.Item
+                  name="dept_number"
+                  label="Dept number"
+                  rules={[
+                    { required: true, whitespace: true, message: 'Dept number is required.' },
+                  ]}
+                >
+                  <Input placeholder="0969" />
+                </Form.Item>
+                <Form.Item
+                  name="name"
+                  label="Name"
+                  rules={[{ required: true, whitespace: true, message: 'Name is required.' }]}
+                >
+                  <Input placeholder="IT지원부" />
+                </Form.Item>
+              </Form>
+            </Modal>
+            <Modal
+              destroyOnClose
+              open={userModalOpen}
+              title={userFormMode === 'create' ? 'Create User' : 'Edit User'}
+              okText={userFormMode === 'create' ? 'Create' : 'Save'}
+              cancelText="취소"
+              confirmLoading={userSaving}
+              onCancel={closeUserModal}
+              onOk={() => userForm.submit()}
             >
-              <Form.Item
-                name="user_number"
-                label="User number"
-                rules={[
-                  { required: true, whitespace: true, message: 'User number is required.' },
-                ]}
+              <Form<OrganizationUserFormValues>
+                form={userForm}
+                layout="vertical"
+                requiredMark={false}
+                onFinish={handleUserSubmit}
               >
-                <Input placeholder="21P0031" />
-              </Form.Item>
-              <Form.Item
-                name="name"
-                label="Name"
-                rules={[{ required: true, whitespace: true, message: 'Name is required.' }]}
-              >
-                <Input placeholder="홍길동" />
-              </Form.Item>
-              <Form.Item
-                name="department_id"
-                label="Department"
-                rules={[{ required: true, message: 'Department is required.' }]}
-              >
-                <Select
-                  loading={loadingDepartmentOptions}
-                  options={departmentFilterOptions}
-                  placeholder="부서를 선택하세요."
-                  showSearch
-                  optionFilterProp="label"
-                />
-              </Form.Item>
-            </Form>
-          </Modal>
-        </Space>
+                <Form.Item
+                  name="user_number"
+                  label="User number"
+                  rules={[
+                    { required: true, whitespace: true, message: 'User number is required.' },
+                  ]}
+                >
+                  <Input placeholder="21P0031" />
+                </Form.Item>
+                <Form.Item
+                  name="name"
+                  label="Name"
+                  rules={[{ required: true, whitespace: true, message: 'Name is required.' }]}
+                >
+                  <Input placeholder="홍길동" />
+                </Form.Item>
+                <Form.Item
+                  name="department_id"
+                  label="Department"
+                  rules={[{ required: true, message: 'Department is required.' }]}
+                >
+                  <Select
+                    loading={loadingDepartmentSelectOptions}
+                    options={departmentSelectOptions}
+                    placeholder="부서를 선택하세요."
+                    showSearch
+                    filterOption={false}
+                    onSearch={(value) => {
+                      void loadDepartmentOptions(value, 'form');
+                    }}
+                  />
+                </Form.Item>
+              </Form>
+            </Modal>
+          </Space>
+        )
       ) : (
         <AdminSessionRequired />
       )}
