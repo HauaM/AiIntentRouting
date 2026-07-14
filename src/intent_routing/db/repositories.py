@@ -1,7 +1,7 @@
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, TypeVar, cast
+from typing import Any, TypeAlias, TypeVar, cast
 from uuid import UUID
 
 from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
@@ -13,6 +13,7 @@ from intent_routing.db import models
 
 ModelT = TypeVar("ModelT")
 RawTextKeyIdCounts = dict[str, dict[str, int] | int]
+PermissionAuditEventTypes: TypeAlias = tuple[str, ...]
 
 MASKED_RUNTIME_LOG_FIELD_NAMES = (
     "trace_id",
@@ -673,20 +674,20 @@ class IntentRoutingRepository:
         global_roles_by_user_id: dict[str, list[str]] = {
             user_id: [] for user_id in user_ids
         }
-        for role_record in self.session.scalars(
+        for admin_role_record in self.session.scalars(
             select(models.AdminUserRole)
             .where(models.AdminUserRole.user_id.in_(user_ids))
             .order_by(models.AdminUserRole.user_id, models.AdminUserRole.role)
         ):
-            global_roles_by_user_id.setdefault(role_record.user_id, []).append(
-                role_record.role
+            global_roles_by_user_id.setdefault(admin_role_record.user_id, []).append(
+                admin_role_record.role
             )
 
         service_roles_by_user_id: dict[
             str,
             list[PermissionServiceRoleSummaryRecord],
         ] = {user_id: [] for user_id in user_ids}
-        for role_record in self.session.scalars(
+        for service_role_record in self.session.scalars(
             select(models.UserServiceRole)
             .join(models.Service)
             .where(models.UserServiceRole.user_id.in_(user_ids))
@@ -697,13 +698,13 @@ class IntentRoutingRepository:
                 models.UserServiceRole.role,
             )
         ):
-            service_roles_by_user_id.setdefault(role_record.user_id, []).append(
+            service_roles_by_user_id[service_role_record.user_id].append(
                 PermissionServiceRoleSummaryRecord(
-                    service_id=role_record.service_id,
-                    service_display_name=role_record.service.display_name,
-                    role=role_record.role,
-                    assigned_by=role_record.assigned_by,
-                    assigned_at=role_record.assigned_at,
+                    service_id=service_role_record.service_id,
+                    service_display_name=service_role_record.service.display_name,
+                    role=service_role_record.role,
+                    assigned_by=service_role_record.assigned_by,
+                    assigned_at=service_role_record.assigned_at,
                 )
             )
 
@@ -2085,6 +2086,7 @@ class IntentRoutingRepository:
         )
         limit = max(1, min(limit, 500))
         statement = select(models.AuditLog)
+        allowed_event_types: PermissionAuditEventTypes
         if event_group == "admin_user":
             allowed_event_types = PERMISSION_ADMIN_USER_AUDIT_EVENT_TYPES
         elif event_group == "service_membership":

@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -15,12 +16,13 @@ from intent_routing.api.admin_dependencies import (
     require_admin_context,
     require_admin_session_context,
 )
+from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.main import create_app
 
 
 def test_permission_management_route_returns_empty_summary_list_without_db(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class _FakePermissionRepository:
         def __init__(self, session: object) -> None:
@@ -882,7 +884,7 @@ def _create_permission_organization_user(
     user_number: str,
     use_yn: str,
     now: datetime,
-) -> object:
+) -> models.OrganizationUser:
     department = repository.create_department(
         dept_number=dept_number,
         name=f"Permission Department {dept_number}",
