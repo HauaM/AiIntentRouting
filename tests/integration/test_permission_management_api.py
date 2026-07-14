@@ -65,6 +65,15 @@ def test_permission_management_audit_logs_requires_system_admin_without_db() -> 
     assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
 
 
+def test_permission_management_risk_findings_requires_system_admin_without_db() -> None:
+    response = _client_with_fake_session(global_roles=frozenset()).get(
+        "/admin/v1/permission-management/risk-findings",
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+
+
 def test_permission_management_service_roles_requires_system_admin_without_db() -> None:
     response = _client_with_fake_session(global_roles=frozenset()).get(
         "/admin/v1/permission-management/service-roles",
