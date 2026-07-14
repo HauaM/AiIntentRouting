@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
-import { useModel } from '@umijs/max';
+import { history, useModel } from '@umijs/max';
 import {
   Alert,
   Button,
@@ -37,6 +37,7 @@ import {
   formatOrganizationUserNumber,
   toAdminUserCreateRequest,
   toAdminUserStatusPatchRequest,
+  permissionManagementAdminUserUrl,
   toDepartmentOption,
   toDepartmentOptionSearchParams,
   toSystemAdminRolesPatchRequest,
@@ -474,6 +475,15 @@ export default function OrganizationDirectoryPage() {
                   },
                 ]}
               />
+              <Button
+                size="small"
+                type="link"
+                onClick={() =>
+                  history.push(permissionManagementAdminUserUrl(managedAdminUser.user_id))
+                }
+              >
+                권한관리에서 보기
+              </Button>
               {inactiveOrganizationUser ? (
                 <Alert
                   type="warning"

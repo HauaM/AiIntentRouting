@@ -4,6 +4,7 @@ import {
   formatDepartmentNumber,
   formatOrganizationUserNumber,
   hasSystemAdminRole,
+  permissionManagementAdminUserUrl,
   toDepartmentOption,
   toDepartmentOptionSearchParams,
   toAdminUserCreateRequest,
@@ -155,5 +156,11 @@ describe('directoryForms', () => {
         false,
       ),
     ).toEqual({ global_roles: [] });
+  });
+
+  it('builds the Permission Management shortcut URL for linked admin accounts', () => {
+    expect(permissionManagementAdminUserUrl(' admin/user 1 ')).toBe(
+      '/permission-management?admin_user_id=admin%2Fuser%201',
+    );
   });
 });

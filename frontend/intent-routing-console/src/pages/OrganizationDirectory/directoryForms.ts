@@ -86,6 +86,9 @@ export const toAdminUserCreateRequest = (
   global_roles: [],
 });
 
+export const permissionManagementAdminUserUrl = (adminUserId: string) =>
+  `/permission-management?admin_user_id=${encodeURIComponent(adminUserId.trim())}`;
+
 export const toAdminUserStatusPatchRequest = (
   status: API.ManagedAdminUserStatus,
 ): API.ManagedAdminUserPatchRequest => ({
