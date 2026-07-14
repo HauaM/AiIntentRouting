@@ -4,8 +4,7 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
-from sqlalchemy import text
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from intent_routing.api.admin_dependencies import (
@@ -469,7 +468,6 @@ def test_organization_directory_patch_rejects_explicit_null_fields(
         json={"dept_number": f"3301-{suffix}", "name": "백오피스운영부"},
     )
     assert second_department_response.status_code == 201
-    second_department = second_department_response.json()
 
     user_response = client.post(
         "/admin/v1/organization-users",
