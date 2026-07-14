@@ -20,8 +20,6 @@ import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import {
   createDepartment,
   createOrganizationUser,
-  deleteDepartment,
-  deleteOrganizationUser,
   listDepartments,
   listOrganizationUsers,
   patchDepartment,
@@ -29,34 +27,30 @@ import {
 } from '@/services/adminServices';
 import {
   canAccessOrganizationDirectory,
+  formatDepartmentNumber,
+  formatOrganizationUserNumber,
+  toDepartmentOption,
   toDepartmentOptionSearchParams,
   toDepartmentCreateRequest,
+  toDepartmentUseYnPatchRequest,
   toOrganizationUserCreateRequest,
+  toOrganizationUserUseYnPatchRequest,
   type DepartmentFormValues,
+  type DepartmentOption,
   type OrganizationUserFormValues,
 } from './directoryForms';
 
 type DepartmentFormMode = 'create' | 'edit';
 type UserFormMode = 'create' | 'edit';
 
-type DepartmentOption = {
-  label: string;
-  value: string;
-};
-
 const useYnValueEnum = {
   Y: { text: 'Y' },
   N: { text: 'N' },
 } as const;
 
-const formatUseYn = (useYn: API.UseYn) => (
-  <Tag color={useYn === 'Y' ? 'green' : 'default'}>{useYn}</Tag>
+const UseYnTag = ({ value }: { value: API.UseYn }) => (
+  <Tag color={value === 'Y' ? 'green' : 'default'}>{value}</Tag>
 );
-
-const toDepartmentOption = (department: API.Department): DepartmentOption => ({
-  label: `${department.dept_number} / ${department.name} / ${department.use_yn}`,
-  value: department.id,
-});
 
 export default function OrganizationDirectoryPage() {
   const { session } = useModel('adminSession');
@@ -246,6 +240,22 @@ export default function OrganizationDirectoryPage() {
     }
   };
 
+  const handleDepartmentUseYnChange = async (useYn: API.UseYn) => {
+    if (!editingDepartment || editingDepartment.use_yn === useYn) return;
+
+    setDepartmentSaving(true);
+    try {
+      const updatedDepartment = await patchDepartment(
+        editingDepartment.id,
+        toDepartmentUseYnPatchRequest(useYn),
+      );
+      setEditingDepartment(updatedDepartment);
+      reloadDepartmentViews();
+    } finally {
+      setDepartmentSaving(false);
+    }
+  };
+
   const handleUserSubmit = async (values: OrganizationUserFormValues) => {
     setUserSaving(true);
     try {
@@ -264,6 +274,22 @@ export default function OrganizationDirectoryPage() {
     }
   };
 
+  const handleOrganizationUserUseYnChange = async (useYn: API.UseYn) => {
+    if (!editingUser || editingUser.use_yn === useYn) return;
+
+    setUserSaving(true);
+    try {
+      const updatedUser = await patchOrganizationUser(
+        editingUser.id,
+        toOrganizationUserUseYnPatchRequest(useYn),
+      );
+      setEditingUser(updatedUser);
+      reloadUserTable();
+    } finally {
+      setUserSaving(false);
+    }
+  };
+
   const departmentColumns: ProColumns<API.Department>[] = [
     {
       title: 'Search',
@@ -271,10 +297,12 @@ export default function OrganizationDirectoryPage() {
       hideInTable: true,
     },
     {
-      title: 'Dept #',
+      title: 'Dept_Number',
       dataIndex: 'dept_number',
       search: false,
-      render: (_, row) => <Typography.Text code>{row.dept_number}</Typography.Text>,
+      render: (_, row) => (
+        <Typography.Text code>{formatDepartmentNumber(row.dept_number)}</Typography.Text>
+      ),
     },
     {
       title: 'Name',
@@ -286,7 +314,7 @@ export default function OrganizationDirectoryPage() {
       dataIndex: 'use_yn',
       valueType: 'select',
       valueEnum: useYnValueEnum,
-      render: (_, row) => formatUseYn(row.use_yn),
+      render: (_, row) => <UseYnTag value={row.use_yn} />,
     },
     {
       title: 'Updated',
@@ -297,7 +325,7 @@ export default function OrganizationDirectoryPage() {
     {
       title: '',
       valueType: 'option',
-      width: 152,
+      width: 80,
       render: (_, row) => {
         if (!canManage) return [];
         return [
@@ -309,21 +337,6 @@ export default function OrganizationDirectoryPage() {
           >
             편집
           </Button>,
-          row.use_yn === 'Y' ? (
-            <ConfirmActionButton
-              key="deactivate"
-              danger
-              type="link"
-              size="small"
-              title="Deactivate department?"
-              okText="Deactivate"
-              content={`${row.dept_number} ${row.name} 부서를 비활성화합니다.`}
-              onConfirm={() => deleteDepartment(row.id).then(() => undefined)}
-              onSuccess={reloadDepartmentViews}
-            >
-              비활성화
-            </ConfirmActionButton>
-          ) : null,
         ].filter(Boolean);
       },
     },
@@ -354,7 +367,9 @@ export default function OrganizationDirectoryPage() {
       title: 'User #',
       dataIndex: 'user_number',
       search: false,
-      render: (_, row) => <Typography.Text code>{row.user_number}</Typography.Text>,
+      render: (_, row) => (
+        <Typography.Text code>{formatOrganizationUserNumber(row.user_number)}</Typography.Text>
+      ),
     },
     {
       title: 'Name',
@@ -365,19 +380,14 @@ export default function OrganizationDirectoryPage() {
       title: 'Department',
       dataIndex: ['department', 'name'],
       search: false,
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <span>{row.department.name}</span>
-          <span className="muted-small">{row.department.dept_number}</span>
-        </Space>
-      ),
+      render: (_, row) => row.department.name,
     },
     {
       title: 'Use',
       dataIndex: 'use_yn',
       valueType: 'select',
       valueEnum: useYnValueEnum,
-      render: (_, row) => formatUseYn(row.use_yn),
+      render: (_, row) => <UseYnTag value={row.use_yn} />,
     },
     {
       title: 'Updated',
@@ -388,28 +398,13 @@ export default function OrganizationDirectoryPage() {
     {
       title: '',
       valueType: 'option',
-      width: 152,
+      width: 80,
       render: (_, row) => {
         if (!canManage) return [];
         return [
           <Button key="edit" type="link" size="small" onClick={() => openEditUserModal(row)}>
             편집
           </Button>,
-          row.use_yn === 'Y' ? (
-            <ConfirmActionButton
-              key="deactivate"
-              danger
-              type="link"
-              size="small"
-              title="Deactivate user?"
-              okText="Deactivate"
-              content={`${row.user_number} ${row.name} 사용자를 비활성화합니다.`}
-              onConfirm={() => deleteOrganizationUser(row.id).then(() => undefined)}
-              onSuccess={reloadUserTable}
-            >
-              비활성화
-            </ConfirmActionButton>
-          ) : null,
         ].filter(Boolean);
       },
     },
@@ -447,20 +442,14 @@ export default function OrganizationDirectoryPage() {
                       }}
                       pagination={false}
                       search={{ labelWidth: 88 }}
+                      toolbar={{
+                        title: canManage ? (
+                          <Button type="primary" onClick={openCreateDepartmentModal}>
+                            Department 추가
+                          </Button>
+                        ) : undefined,
+                      }}
                       options={{ density: true, fullScreen: false, reload: true, setting: true }}
-                      toolBarRender={() =>
-                        canManage
-                          ? [
-                              <Button
-                                key="create-department"
-                                type="primary"
-                                onClick={openCreateDepartmentModal}
-                              >
-                                Department 추가
-                              </Button>,
-                            ]
-                          : []
-                      }
                     />
                   ),
                 },
@@ -486,16 +475,14 @@ export default function OrganizationDirectoryPage() {
                       }}
                       pagination={false}
                       search={{ labelWidth: 88 }}
+                      toolbar={{
+                        title: canManage ? (
+                          <Button type="primary" onClick={openCreateUserModal}>
+                            User 추가
+                          </Button>
+                        ) : undefined,
+                      }}
                       options={{ density: true, fullScreen: false, reload: true, setting: true }}
-                      toolBarRender={() =>
-                        canManage
-                          ? [
-                              <Button key="create-user" type="primary" onClick={openCreateUserModal}>
-                                User 추가
-                              </Button>,
-                            ]
-                          : []
-                      }
                     />
                   ),
                 },
@@ -517,11 +504,16 @@ export default function OrganizationDirectoryPage() {
                 requiredMark={false}
                 onFinish={handleDepartmentSubmit}
               >
+                {departmentFormMode === 'edit' && editingDepartment ? (
+                  <Form.Item label="ID">
+                    <Input value={editingDepartment.id} disabled readOnly />
+                  </Form.Item>
+                ) : null}
                 <Form.Item
                   name="dept_number"
-                  label="Dept number"
+                  label="Dept_Number"
                   rules={[
-                    { required: true, whitespace: true, message: 'Dept number is required.' },
+                    { required: true, whitespace: true, message: 'Dept_Number is required.' },
                   ]}
                 >
                   <Input placeholder="0969" />
@@ -533,6 +525,45 @@ export default function OrganizationDirectoryPage() {
                 >
                   <Input placeholder="IT지원부" />
                 </Form.Item>
+                {departmentFormMode === 'edit' && editingDepartment ? (
+                  <Form.Item label="Use">
+                    <Space direction="vertical" size={10}>
+                      <UseYnTag value={editingDepartment.use_yn} />
+                      <div
+                        style={{
+                          display: 'grid',
+                          gap: 12,
+                          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                          maxWidth: '100%',
+                          width: 260,
+                        }}
+                      >
+                        <ConfirmActionButton
+                          disabled={departmentSaving || editingDepartment.use_yn === 'Y'}
+                          style={{ boxShadow: 'none' }}
+                          type="primary"
+                          title="Activate department?"
+                          okText="Activate"
+                          content={`${editingDepartment.dept_number} ${editingDepartment.name} 부서를 활성화합니다.`}
+                          onConfirm={() => handleDepartmentUseYnChange('Y')}
+                        >
+                          활성화
+                        </ConfirmActionButton>
+                        <ConfirmActionButton
+                          danger
+                          disabled={departmentSaving || editingDepartment.use_yn === 'N'}
+                          style={{ boxShadow: 'none' }}
+                          title="Deactivate department?"
+                          okText="Deactivate"
+                          content={`${editingDepartment.dept_number} ${editingDepartment.name} 부서를 비활성화합니다.`}
+                          onConfirm={() => handleDepartmentUseYnChange('N')}
+                        >
+                          비활성화
+                        </ConfirmActionButton>
+                      </div>
+                    </Space>
+                  </Form.Item>
+                ) : null}
               </Form>
             </Modal>
             <Modal
@@ -551,6 +582,11 @@ export default function OrganizationDirectoryPage() {
                 requiredMark={false}
                 onFinish={handleUserSubmit}
               >
+                {userFormMode === 'edit' && editingUser ? (
+                  <Form.Item label="ID">
+                    <Input value={editingUser.id} disabled readOnly />
+                  </Form.Item>
+                ) : null}
                 <Form.Item
                   name="user_number"
                   label="User number"
@@ -583,6 +619,45 @@ export default function OrganizationDirectoryPage() {
                     }}
                   />
                 </Form.Item>
+                {userFormMode === 'edit' && editingUser ? (
+                  <Form.Item label="Use">
+                    <Space direction="vertical" size={10}>
+                      <UseYnTag value={editingUser.use_yn} />
+                      <div
+                        style={{
+                          display: 'grid',
+                          gap: 12,
+                          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                          maxWidth: '100%',
+                          width: 260,
+                        }}
+                      >
+                        <ConfirmActionButton
+                          disabled={userSaving || editingUser.use_yn === 'Y'}
+                          style={{ boxShadow: 'none' }}
+                          type="primary"
+                          title="Activate user?"
+                          okText="Activate"
+                          content={`${editingUser.user_number} ${editingUser.name} 사용자를 활성화합니다.`}
+                          onConfirm={() => handleOrganizationUserUseYnChange('Y')}
+                        >
+                          활성화
+                        </ConfirmActionButton>
+                        <ConfirmActionButton
+                          danger
+                          disabled={userSaving || editingUser.use_yn === 'N'}
+                          style={{ boxShadow: 'none' }}
+                          title="Deactivate user?"
+                          okText="Deactivate"
+                          content={`${editingUser.user_number} ${editingUser.name} 사용자를 비활성화합니다.`}
+                          onConfirm={() => handleOrganizationUserUseYnChange('N')}
+                        >
+                          비활성화
+                        </ConfirmActionButton>
+                      </div>
+                    </Space>
+                  </Form.Item>
+                ) : null}
               </Form>
             </Modal>
           </Space>
