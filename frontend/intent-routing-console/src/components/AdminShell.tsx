@@ -13,6 +13,7 @@ import {
   KeyOutlined,
   ProfileOutlined,
   RocketOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import { ServiceScopeBar } from './ServiceScopeBar';
 
@@ -99,6 +100,11 @@ export function AdminShell({ title, children }: AdminShellProps) {
           routes: [
             { path: '/dashboard', name: 'Dashboard', icon: <DashboardOutlined /> },
             { path: '/services', name: 'Services', icon: <ClusterOutlined /> },
+            {
+              path: '/organization-directory',
+              name: 'Users & Departments',
+              icon: <TeamOutlined />,
+            },
             { path: '/intents', name: 'Intent Catalog', icon: <ProfileOutlined /> },
             { path: '/releases', name: 'Releases', icon: <RocketOutlined /> },
             { path: '/test-runs', name: 'Test Runs', icon: <ExperimentOutlined /> },

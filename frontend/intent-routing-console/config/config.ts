@@ -15,6 +15,7 @@ export default defineConfig({
     { path: '/login', component: './Login' },
     { path: '/dashboard', component: './Dashboard' },
     { path: '/services', component: './Services' },
+    { path: '/organization-directory', component: './OrganizationDirectory' },
     { path: '/intents', component: './Intents' },
     { path: '/releases', component: './Releases' },
     { path: '/test-runs', component: './TestRuns' },

@@ -1,5 +1,6 @@
 *.save
 .worktrees/
+.superpowers/
 var/
 *.secret.json
 .venv/

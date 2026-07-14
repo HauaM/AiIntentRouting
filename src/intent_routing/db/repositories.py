@@ -143,6 +143,116 @@ class IntentRoutingRepository:
     def get_api_key_by_id(self, key_id: str) -> models.ApiKey | None:
         return self.session.get(models.ApiKey, key_id)
 
+    def create_department(self, **values: Any) -> models.Department:
+        return self._add_and_flush(models.Department(**values))
+
+    def list_departments(
+        self,
+        *,
+        query: str | None = None,
+        use_yn: str | None = None,
+        limit: int = 100,
+    ) -> list[models.Department]:
+        limit = max(1, min(limit, 100))
+        statement = select(models.Department)
+        if query is not None and query.strip():
+            pattern = f"%{query.strip().lower()}%"
+            statement = statement.where(
+                or_(
+                    func.lower(models.Department.dept_number).like(pattern),
+                    func.lower(models.Department.name).like(pattern),
+                )
+            )
+        if use_yn is not None:
+            statement = statement.where(models.Department.use_yn == use_yn)
+        return list(
+            self.session.scalars(
+                statement.order_by(models.Department.dept_number).limit(limit)
+            )
+        )
+
+    def update_department(
+        self,
+        department: models.Department,
+        **values: Any,
+    ) -> models.Department:
+        for field_name, value in values.items():
+            setattr(department, field_name, value)
+        self.session.flush()
+        return department
+
+    def deactivate_department(
+        self,
+        department: models.Department,
+        *,
+        updated_by: str,
+        updated_at: datetime,
+    ) -> models.Department:
+        department.use_yn = "N"
+        department.updated_by = updated_by
+        department.updated_at = updated_at
+        self.session.flush()
+        return department
+
+    def create_organization_user(self, **values: Any) -> models.OrganizationUser:
+        return self._add_and_flush(models.OrganizationUser(**values))
+
+    def list_organization_users(
+        self,
+        *,
+        query: str | None = None,
+        department_id: UUID | None = None,
+        use_yn: str | None = None,
+        limit: int = 100,
+    ) -> list[models.OrganizationUser]:
+        limit = max(1, min(limit, 100))
+        statement = select(models.OrganizationUser).join(models.Department)
+        if query is not None and query.strip():
+            pattern = f"%{query.strip().lower()}%"
+            statement = statement.where(
+                or_(
+                    func.lower(models.OrganizationUser.user_number).like(pattern),
+                    func.lower(models.OrganizationUser.name).like(pattern),
+                    func.lower(models.Department.dept_number).like(pattern),
+                    func.lower(models.Department.name).like(pattern),
+                )
+            )
+        if department_id is not None:
+            statement = statement.where(models.OrganizationUser.department_id == department_id)
+        if use_yn is not None:
+            statement = statement.where(models.OrganizationUser.use_yn == use_yn)
+        return list(
+            self.session.scalars(
+                statement.order_by(
+                    models.Department.dept_number,
+                    models.OrganizationUser.user_number,
+                ).limit(limit)
+            )
+        )
+
+    def update_organization_user(
+        self,
+        organization_user: models.OrganizationUser,
+        **values: Any,
+    ) -> models.OrganizationUser:
+        for field_name, value in values.items():
+            setattr(organization_user, field_name, value)
+        self.session.flush()
+        return organization_user
+
+    def deactivate_organization_user(
+        self,
+        organization_user: models.OrganizationUser,
+        *,
+        updated_by: str,
+        updated_at: datetime,
+    ) -> models.OrganizationUser:
+        organization_user.use_yn = "N"
+        organization_user.updated_by = updated_by
+        organization_user.updated_at = updated_at
+        self.session.flush()
+        return organization_user
+
     def list_api_keys(
         self,
         *,
@@ -189,6 +299,24 @@ class IntentRoutingRepository:
         return self.session.scalar(
             select(models.AdminUser).where(
                 models.AdminUser.email_normalized == email_normalized
+            )
+        )
+
+    def get_login_eligible_admin_user_by_email(
+        self,
+        email: str,
+    ) -> models.AdminUser | None:
+        email_normalized = normalize_admin_email(email)
+        return self.session.scalar(
+            select(models.AdminUser)
+            .outerjoin(models.OrganizationUser)
+            .where(models.AdminUser.email_normalized == email_normalized)
+            .where(models.AdminUser.status == "active")
+            .where(
+                or_(
+                    models.AdminUser.organization_user_id.is_(None),
+                    models.OrganizationUser.use_yn == "Y",
+                )
             )
         )
 
@@ -314,10 +442,17 @@ class IntentRoutingRepository:
         admin_session = self.session.scalar(
             select(models.AdminSession)
             .join(models.AdminUser)
+            .outerjoin(models.OrganizationUser)
             .where(models.AdminSession.token_hash == token_hash)
             .where(models.AdminSession.revoked_at.is_(None))
             .where(models.AdminSession.expires_at > now)
             .where(models.AdminUser.status == "active")
+            .where(
+                or_(
+                    models.AdminUser.organization_user_id.is_(None),
+                    models.OrganizationUser.use_yn == "Y",
+                )
+            )
         )
         if admin_session is None:
             return None

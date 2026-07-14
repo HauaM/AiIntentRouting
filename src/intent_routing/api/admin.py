@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
@@ -29,10 +30,12 @@ from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekErro
 from intent_routing.db.models import (
     AdminUser,
     ApiKey,
+    Department,
     GovernedActionRequest,
     Intent,
     IntentCatalogVersion,
     IntentExample,
+    OrganizationUser,
     PolicyVersion,
     Release,
     Service,
@@ -123,6 +126,116 @@ class AccessibleServiceResponse(BaseModel):
     environment: str
     status: str
     roles: list[str]
+
+
+class DepartmentCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dept_number: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+
+    @field_validator("dept_number", "name", mode="before")
+    @classmethod
+    def department_text_must_not_be_blank(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("department fields must not be blank")
+            return stripped
+        return value
+
+
+class DepartmentPatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dept_number: str | None = Field(default=None, min_length=1)
+    name: str | None = Field(default=None, min_length=1)
+    use_yn: Literal["Y", "N"] | None = None
+
+    @field_validator("dept_number", "name", "use_yn", mode="before")
+    @classmethod
+    def department_patch_fields_must_not_be_null(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("department patch fields must not be null")
+        return value
+
+    @field_validator("dept_number", "name", mode="before")
+    @classmethod
+    def department_patch_text_must_not_be_blank(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("department fields must not be blank")
+            return stripped
+        return value
+
+
+class DepartmentResponse(BaseModel):
+    id: UUID
+    dept_number: str
+    name: str
+    use_yn: str
+    created_by: str
+    updated_by: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class OrganizationUserCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_number: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    department_id: UUID
+
+    @field_validator("user_number", "name", mode="before")
+    @classmethod
+    def organization_user_text_must_not_be_blank(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("organization user fields must not be blank")
+            return stripped
+        return value
+
+
+class OrganizationUserPatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_number: str | None = Field(default=None, min_length=1)
+    name: str | None = Field(default=None, min_length=1)
+    department_id: UUID | None = None
+    use_yn: Literal["Y", "N"] | None = None
+
+    @field_validator("user_number", "name", "department_id", "use_yn", mode="before")
+    @classmethod
+    def organization_user_patch_fields_must_not_be_null(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("organization user patch fields must not be null")
+        return value
+
+    @field_validator("user_number", "name", mode="before")
+    @classmethod
+    def organization_user_patch_text_must_not_be_blank(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("organization user fields must not be blank")
+            return stripped
+        return value
+
+
+class OrganizationUserResponse(BaseModel):
+    id: UUID
+    user_number: str
+    name: str
+    department_id: UUID
+    department: DepartmentResponse
+    use_yn: str
+    created_by: str
+    updated_by: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class AdminUserLookupResponse(BaseModel):
@@ -938,6 +1051,47 @@ def _require_system_admin(context: AdminContext) -> None:
         raise_admin_forbidden("system_admin role is required for this action.")
 
 
+def _department_or_404(session: Session, department_id: UUID) -> Department:
+    department = session.get(Department, department_id)
+    if department is None:
+        _raise_not_found("Department does not exist.")
+    return department
+
+
+def _require_active_department(session: Session, department_id: UUID) -> Department:
+    department = _department_or_404(session, department_id)
+    if department.use_yn != "Y":
+        _raise_conflict("Department must be active.")
+    return department
+
+
+def _organization_user_or_404(
+    session: Session,
+    organization_user_id: UUID,
+) -> OrganizationUser:
+    organization_user = session.get(OrganizationUser, organization_user_id)
+    if organization_user is None:
+        _raise_not_found("Organization user does not exist.")
+    return organization_user
+
+
+def _department_has_active_organization_users(
+    session: Session,
+    department_id: UUID,
+) -> bool:
+    return (
+        session.scalar(
+            select(OrganizationUser.id)
+            .where(
+                OrganizationUser.department_id == department_id,
+                OrganizationUser.use_yn == "Y",
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
 def _require_service_catalog_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
@@ -1174,6 +1328,36 @@ def _accessible_service_response(
         environment=service.environment,
         status=service.status,
         roles=sorted(roles),
+    )
+
+
+def _department_response(department: Department) -> DepartmentResponse:
+    return DepartmentResponse(
+        id=department.id,
+        dept_number=department.dept_number,
+        name=department.name,
+        use_yn=department.use_yn,
+        created_by=department.created_by,
+        updated_by=department.updated_by,
+        created_at=department.created_at,
+        updated_at=department.updated_at,
+    )
+
+
+def _organization_user_response(
+    organization_user: OrganizationUser,
+) -> OrganizationUserResponse:
+    return OrganizationUserResponse(
+        id=organization_user.id,
+        user_number=organization_user.user_number,
+        name=organization_user.name,
+        department_id=organization_user.department_id,
+        department=_department_response(organization_user.department),
+        use_yn=organization_user.use_yn,
+        created_by=organization_user.created_by,
+        updated_by=organization_user.updated_by,
+        created_at=organization_user.created_at,
+        updated_at=organization_user.updated_at,
     )
 
 
@@ -1921,6 +2105,268 @@ def list_accessible_services(
         )
         for service in repository.list_services_for_user(context.actor_id)
     ]
+
+
+@router.post(
+    "/departments",
+    response_model=DepartmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_department(
+    request: DepartmentCreateRequest,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> DepartmentResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    try:
+        department = repository.create_department(
+            dept_number=request.dept_number.strip(),
+            name=request.name.strip(),
+            use_yn="Y",
+            created_by=context.actor_id,
+            updated_by=context.actor_id,
+            created_at=now,
+            updated_at=now,
+        )
+    except IntegrityError:
+        session.rollback()
+        _raise_conflict("Department already exists.")
+    session.commit()
+    return _department_response(department)
+
+
+@router.get("/departments", response_model=list[DepartmentResponse])
+def list_departments(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+    query: str | None = None,
+    use_yn: Literal["Y", "N"] | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+) -> list[DepartmentResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    return [
+        _department_response(department)
+        for department in repository.list_departments(
+            query=query,
+            use_yn=use_yn,
+            limit=limit,
+        )
+    ]
+
+
+@router.patch("/departments/{department_id}", response_model=DepartmentResponse)
+def patch_department(
+    department_id: UUID,
+    request: DepartmentPatchRequest,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> DepartmentResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    department = _department_or_404(session, department_id)
+
+    updates: dict[str, object] = {}
+    if "dept_number" in request.model_fields_set and request.dept_number is not None:
+        updates["dept_number"] = request.dept_number.strip()
+    if "name" in request.model_fields_set and request.name is not None:
+        updates["name"] = request.name.strip()
+    if "use_yn" in request.model_fields_set:
+        if (
+            request.use_yn == "N"
+            and _department_has_active_organization_users(session, department_id)
+        ):
+            _raise_conflict("Department has active organization users.")
+        updates["use_yn"] = request.use_yn
+    updates["updated_by"] = context.actor_id
+    updates["updated_at"] = datetime.now(UTC)
+
+    try:
+        department = repository.update_department(department, **updates)
+    except IntegrityError:
+        session.rollback()
+        _raise_conflict("Department already exists.")
+    session.commit()
+    return _department_response(department)
+
+
+@router.delete("/departments/{department_id}", response_model=DepartmentResponse)
+def deactivate_department(
+    department_id: UUID,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> DepartmentResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    department = _department_or_404(session, department_id)
+    if _department_has_active_organization_users(session, department_id):
+        _raise_conflict("Department has active organization users.")
+    department = repository.deactivate_department(
+        department,
+        updated_by=context.actor_id,
+        updated_at=datetime.now(UTC),
+    )
+    session.commit()
+    return _department_response(department)
+
+
+@router.post(
+    "/organization-users",
+    response_model=OrganizationUserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_organization_user(
+    request: OrganizationUserCreateRequest,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> OrganizationUserResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    department = _require_active_department(session, request.department_id)
+    now = datetime.now(UTC)
+    try:
+        organization_user = repository.create_organization_user(
+            user_number=request.user_number.strip(),
+            name=request.name.strip(),
+            department_id=department.id,
+            use_yn="Y",
+            created_by=context.actor_id,
+            updated_by=context.actor_id,
+            created_at=now,
+            updated_at=now,
+        )
+    except IntegrityError:
+        session.rollback()
+        _raise_conflict("Organization user already exists.")
+    session.commit()
+    return _organization_user_response(organization_user)
+
+
+@router.get("/organization-users", response_model=list[OrganizationUserResponse])
+def list_organization_users(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+    query: str | None = None,
+    department_id: UUID | None = None,
+    use_yn: Literal["Y", "N"] | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+) -> list[OrganizationUserResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    if department_id is not None:
+        _department_or_404(session, department_id)
+    return [
+        _organization_user_response(organization_user)
+        for organization_user in repository.list_organization_users(
+            query=query,
+            department_id=department_id,
+            use_yn=use_yn,
+            limit=limit,
+        )
+    ]
+
+
+@router.patch(
+    "/organization-users/{organization_user_id}",
+    response_model=OrganizationUserResponse,
+)
+def patch_organization_user(
+    organization_user_id: UUID,
+    request: OrganizationUserPatchRequest,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> OrganizationUserResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    organization_user = _organization_user_or_404(session, organization_user_id)
+
+    updates: dict[str, object] = {}
+    if "user_number" in request.model_fields_set and request.user_number is not None:
+        updates["user_number"] = request.user_number.strip()
+    if "name" in request.model_fields_set and request.name is not None:
+        updates["name"] = request.name.strip()
+    if "department_id" in request.model_fields_set and request.department_id is not None:
+        updates["department_id"] = _require_active_department(
+            session,
+            request.department_id,
+        ).id
+    if "use_yn" in request.model_fields_set:
+        if request.use_yn == "Y":
+            effective_department_id = (
+                request.department_id
+                if request.department_id is not None
+                else organization_user.department_id
+            )
+            _require_active_department(session, effective_department_id)
+        updates["use_yn"] = request.use_yn
+    updates["updated_by"] = context.actor_id
+    updates["updated_at"] = datetime.now(UTC)
+
+    try:
+        organization_user = repository.update_organization_user(
+            organization_user,
+            **updates,
+        )
+    except IntegrityError:
+        session.rollback()
+        _raise_conflict("Organization user already exists.")
+    session.commit()
+    return _organization_user_response(organization_user)
+
+
+@router.delete(
+    "/organization-users/{organization_user_id}",
+    response_model=OrganizationUserResponse,
+)
+def deactivate_organization_user(
+    organization_user_id: UUID,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> OrganizationUserResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    organization_user = _organization_user_or_404(session, organization_user_id)
+    organization_user = repository.deactivate_organization_user(
+        organization_user,
+        updated_by=context.actor_id,
+        updated_at=datetime.now(UTC),
+    )
+    session.commit()
+    return _organization_user_response(organization_user)
 
 
 @router.get("/users", response_model=list[AdminUserLookupResponse])

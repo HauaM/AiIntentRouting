@@ -29,6 +29,19 @@ def test_auth_router_is_included_in_app_routes() -> None:
     assert "get" in paths["/admin/v1/auth/me"]
 
 
+def test_organization_directory_openapi_contract_is_registered() -> None:
+    paths = create_app().openapi()["paths"]
+
+    assert "get" in paths["/admin/v1/departments"]
+    assert "post" in paths["/admin/v1/departments"]
+    assert "patch" in paths["/admin/v1/departments/{department_id}"]
+    assert "delete" in paths["/admin/v1/departments/{department_id}"]
+    assert "get" in paths["/admin/v1/organization-users"]
+    assert "post" in paths["/admin/v1/organization-users"]
+    assert "patch" in paths["/admin/v1/organization-users/{organization_user_id}"]
+    assert "delete" in paths["/admin/v1/organization-users/{organization_user_id}"]
+
+
 def test_app_startup_runs_system_admin_provisioning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
