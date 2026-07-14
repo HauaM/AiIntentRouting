@@ -101,6 +101,50 @@ declare namespace API {
   type IntentStatus = 'active' | 'draft' | 'deprecated';
   type RuntimeDecision = 'confident' | 'clarify' | 'fallback' | 'off_topic' | 'risk';
   type ApiKeyStatus = 'active' | 'revoked' | 'expired';
+  type UseYn = 'Y' | 'N';
+
+  type Department = {
+    id: string;
+    dept_number: string;
+    name: string;
+    use_yn: UseYn;
+    created_by: string;
+    updated_by: string;
+    created_at: string;
+    updated_at: string;
+  };
+
+  type DepartmentCreateRequest = {
+    dept_number: string;
+    name: string;
+  };
+
+  type DepartmentPatchRequest = Partial<DepartmentCreateRequest> & {
+    use_yn?: UseYn;
+  };
+
+  type OrganizationUser = {
+    id: string;
+    user_number: string;
+    name: string;
+    department_id: string;
+    department: Department;
+    use_yn: UseYn;
+    created_by: string;
+    updated_by: string;
+    created_at: string;
+    updated_at: string;
+  };
+
+  type OrganizationUserCreateRequest = {
+    user_number: string;
+    name: string;
+    department_id: string;
+  };
+
+  type OrganizationUserPatchRequest = Partial<OrganizationUserCreateRequest> & {
+    use_yn?: UseYn;
+  };
 
   type Intent = {
     id?: string;

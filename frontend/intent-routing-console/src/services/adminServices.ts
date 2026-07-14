@@ -33,6 +33,92 @@ export async function searchAdminUsers(
 
 export const listAdminUsers = searchAdminUsers;
 
+export async function listDepartments(
+  params: { query?: string; use_yn?: API.UseYn; limit?: number } = {},
+) {
+  return request<API.Department[]>('/departments', {
+    method: 'GET',
+    params: {
+      query: params.query,
+      use_yn: params.use_yn,
+      limit: params.limit ?? 100,
+    },
+  });
+}
+
+export async function createDepartment(payload: API.DepartmentCreateRequest) {
+  return request<API.Department>('/departments', {
+    method: 'POST',
+    data: payload,
+  });
+}
+
+export async function patchDepartment(
+  departmentId: string,
+  payload: API.DepartmentPatchRequest,
+) {
+  return request<API.Department>(`/departments/${encodeURIComponent(departmentId)}`, {
+    method: 'PATCH',
+    data: payload,
+  });
+}
+
+export async function deleteDepartment(departmentId: string) {
+  return request<API.Department>(`/departments/${encodeURIComponent(departmentId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function listOrganizationUsers(
+  params: {
+    query?: string;
+    department_id?: string;
+    use_yn?: API.UseYn;
+    limit?: number;
+  } = {},
+) {
+  return request<API.OrganizationUser[]>('/organization-users', {
+    method: 'GET',
+    params: {
+      query: params.query,
+      department_id: params.department_id,
+      use_yn: params.use_yn,
+      limit: params.limit ?? 100,
+    },
+  });
+}
+
+export async function createOrganizationUser(
+  payload: API.OrganizationUserCreateRequest,
+) {
+  return request<API.OrganizationUser>('/organization-users', {
+    method: 'POST',
+    data: payload,
+  });
+}
+
+export async function patchOrganizationUser(
+  organizationUserId: string,
+  payload: API.OrganizationUserPatchRequest,
+) {
+  return request<API.OrganizationUser>(
+    `/organization-users/${encodeURIComponent(organizationUserId)}`,
+    {
+      method: 'PATCH',
+      data: payload,
+    },
+  );
+}
+
+export async function deleteOrganizationUser(organizationUserId: string) {
+  return request<API.OrganizationUser>(
+    `/organization-users/${encodeURIComponent(organizationUserId)}`,
+    {
+      method: 'DELETE',
+    },
+  );
+}
+
 export async function listServiceMembers(serviceId: string) {
   return request<API.ServiceMember[]>(servicePath(serviceId, '/members'), {
     method: 'GET',

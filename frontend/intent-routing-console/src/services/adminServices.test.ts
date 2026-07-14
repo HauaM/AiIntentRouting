@@ -5,8 +5,10 @@ import {
   approveExample,
   createApiKey,
   createCatalogVersion,
+  createDepartment,
   createExample,
   createIntent,
+  createOrganizationUser,
   createPolicyVersion,
   createRelease,
   createServiceApiKey,
@@ -19,8 +21,10 @@ import {
   listApiKeys,
   listAdminUsers,
   listCatalogVersions,
+  listDepartments,
   listExamples,
   listIntentRouteCandidates,
+  listOrganizationUsers,
   listPolicyVersions,
   listReleases,
   listReleaseCandidates,
@@ -28,7 +32,11 @@ import {
   listServiceApiKeys,
   listTestRuns,
   patchIntent,
+  patchDepartment,
+  patchOrganizationUser,
   revokeApiKey,
+  deleteDepartment,
+  deleteOrganizationUser,
   revokeServiceRole,
   revokeServiceApiKey,
   rollbackRelease,
@@ -326,6 +334,67 @@ describe('admin service Phase 1 write flow requests', () => {
       '/services/svc%2Fadmin/members/user%2Fa/roles/service_developer',
       { method: 'DELETE' },
     );
+    const calls = requestMock.mock.calls as unknown as Array<
+      [string, Record<string, unknown>]
+    >;
+    for (const [, options] of calls) {
+      expect(options).not.toHaveProperty('headers');
+    }
+  });
+
+  it('uses organization directory endpoints without trusted headers', async () => {
+    await createDepartment({ dept_number: '0969', name: 'IT지원부' });
+    await listDepartments({ query: 'IT', use_yn: 'Y' });
+    await createOrganizationUser({
+      user_number: '21P0031',
+      name: '홍길동',
+      department_id: 'dept-1',
+    });
+    await patchDepartment('dept/1', { name: '정보지원부', use_yn: 'N' });
+    await deleteDepartment('dept/1');
+    await listOrganizationUsers({ query: '홍길동', department_id: 'dept-1', use_yn: 'Y' });
+    await patchOrganizationUser('user/1', { department_id: 'dept-2', use_yn: 'N' });
+    await deleteOrganizationUser('user/1');
+
+    expect(requestMock).toHaveBeenNthCalledWith(1, '/departments', {
+      method: 'POST',
+      data: { dept_number: '0969', name: 'IT지원부' },
+    });
+    expect(requestMock).toHaveBeenNthCalledWith(2, '/departments', {
+      method: 'GET',
+      params: { query: 'IT', use_yn: 'Y', limit: 100 },
+    });
+    expect(requestMock).toHaveBeenNthCalledWith(3, '/organization-users', {
+      method: 'POST',
+      data: {
+        user_number: '21P0031',
+        name: '홍길동',
+        department_id: 'dept-1',
+      },
+    });
+    expect(requestMock).toHaveBeenNthCalledWith(4, '/departments/dept%2F1', {
+      method: 'PATCH',
+      data: { name: '정보지원부', use_yn: 'N' },
+    });
+    expect(requestMock).toHaveBeenNthCalledWith(5, '/departments/dept%2F1', {
+      method: 'DELETE',
+    });
+    expect(requestMock).toHaveBeenNthCalledWith(6, '/organization-users', {
+      method: 'GET',
+      params: {
+        query: '홍길동',
+        department_id: 'dept-1',
+        use_yn: 'Y',
+        limit: 100,
+      },
+    });
+    expect(requestMock).toHaveBeenNthCalledWith(7, '/organization-users/user%2F1', {
+      method: 'PATCH',
+      data: { department_id: 'dept-2', use_yn: 'N' },
+    });
+    expect(requestMock).toHaveBeenNthCalledWith(8, '/organization-users/user%2F1', {
+      method: 'DELETE',
+    });
     const calls = requestMock.mock.calls as unknown as Array<
       [string, Record<string, unknown>]
     >;
