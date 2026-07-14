@@ -4,6 +4,8 @@ import { useModel } from '@umijs/max';
 import {
   Alert,
   Button,
+  Descriptions,
+  Flex,
   Form,
   Input,
   Modal,
@@ -18,48 +20,50 @@ import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import {
+  createManagedAdminUser,
   createDepartment,
   createOrganizationUser,
-  deleteDepartment,
-  deleteOrganizationUser,
+  listManagedAdminUsers,
   listDepartments,
   listOrganizationUsers,
+  patchManagedAdminUser,
   patchDepartment,
   patchOrganizationUser,
 } from '@/services/adminServices';
 import {
+  hasSystemAdminRole,
   canAccessOrganizationDirectory,
+  formatDepartmentNumber,
+  formatOrganizationUserNumber,
+  toAdminUserCreateRequest,
+  toAdminUserStatusPatchRequest,
+  toDepartmentOption,
   toDepartmentOptionSearchParams,
+  toSystemAdminRolesPatchRequest,
   toDepartmentCreateRequest,
+  toDepartmentUseYnPatchRequest,
   toOrganizationUserCreateRequest,
+  toOrganizationUserUseYnPatchRequest,
+  type AdminAccessCreateFormValues,
   type DepartmentFormValues,
+  type DepartmentOption,
   type OrganizationUserFormValues,
 } from './directoryForms';
 
 type DepartmentFormMode = 'create' | 'edit';
 type UserFormMode = 'create' | 'edit';
 
-type DepartmentOption = {
-  label: string;
-  value: string;
-};
-
 const useYnValueEnum = {
   Y: { text: 'Y' },
   N: { text: 'N' },
 } as const;
 
-const formatUseYn = (useYn: API.UseYn) => (
-  <Tag color={useYn === 'Y' ? 'green' : 'default'}>{useYn}</Tag>
+const UseYnTag = ({ value }: { value: API.UseYn }) => (
+  <Tag color={value === 'Y' ? 'green' : 'default'}>{value}</Tag>
 );
 
-const toDepartmentOption = (department: API.Department): DepartmentOption => ({
-  label: `${department.dept_number} / ${department.name} / ${department.use_yn}`,
-  value: department.id,
-});
-
 export default function OrganizationDirectoryPage() {
-  const { session } = useModel('adminSession');
+  const { session, restoreSession } = useModel('adminSession');
   const [departmentForm] = Form.useForm<DepartmentFormValues>();
   const [userForm] = Form.useForm<OrganizationUserFormValues>();
   const [departmentModalOpen, setDepartmentModalOpen] = useState(false);
@@ -70,6 +74,13 @@ export default function OrganizationDirectoryPage() {
   const [editingUser, setEditingUser] = useState<API.OrganizationUser>();
   const [departmentSaving, setDepartmentSaving] = useState(false);
   const [userSaving, setUserSaving] = useState(false);
+  const [adminAccessSaving, setAdminAccessSaving] = useState(false);
+  const [adminAccessLoading, setAdminAccessLoading] = useState(false);
+  const [managedAdminUser, setManagedAdminUser] = useState<API.ManagedAdminUser>();
+  const [adminAccessDraft, setAdminAccessDraft] = useState<AdminAccessCreateFormValues>({
+    email: '',
+    display_name: '',
+  });
   const [departmentFilterOptions, setDepartmentFilterOptions] = useState<DepartmentOption[]>([]);
   const [departmentSelectOptions, setDepartmentSelectOptions] = useState<DepartmentOption[]>([]);
   const [loadingDepartmentFilterOptions, setLoadingDepartmentFilterOptions] = useState(false);
@@ -78,6 +89,7 @@ export default function OrganizationDirectoryPage() {
   const userActionRef = useRef<ActionType>();
   const departmentFilterRequestSeqRef = useRef(0);
   const departmentSelectRequestSeqRef = useRef(0);
+  const adminAccessRequestSeqRef = useRef(0);
   const ready = Boolean(session.authenticated && session.user);
   const canManage = canAccessOrganizationDirectory(session.globalRoles);
 
@@ -173,6 +185,36 @@ export default function OrganizationDirectoryPage() {
     userActionRef.current?.reload();
   }, []);
 
+  const resetAdminAccessState = useCallback(() => {
+    adminAccessRequestSeqRef.current += 1;
+    setManagedAdminUser(undefined);
+    setAdminAccessLoading(false);
+    setAdminAccessSaving(false);
+    setAdminAccessDraft({ email: '', display_name: '' });
+  }, []);
+
+  const loadAdminAccess = useCallback(async (organizationUser: API.OrganizationUser) => {
+    const requestSeq = (adminAccessRequestSeqRef.current += 1);
+    setAdminAccessLoading(true);
+    setManagedAdminUser(undefined);
+    setAdminAccessDraft({ email: '', display_name: organizationUser.name });
+    try {
+      const rows = await listManagedAdminUsers({
+        organization_user_id: organizationUser.id,
+        limit: 1,
+      });
+      if (requestSeq !== adminAccessRequestSeqRef.current) return;
+      setManagedAdminUser(rows[0]);
+    } catch {
+      if (requestSeq !== adminAccessRequestSeqRef.current) return;
+      message.error('Failed to load Admin access.');
+    } finally {
+      if (requestSeq === adminAccessRequestSeqRef.current) {
+        setAdminAccessLoading(false);
+      }
+    }
+  }, []);
+
   const closeDepartmentModal = () => {
     setDepartmentModalOpen(false);
     setEditingDepartment(undefined);
@@ -182,6 +224,7 @@ export default function OrganizationDirectoryPage() {
   const closeUserModal = () => {
     setUserModalOpen(false);
     setEditingUser(undefined);
+    resetAdminAccessState();
     userForm.resetFields();
   };
 
@@ -206,6 +249,7 @@ export default function OrganizationDirectoryPage() {
   const openCreateUserModal = () => {
     setUserFormMode('create');
     setEditingUser(undefined);
+    resetAdminAccessState();
     userForm.resetFields();
     void loadDepartmentOptions(undefined, 'form');
     setUserModalOpen(true);
@@ -225,6 +269,7 @@ export default function OrganizationDirectoryPage() {
       name: user.name,
       department_id: user.department_id,
     });
+    void loadAdminAccess(user);
     setUserModalOpen(true);
   };
 
@@ -240,6 +285,22 @@ export default function OrganizationDirectoryPage() {
         message.success('Department updated.');
       }
       closeDepartmentModal();
+      reloadDepartmentViews();
+    } finally {
+      setDepartmentSaving(false);
+    }
+  };
+
+  const handleDepartmentUseYnChange = async (useYn: API.UseYn) => {
+    if (!editingDepartment || editingDepartment.use_yn === useYn) return;
+
+    setDepartmentSaving(true);
+    try {
+      const updatedDepartment = await patchDepartment(
+        editingDepartment.id,
+        toDepartmentUseYnPatchRequest(useYn),
+      );
+      setEditingDepartment(updatedDepartment);
       reloadDepartmentViews();
     } finally {
       setDepartmentSaving(false);
@@ -264,6 +325,290 @@ export default function OrganizationDirectoryPage() {
     }
   };
 
+  const handleOrganizationUserUseYnChange = async (useYn: API.UseYn) => {
+    if (!editingUser || editingUser.use_yn === useYn) return;
+
+    setUserSaving(true);
+    try {
+      const updatedUser = await patchOrganizationUser(
+        editingUser.id,
+        toOrganizationUserUseYnPatchRequest(useYn),
+      );
+      setEditingUser(updatedUser);
+      reloadUserTable();
+    } finally {
+      setUserSaving(false);
+    }
+  };
+
+  const handleCreateManagedAdminUser = async () => {
+    if (!editingUser) return;
+    if (editingUser.use_yn !== 'Y') {
+      message.warning('비활성 조직 사용자에게는 active Admin 계정을 부여할 수 없습니다.');
+      return;
+    }
+    if (!adminAccessDraft.email.trim() || !adminAccessDraft.display_name.trim()) {
+      message.warning('Admin email and display name are required.');
+      return;
+    }
+
+    setAdminAccessSaving(true);
+    try {
+      const adminUser = await createManagedAdminUser(
+        toAdminUserCreateRequest(adminAccessDraft, editingUser),
+      );
+      setManagedAdminUser(adminUser);
+      reloadUserTable();
+    } finally {
+      setAdminAccessSaving(false);
+    }
+  };
+
+  const handleManagedAdminStatusChange = async (
+    adminUser: API.ManagedAdminUser,
+    statusValue: API.ManagedAdminUserStatus,
+  ) => {
+    if (!editingUser || adminUser.status === statusValue) return;
+    if (statusValue === 'active' && editingUser.use_yn !== 'Y') {
+      message.warning('비활성 조직 사용자에게는 active Admin 계정을 부여할 수 없습니다.');
+      return;
+    }
+
+    setAdminAccessSaving(true);
+    try {
+      const updatedAdminUser = await patchManagedAdminUser(
+        adminUser.user_id,
+        toAdminUserStatusPatchRequest(statusValue),
+      );
+      setManagedAdminUser(updatedAdminUser);
+      if (updatedAdminUser.user_id === session.user?.user_id) {
+        void restoreSession();
+      }
+    } finally {
+      setAdminAccessSaving(false);
+    }
+  };
+
+  const handleSystemAdminRoleChange = async (
+    adminUser: API.ManagedAdminUser,
+    grant: boolean,
+  ) => {
+    setAdminAccessSaving(true);
+    try {
+      const updatedAdminUser = await patchManagedAdminUser(
+        adminUser.user_id,
+        toSystemAdminRolesPatchRequest(adminUser, grant),
+      );
+      setManagedAdminUser(updatedAdminUser);
+      if (updatedAdminUser.user_id === session.user?.user_id) {
+        void restoreSession();
+      }
+    } finally {
+      setAdminAccessSaving(false);
+    }
+  };
+
+  const renderAdminAccessSection = () => {
+    if (userFormMode !== 'edit' || !editingUser) return null;
+
+    const inactiveOrganizationUser = editingUser.use_yn === 'N';
+    const isSelfLastSystemAdmin = Boolean(
+      managedAdminUser &&
+        managedAdminUser.user_id === session.user?.user_id &&
+        managedAdminUser.is_last_active_system_admin,
+    );
+    const hasSystemAdmin = managedAdminUser
+      ? hasSystemAdminRole(managedAdminUser)
+      : false;
+
+    return (
+      <Form.Item label="Admin Access">
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          {adminAccessLoading ? (
+            <Typography.Text type="secondary">Loading Admin access...</Typography.Text>
+          ) : managedAdminUser ? (
+            <>
+              <Descriptions
+                bordered
+                column={1}
+                size="small"
+                items={[
+                  {
+                    key: 'user_id',
+                    label: 'admin user_id',
+                    children: <Typography.Text code>{managedAdminUser.user_id}</Typography.Text>,
+                  },
+                  {
+                    key: 'email',
+                    label: 'email',
+                    children: managedAdminUser.email,
+                  },
+                  {
+                    key: 'display_name',
+                    label: 'display_name',
+                    children: managedAdminUser.display_name,
+                  },
+                  {
+                    key: 'status',
+                    label: 'status',
+                    children: (
+                      <Tag color={managedAdminUser.status === 'active' ? 'green' : 'default'}>
+                        {managedAdminUser.status}
+                      </Tag>
+                    ),
+                  },
+                  {
+                    key: 'global_roles',
+                    label: 'global_roles',
+                    children: managedAdminUser.global_roles.length ? (
+                      <Space size={4} wrap>
+                        {managedAdminUser.global_roles.map((role) => (
+                          <Tag key={role} color={role === 'system_admin' ? 'blue' : 'default'}>
+                            {role}
+                          </Tag>
+                        ))}
+                      </Space>
+                    ) : (
+                      <Typography.Text type="secondary">없음</Typography.Text>
+                    ),
+                  },
+                ]}
+              />
+              {inactiveOrganizationUser ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="비활성 조직 사용자에게는 active Admin 계정을 부여할 수 없습니다."
+                />
+              ) : null}
+              {isSelfLastSystemAdmin ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="마지막 system_admin인 자신의 계정은 비활성화하거나 권한을 해제할 수 없습니다."
+                />
+              ) : null}
+              <Flex gap={8} wrap="wrap">
+                <ConfirmActionButton
+                  disabled={
+                    adminAccessSaving ||
+                    inactiveOrganizationUser ||
+                    managedAdminUser.status === 'active'
+                  }
+                  style={{ boxShadow: 'none' }}
+                  type="primary"
+                  title="Activate Admin account?"
+                  okText="활성화"
+                  content={`${managedAdminUser.email} Admin 계정을 활성화합니다.`}
+                  onConfirm={() => handleManagedAdminStatusChange(managedAdminUser, 'active')}
+                >
+                  활성화
+                </ConfirmActionButton>
+                <ConfirmActionButton
+                  danger
+                  disabled={
+                    adminAccessSaving ||
+                    managedAdminUser.status === 'disabled' ||
+                    isSelfLastSystemAdmin
+                  }
+                  style={{ boxShadow: 'none' }}
+                  title="Disable Admin account?"
+                  okText="비활성화"
+                  content={`${managedAdminUser.email} Admin 계정을 비활성화합니다.`}
+                  onConfirm={() => handleManagedAdminStatusChange(managedAdminUser, 'disabled')}
+                >
+                  비활성화
+                </ConfirmActionButton>
+              </Flex>
+              <Flex gap={8} wrap="wrap">
+                <ConfirmActionButton
+                  disabled={adminAccessSaving || hasSystemAdmin}
+                  style={{ boxShadow: 'none' }}
+                  title="Grant system_admin?"
+                  okText="system_admin 부여"
+                  content={`${managedAdminUser.email} 계정에 system_admin 전역 권한을 부여합니다.`}
+                  onConfirm={() => handleSystemAdminRoleChange(managedAdminUser, true)}
+                >
+                  system_admin 부여
+                </ConfirmActionButton>
+                <ConfirmActionButton
+                  danger
+                  disabled={adminAccessSaving || !hasSystemAdmin || isSelfLastSystemAdmin}
+                  style={{ boxShadow: 'none' }}
+                  title="Revoke system_admin?"
+                  okText="system_admin 해제"
+                  content={`${managedAdminUser.email} 계정의 system_admin 전역 권한을 해제합니다.`}
+                  onConfirm={() => handleSystemAdminRoleChange(managedAdminUser, false)}
+                >
+                  system_admin 해제
+                </ConfirmActionButton>
+              </Flex>
+            </>
+          ) : (
+            <>
+              <Alert
+                type={inactiveOrganizationUser ? 'warning' : 'info'}
+                showIcon
+                message={
+                  inactiveOrganizationUser
+                    ? '비활성 조직 사용자에게는 active Admin 계정을 부여할 수 없습니다.'
+                    : '관리자 권한 없음'
+                }
+                description={
+                  inactiveOrganizationUser
+                    ? undefined
+                    : '초기 비밀번호 발급 흐름이 없어 생성 시 disabled 상태로 시작합니다.'
+                }
+              />
+              <Flex gap={8} wrap="wrap" align="end">
+                <Input
+                  disabled={adminAccessSaving || inactiveOrganizationUser}
+                  placeholder="admin@example.com"
+                  style={{ flex: '1 1 220px' }}
+                  value={adminAccessDraft.email}
+                  onChange={(event) =>
+                    setAdminAccessDraft((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                />
+                <Input
+                  disabled={adminAccessSaving || inactiveOrganizationUser}
+                  placeholder="Display name"
+                  style={{ flex: '1 1 180px' }}
+                  value={adminAccessDraft.display_name}
+                  onChange={(event) =>
+                    setAdminAccessDraft((current) => ({
+                      ...current,
+                      display_name: event.target.value,
+                    }))
+                  }
+                />
+                <ConfirmActionButton
+                  disabled={
+                    adminAccessSaving ||
+                    inactiveOrganizationUser ||
+                    !adminAccessDraft.email.trim() ||
+                    !adminAccessDraft.display_name.trim()
+                  }
+                  style={{ boxShadow: 'none' }}
+                  type="primary"
+                  title="Create Admin account?"
+                  okText="관리자 계정 생성"
+                  content={`${editingUser.user_number} ${editingUser.name} 사용자와 연결된 disabled Admin 계정을 생성합니다.`}
+                  onConfirm={handleCreateManagedAdminUser}
+                >
+                  관리자 계정 생성
+                </ConfirmActionButton>
+              </Flex>
+            </>
+          )}
+        </Space>
+      </Form.Item>
+    );
+  };
+
   const departmentColumns: ProColumns<API.Department>[] = [
     {
       title: 'Search',
@@ -271,10 +616,12 @@ export default function OrganizationDirectoryPage() {
       hideInTable: true,
     },
     {
-      title: 'Dept #',
+      title: 'Dept_Number',
       dataIndex: 'dept_number',
       search: false,
-      render: (_, row) => <Typography.Text code>{row.dept_number}</Typography.Text>,
+      render: (_, row) => (
+        <Typography.Text code>{formatDepartmentNumber(row.dept_number)}</Typography.Text>
+      ),
     },
     {
       title: 'Name',
@@ -286,7 +633,7 @@ export default function OrganizationDirectoryPage() {
       dataIndex: 'use_yn',
       valueType: 'select',
       valueEnum: useYnValueEnum,
-      render: (_, row) => formatUseYn(row.use_yn),
+      render: (_, row) => <UseYnTag value={row.use_yn} />,
     },
     {
       title: 'Updated',
@@ -297,7 +644,7 @@ export default function OrganizationDirectoryPage() {
     {
       title: '',
       valueType: 'option',
-      width: 152,
+      width: 80,
       render: (_, row) => {
         if (!canManage) return [];
         return [
@@ -309,21 +656,6 @@ export default function OrganizationDirectoryPage() {
           >
             편집
           </Button>,
-          row.use_yn === 'Y' ? (
-            <ConfirmActionButton
-              key="deactivate"
-              danger
-              type="link"
-              size="small"
-              title="Deactivate department?"
-              okText="Deactivate"
-              content={`${row.dept_number} ${row.name} 부서를 비활성화합니다.`}
-              onConfirm={() => deleteDepartment(row.id).then(() => undefined)}
-              onSuccess={reloadDepartmentViews}
-            >
-              비활성화
-            </ConfirmActionButton>
-          ) : null,
         ].filter(Boolean);
       },
     },
@@ -354,7 +686,9 @@ export default function OrganizationDirectoryPage() {
       title: 'User #',
       dataIndex: 'user_number',
       search: false,
-      render: (_, row) => <Typography.Text code>{row.user_number}</Typography.Text>,
+      render: (_, row) => (
+        <Typography.Text code>{formatOrganizationUserNumber(row.user_number)}</Typography.Text>
+      ),
     },
     {
       title: 'Name',
@@ -365,19 +699,14 @@ export default function OrganizationDirectoryPage() {
       title: 'Department',
       dataIndex: ['department', 'name'],
       search: false,
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <span>{row.department.name}</span>
-          <span className="muted-small">{row.department.dept_number}</span>
-        </Space>
-      ),
+      render: (_, row) => row.department.name,
     },
     {
       title: 'Use',
       dataIndex: 'use_yn',
       valueType: 'select',
       valueEnum: useYnValueEnum,
-      render: (_, row) => formatUseYn(row.use_yn),
+      render: (_, row) => <UseYnTag value={row.use_yn} />,
     },
     {
       title: 'Updated',
@@ -388,28 +717,13 @@ export default function OrganizationDirectoryPage() {
     {
       title: '',
       valueType: 'option',
-      width: 152,
+      width: 80,
       render: (_, row) => {
         if (!canManage) return [];
         return [
           <Button key="edit" type="link" size="small" onClick={() => openEditUserModal(row)}>
             편집
           </Button>,
-          row.use_yn === 'Y' ? (
-            <ConfirmActionButton
-              key="deactivate"
-              danger
-              type="link"
-              size="small"
-              title="Deactivate user?"
-              okText="Deactivate"
-              content={`${row.user_number} ${row.name} 사용자를 비활성화합니다.`}
-              onConfirm={() => deleteOrganizationUser(row.id).then(() => undefined)}
-              onSuccess={reloadUserTable}
-            >
-              비활성화
-            </ConfirmActionButton>
-          ) : null,
         ].filter(Boolean);
       },
     },
@@ -447,20 +761,14 @@ export default function OrganizationDirectoryPage() {
                       }}
                       pagination={false}
                       search={{ labelWidth: 88 }}
+                      toolbar={{
+                        title: canManage ? (
+                          <Button type="primary" onClick={openCreateDepartmentModal}>
+                            Department 추가
+                          </Button>
+                        ) : undefined,
+                      }}
                       options={{ density: true, fullScreen: false, reload: true, setting: true }}
-                      toolBarRender={() =>
-                        canManage
-                          ? [
-                              <Button
-                                key="create-department"
-                                type="primary"
-                                onClick={openCreateDepartmentModal}
-                              >
-                                Department 추가
-                              </Button>,
-                            ]
-                          : []
-                      }
                     />
                   ),
                 },
@@ -486,16 +794,14 @@ export default function OrganizationDirectoryPage() {
                       }}
                       pagination={false}
                       search={{ labelWidth: 88 }}
+                      toolbar={{
+                        title: canManage ? (
+                          <Button type="primary" onClick={openCreateUserModal}>
+                            User 추가
+                          </Button>
+                        ) : undefined,
+                      }}
                       options={{ density: true, fullScreen: false, reload: true, setting: true }}
-                      toolBarRender={() =>
-                        canManage
-                          ? [
-                              <Button key="create-user" type="primary" onClick={openCreateUserModal}>
-                                User 추가
-                              </Button>,
-                            ]
-                          : []
-                      }
                     />
                   ),
                 },
@@ -517,11 +823,16 @@ export default function OrganizationDirectoryPage() {
                 requiredMark={false}
                 onFinish={handleDepartmentSubmit}
               >
+                {departmentFormMode === 'edit' && editingDepartment ? (
+                  <Form.Item label="ID">
+                    <Input value={editingDepartment.id} disabled readOnly />
+                  </Form.Item>
+                ) : null}
                 <Form.Item
                   name="dept_number"
-                  label="Dept number"
+                  label="Dept_Number"
                   rules={[
-                    { required: true, whitespace: true, message: 'Dept number is required.' },
+                    { required: true, whitespace: true, message: 'Dept_Number is required.' },
                   ]}
                 >
                   <Input placeholder="0969" />
@@ -533,6 +844,45 @@ export default function OrganizationDirectoryPage() {
                 >
                   <Input placeholder="IT지원부" />
                 </Form.Item>
+                {departmentFormMode === 'edit' && editingDepartment ? (
+                  <Form.Item label="Use">
+                    <Space direction="vertical" size={10}>
+                      <UseYnTag value={editingDepartment.use_yn} />
+                      <div
+                        style={{
+                          display: 'grid',
+                          gap: 12,
+                          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                          maxWidth: '100%',
+                          width: 260,
+                        }}
+                      >
+                        <ConfirmActionButton
+                          disabled={departmentSaving || editingDepartment.use_yn === 'Y'}
+                          style={{ boxShadow: 'none' }}
+                          type="primary"
+                          title="Activate department?"
+                          okText="Activate"
+                          content={`${editingDepartment.dept_number} ${editingDepartment.name} 부서를 활성화합니다.`}
+                          onConfirm={() => handleDepartmentUseYnChange('Y')}
+                        >
+                          활성화
+                        </ConfirmActionButton>
+                        <ConfirmActionButton
+                          danger
+                          disabled={departmentSaving || editingDepartment.use_yn === 'N'}
+                          style={{ boxShadow: 'none' }}
+                          title="Deactivate department?"
+                          okText="Deactivate"
+                          content={`${editingDepartment.dept_number} ${editingDepartment.name} 부서를 비활성화합니다.`}
+                          onConfirm={() => handleDepartmentUseYnChange('N')}
+                        >
+                          비활성화
+                        </ConfirmActionButton>
+                      </div>
+                    </Space>
+                  </Form.Item>
+                ) : null}
               </Form>
             </Modal>
             <Modal
@@ -551,6 +901,11 @@ export default function OrganizationDirectoryPage() {
                 requiredMark={false}
                 onFinish={handleUserSubmit}
               >
+                {userFormMode === 'edit' && editingUser ? (
+                  <Form.Item label="ID">
+                    <Input value={editingUser.id} disabled readOnly />
+                  </Form.Item>
+                ) : null}
                 <Form.Item
                   name="user_number"
                   label="User number"
@@ -583,6 +938,46 @@ export default function OrganizationDirectoryPage() {
                     }}
                   />
                 </Form.Item>
+                {userFormMode === 'edit' && editingUser ? (
+                  <Form.Item label="Use">
+                    <Space direction="vertical" size={10}>
+                      <UseYnTag value={editingUser.use_yn} />
+                      <div
+                        style={{
+                          display: 'grid',
+                          gap: 12,
+                          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                          maxWidth: '100%',
+                          width: 260,
+                        }}
+                      >
+                        <ConfirmActionButton
+                          disabled={userSaving || editingUser.use_yn === 'Y'}
+                          style={{ boxShadow: 'none' }}
+                          type="primary"
+                          title="Activate user?"
+                          okText="Activate"
+                          content={`${editingUser.user_number} ${editingUser.name} 사용자를 활성화합니다.`}
+                          onConfirm={() => handleOrganizationUserUseYnChange('Y')}
+                        >
+                          활성화
+                        </ConfirmActionButton>
+                        <ConfirmActionButton
+                          danger
+                          disabled={userSaving || editingUser.use_yn === 'N'}
+                          style={{ boxShadow: 'none' }}
+                          title="Deactivate user?"
+                          okText="Deactivate"
+                          content={`${editingUser.user_number} ${editingUser.name} 사용자를 비활성화합니다.`}
+                          onConfirm={() => handleOrganizationUserUseYnChange('N')}
+                        >
+                          비활성화
+                        </ConfirmActionButton>
+                      </div>
+                    </Space>
+                  </Form.Item>
+                ) : null}
+                {renderAdminAccessSection()}
               </Form>
             </Modal>
           </Space>

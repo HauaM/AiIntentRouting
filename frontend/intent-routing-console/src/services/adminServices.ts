@@ -33,6 +33,41 @@ export async function searchAdminUsers(
 
 export const listAdminUsers = searchAdminUsers;
 
+export async function listManagedAdminUsers(
+  params: { organization_user_id?: string; query?: string; limit?: number } = {},
+) {
+  return request<API.ManagedAdminUser[]>('/admin-users', {
+    method: 'GET',
+    params: {
+      organization_user_id: params.organization_user_id,
+      query: params.query,
+      limit: params.limit ?? 25,
+    },
+  });
+}
+
+export async function createManagedAdminUser(
+  payload: API.ManagedAdminUserCreateRequest,
+) {
+  return request<API.ManagedAdminUser>('/admin-users', {
+    method: 'POST',
+    data: payload,
+  });
+}
+
+export async function patchManagedAdminUser(
+  userId: string,
+  payload: API.ManagedAdminUserPatchRequest,
+) {
+  return request<API.ManagedAdminUser>(
+    `/admin-users/${encodeURIComponent(userId)}`,
+    {
+      method: 'PATCH',
+      data: payload,
+    },
+  );
+}
+
 export async function listDepartments(
   params: { query?: string; use_yn?: API.UseYn; limit?: number } = {},
 ) {

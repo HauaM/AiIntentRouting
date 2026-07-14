@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   canAccessOrganizationDirectory,
+  formatDepartmentNumber,
+  formatOrganizationUserNumber,
+  hasSystemAdminRole,
+  toDepartmentOption,
   toDepartmentOptionSearchParams,
+  toAdminUserCreateRequest,
+  toAdminUserStatusPatchRequest,
+  toSystemAdminRolesPatchRequest,
   toDepartmentCreateRequest,
+  toDepartmentUseYnPatchRequest,
   toOrganizationUserCreateRequest,
+  toOrganizationUserUseYnPatchRequest,
 } from './directoryForms';
 
 describe('directoryForms', () => {
@@ -44,5 +53,107 @@ describe('directoryForms', () => {
       use_yn: 'Y',
       limit: 100,
     });
+  });
+
+  it('uses only the department name for department option labels', () => {
+    expect(
+      toDepartmentOption({
+        id: 'dept-1',
+        dept_number: '0969',
+        name: 'IT지원부',
+        use_yn: 'Y',
+        created_by: 'system_admin',
+        updated_by: 'system_admin',
+        created_at: '2026-07-14T12:43:24Z',
+        updated_at: '2026-07-14T12:43:24Z',
+      }),
+    ).toEqual({
+      label: 'IT지원부',
+      value: 'dept-1',
+    });
+  });
+
+  it('formats department numbers without local uniqueness suffixes for table display', () => {
+    expect(formatDepartmentNumber('0969-06c88b23')).toBe('0969');
+    expect(formatDepartmentNumber('0969')).toBe('0969');
+    expect(formatDepartmentNumber('')).toBe('');
+  });
+
+  it('formats organization user numbers without local uniqueness suffixes for table display', () => {
+    expect(formatOrganizationUserNumber('21P0031-089ba09e')).toBe('21P0031');
+    expect(formatOrganizationUserNumber('21P0031')).toBe('21P0031');
+    expect(formatOrganizationUserNumber('')).toBe('');
+  });
+
+  it('builds a department use flag patch request', () => {
+    expect(toDepartmentUseYnPatchRequest('N')).toEqual({ use_yn: 'N' });
+    expect(toDepartmentUseYnPatchRequest('Y')).toEqual({ use_yn: 'Y' });
+  });
+
+  it('builds an organization user use flag patch request', () => {
+    expect(toOrganizationUserUseYnPatchRequest('N')).toEqual({ use_yn: 'N' });
+    expect(toOrganizationUserUseYnPatchRequest('Y')).toEqual({ use_yn: 'Y' });
+  });
+
+  it('builds disabled admin account creation requests for organization users', () => {
+    expect(
+      toAdminUserCreateRequest(
+        { email: ' Admin.User@Example.COM ', display_name: ' 홍길동 Admin ' },
+        {
+          id: 'org-user-1',
+          user_number: '21P0031',
+          name: '홍길동',
+          department_id: 'dept-1',
+          department: {
+            id: 'dept-1',
+            dept_number: '0969',
+            name: 'IT지원부',
+            use_yn: 'Y',
+            created_by: 'system_admin',
+            updated_by: 'system_admin',
+            created_at: '2026-07-14T12:43:24Z',
+            updated_at: '2026-07-14T12:43:24Z',
+          },
+          use_yn: 'Y',
+          created_by: 'system_admin',
+          updated_by: 'system_admin',
+          created_at: '2026-07-14T12:43:24Z',
+          updated_at: '2026-07-14T12:43:24Z',
+        },
+      ),
+    ).toEqual({
+      organization_user_id: 'org-user-1',
+      email: 'Admin.User@Example.COM',
+      display_name: '홍길동 Admin',
+      status: 'disabled',
+      global_roles: [],
+    });
+  });
+
+  it('builds admin status and system_admin role patch requests', () => {
+    const adminUser: API.ManagedAdminUser = {
+      user_id: 'admin-1',
+      email: 'admin@example.com',
+      display_name: 'Admin One',
+      status: 'active',
+      organization_user_id: 'org-user-1',
+      global_roles: [],
+      is_last_active_system_admin: false,
+      created_at: '2026-07-14T12:43:24Z',
+      updated_at: '2026-07-14T12:43:24Z',
+      last_login_at: null,
+    };
+
+    expect(toAdminUserStatusPatchRequest('disabled')).toEqual({ status: 'disabled' });
+    expect(hasSystemAdminRole(adminUser)).toBe(false);
+    expect(toSystemAdminRolesPatchRequest(adminUser, true)).toEqual({
+      global_roles: ['system_admin'],
+    });
+    expect(
+      toSystemAdminRolesPatchRequest(
+        { ...adminUser, global_roles: ['system_admin'] },
+        false,
+      ),
+    ).toEqual({ global_roles: [] });
   });
 });

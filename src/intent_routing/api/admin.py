@@ -245,6 +245,73 @@ class AdminUserLookupResponse(BaseModel):
     status: str
 
 
+AdminUserStatus = Literal["active", "disabled"]
+GlobalAdminRole = Literal["system_admin"]
+DISABLED_ADMIN_PASSWORD_HASH = "disabled-password:not-set"
+
+
+class ManagedAdminUserCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str | None = Field(default=None, min_length=1)
+    organization_user_id: UUID
+    email: str = Field(min_length=3)
+    display_name: str = Field(min_length=1)
+    status: AdminUserStatus = "disabled"
+    global_roles: list[GlobalAdminRole] = Field(default_factory=list)
+
+    @field_validator("user_id", "email", "display_name", "status", mode="before")
+    @classmethod
+    def admin_user_create_text_must_not_be_blank(cls, value: Any) -> Any:
+        if value is None:
+            return value
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("admin user fields must not be blank")
+            return stripped
+        return value
+
+
+class ManagedAdminUserPatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str | None = Field(default=None, min_length=3)
+    display_name: str | None = Field(default=None, min_length=1)
+    status: AdminUserStatus | None = None
+    global_roles: list[GlobalAdminRole] | None = None
+
+    @field_validator("email", "display_name", "status", "global_roles", mode="before")
+    @classmethod
+    def admin_user_patch_fields_must_not_be_null(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("admin user patch fields must not be null")
+        return value
+
+    @field_validator("email", "display_name", "status", mode="before")
+    @classmethod
+    def admin_user_patch_text_must_not_be_blank(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("admin user fields must not be blank")
+            return stripped
+        return value
+
+
+class ManagedAdminUserResponse(BaseModel):
+    user_id: str
+    email: str
+    display_name: str
+    status: str
+    organization_user_id: UUID | None
+    global_roles: list[str]
+    is_last_active_system_admin: bool
+    created_at: datetime
+    updated_at: datetime
+    last_login_at: datetime | None
+
+
 class ServiceMemberRoleResponse(BaseModel):
     role: str
     assigned_by: str
@@ -1075,6 +1142,64 @@ def _organization_user_or_404(
     return organization_user
 
 
+def _require_active_organization_user_for_admin_access(
+    session: Session,
+    organization_user_id: UUID,
+) -> OrganizationUser:
+    organization_user = _organization_user_or_404(session, organization_user_id)
+    if organization_user.use_yn != "Y":
+        _raise_conflict("Organization user must be active.")
+    return organization_user
+
+
+def _require_active_linked_organization_user_for_admin_status(
+    session: Session,
+    admin_user: AdminUser,
+) -> None:
+    if admin_user.organization_user_id is None:
+        return
+    _require_active_organization_user_for_admin_access(
+        session,
+        admin_user.organization_user_id,
+    )
+
+
+def _is_login_eligible_system_admin(
+    user: AdminUser,
+    *,
+    roles: frozenset[str],
+) -> bool:
+    if "system_admin" not in roles or user.status != "active":
+        return False
+    return user.organization_user_id is None or (
+        user.organization_user is not None and user.organization_user.use_yn == "Y"
+    )
+
+
+def _is_last_active_system_admin(
+    repository: IntentRoutingRepository,
+    user: AdminUser,
+    *,
+    roles: frozenset[str],
+) -> bool:
+    if not _is_login_eligible_system_admin(user, roles=roles):
+        return False
+    return repository.count_login_eligible_admin_users_with_role("system_admin") == 1
+
+
+def _require_not_self_last_system_admin(
+    repository: IntentRoutingRepository,
+    *,
+    actor_id: str,
+    user: AdminUser,
+    roles: frozenset[str],
+) -> None:
+    if user.user_id != actor_id or "system_admin" not in roles:
+        return
+    if repository.count_login_eligible_admin_users_with_role("system_admin") <= 1:
+        _raise_conflict("Cannot remove or disable the last active system_admin.")
+
+
 def _department_has_active_organization_users(
     session: Session,
     department_id: UUID,
@@ -1368,6 +1493,35 @@ def _admin_user_lookup_response(user: AdminUser) -> AdminUserLookupResponse:
         display_name=user.display_name,
         status=user.status,
     )
+
+
+def _managed_admin_user_response(
+    repository: IntentRoutingRepository,
+    user: AdminUser,
+) -> ManagedAdminUserResponse:
+    roles = frozenset(role.role for role in repository.list_admin_user_roles(user.user_id))
+    return ManagedAdminUserResponse(
+        user_id=user.user_id,
+        email=user.email,
+        display_name=user.display_name,
+        status=user.status,
+        organization_user_id=user.organization_user_id,
+        global_roles=sorted(roles),
+        is_last_active_system_admin=_is_last_active_system_admin(
+            repository,
+            user,
+            roles=roles,
+        ),
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+        last_login_at=user.last_login_at,
+    )
+
+
+def _managed_admin_user_audit_state(
+    response: ManagedAdminUserResponse,
+) -> dict[str, Any]:
+    return response.model_dump(mode="json")
 
 
 def _service_member_responses(
@@ -2367,6 +2521,264 @@ def deactivate_organization_user(
     )
     session.commit()
     return _organization_user_response(organization_user)
+
+
+@router.get("/admin-users", response_model=list[ManagedAdminUserResponse])
+def list_managed_admin_users(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+    organization_user_id: UUID | None = None,
+    query: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=25)] = 25,
+) -> list[ManagedAdminUserResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    if organization_user_id is not None:
+        _organization_user_or_404(session, organization_user_id)
+    return [
+        _managed_admin_user_response(repository, user)
+        for user in repository.list_managed_admin_users(
+            organization_user_id=organization_user_id,
+            query=query,
+            limit=limit,
+        )
+    ]
+
+
+@router.post(
+    "/admin-users",
+    response_model=ManagedAdminUserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_managed_admin_user(
+    request: ManagedAdminUserCreateRequest,
+    http_request: Request,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ManagedAdminUserResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    organization_user = _require_active_organization_user_for_admin_access(
+        session,
+        request.organization_user_id,
+    )
+    if (
+        repository.get_admin_user_by_organization_user_id(organization_user.id)
+        is not None
+    ):
+        _raise_conflict("Organization user already has an Admin account.")
+    if repository.get_admin_user_by_email(request.email) is not None:
+        _raise_conflict("Admin user already exists.")
+
+    now = datetime.now(UTC)
+    desired_roles = frozenset(request.global_roles)
+    try:
+        admin_user = repository.create_admin_user(
+            user_id=request.user_id or f"admin_{uuid4().hex}",
+            email=request.email,
+            display_name=request.display_name,
+            password_hash=DISABLED_ADMIN_PASSWORD_HASH,
+            status=request.status,
+            organization_user_id=organization_user.id,
+            created_at=now,
+            updated_at=now,
+        )
+        for role in sorted(desired_roles):
+            repository.ensure_admin_user_role(
+                user_id=admin_user.user_id,
+                role=role,
+                assigned_by=context.actor_id,
+                assigned_at=now,
+            )
+    except IntegrityError:
+        session.rollback()
+        _raise_conflict("Admin user already exists.")
+
+    response = _managed_admin_user_response(repository, admin_user)
+    repository.insert_audit_log(
+        event_type="admin_user.created",
+        actor_id=context.actor_id,
+        service_id=None,
+        trace_id=None,
+        target_type="admin_user",
+        target_id=admin_user.user_id,
+        view_reason=None,
+        source_ip=source_ip_from_request(http_request),
+        before_state=None,
+        after_state=_managed_admin_user_audit_state(response),
+        created_at=now,
+    )
+    for role in sorted(desired_roles):
+        repository.insert_audit_log(
+            event_type="admin_user.global_role_granted",
+            actor_id=context.actor_id,
+            service_id=None,
+            trace_id=None,
+            target_type="admin_user",
+            target_id=admin_user.user_id,
+            view_reason=None,
+            source_ip=source_ip_from_request(http_request),
+            before_state=None,
+            after_state={"user_id": admin_user.user_id, "role": role},
+            created_at=now,
+        )
+    session.commit()
+    return response
+
+
+@router.patch("/admin-users/{user_id}", response_model=ManagedAdminUserResponse)
+def patch_managed_admin_user(
+    user_id: str,
+    request: ManagedAdminUserPatchRequest,
+    http_request: Request,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ManagedAdminUserResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    admin_user = repository.get_admin_user(user_id)
+    if admin_user is None:
+        _raise_not_found("Admin user does not exist.")
+
+    current_roles = frozenset(
+        role.role for role in repository.list_admin_user_roles(admin_user.user_id)
+    )
+    before_response = _managed_admin_user_response(repository, admin_user)
+    now = datetime.now(UTC)
+
+    if "status" in request.model_fields_set and request.status == "active":
+        _require_active_linked_organization_user_for_admin_status(session, admin_user)
+    if (
+        "status" in request.model_fields_set
+        and request.status == "disabled"
+        and admin_user.status == "active"
+    ):
+        _require_not_self_last_system_admin(
+            repository,
+            actor_id=context.actor_id,
+            user=admin_user,
+            roles=current_roles,
+        )
+
+    roles_to_grant: frozenset[str] = frozenset()
+    roles_to_revoke: frozenset[str] = frozenset()
+    if "global_roles" in request.model_fields_set and request.global_roles is not None:
+        desired_roles = frozenset(request.global_roles)
+        roles_to_grant = desired_roles - current_roles
+        roles_to_revoke = current_roles - desired_roles
+        if "system_admin" in roles_to_revoke:
+            _require_not_self_last_system_admin(
+                repository,
+                actor_id=context.actor_id,
+                user=admin_user,
+                roles=current_roles,
+            )
+
+    updates: dict[str, object] = {}
+    if "email" in request.model_fields_set and request.email is not None:
+        updates["email"] = request.email
+    if "display_name" in request.model_fields_set and request.display_name is not None:
+        updates["display_name"] = request.display_name
+    if "status" in request.model_fields_set and request.status is not None:
+        updates["status"] = request.status
+    if updates:
+        updates["updated_at"] = now
+        try:
+            admin_user = repository.update_admin_user(admin_user, **updates)
+        except IntegrityError:
+            session.rollback()
+            _raise_conflict("Admin user already exists.")
+
+    for role in sorted(roles_to_grant):
+        repository.ensure_admin_user_role(
+            user_id=admin_user.user_id,
+            role=role,
+            assigned_by=context.actor_id,
+            assigned_at=now,
+        )
+    for role in sorted(roles_to_revoke):
+        repository.delete_admin_user_role_by_key(admin_user.user_id, role)
+
+    response = _managed_admin_user_response(repository, admin_user)
+    before_state = _managed_admin_user_audit_state(before_response)
+    after_state = _managed_admin_user_audit_state(response)
+
+    if before_response.status != response.status:
+        repository.insert_audit_log(
+            event_type=(
+                "admin_user.activated"
+                if response.status == "active"
+                else "admin_user.disabled"
+            ),
+            actor_id=context.actor_id,
+            service_id=None,
+            trace_id=None,
+            target_type="admin_user",
+            target_id=admin_user.user_id,
+            view_reason=None,
+            source_ip=source_ip_from_request(http_request),
+            before_state=before_state,
+            after_state=after_state,
+            created_at=now,
+        )
+    if before_response.email != response.email or (
+        before_response.display_name != response.display_name
+    ):
+        repository.insert_audit_log(
+            event_type="admin_user.updated",
+            actor_id=context.actor_id,
+            service_id=None,
+            trace_id=None,
+            target_type="admin_user",
+            target_id=admin_user.user_id,
+            view_reason=None,
+            source_ip=source_ip_from_request(http_request),
+            before_state=before_state,
+            after_state=after_state,
+            created_at=now,
+        )
+    for role in sorted(roles_to_grant):
+        repository.insert_audit_log(
+            event_type="admin_user.global_role_granted",
+            actor_id=context.actor_id,
+            service_id=None,
+            trace_id=None,
+            target_type="admin_user",
+            target_id=admin_user.user_id,
+            view_reason=None,
+            source_ip=source_ip_from_request(http_request),
+            before_state={"user_id": admin_user.user_id, "role": role},
+            after_state={"user_id": admin_user.user_id, "role": role},
+            created_at=now,
+        )
+    for role in sorted(roles_to_revoke):
+        repository.insert_audit_log(
+            event_type="admin_user.global_role_revoked",
+            actor_id=context.actor_id,
+            service_id=None,
+            trace_id=None,
+            target_type="admin_user",
+            target_id=admin_user.user_id,
+            view_reason=None,
+            source_ip=source_ip_from_request(http_request),
+            before_state={"user_id": admin_user.user_id, "role": role},
+            after_state=None,
+            created_at=now,
+        )
+    session.commit()
+    return response
 
 
 @router.get("/users", response_model=list[AdminUserLookupResponse])

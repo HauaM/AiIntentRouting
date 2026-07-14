@@ -346,6 +346,75 @@ class IntentRoutingRepository:
             )
         )
 
+    def list_managed_admin_users(
+        self,
+        *,
+        organization_user_id: UUID | None = None,
+        query: str | None = None,
+        limit: int = 25,
+    ) -> list[models.AdminUser]:
+        limit = max(1, min(limit, 25))
+        statement = select(models.AdminUser)
+        if organization_user_id is not None:
+            statement = statement.where(
+                models.AdminUser.organization_user_id == organization_user_id
+            )
+        if query is not None and query.strip():
+            pattern = f"%{query.strip().lower()}%"
+            statement = statement.where(
+                or_(
+                    func.lower(models.AdminUser.email_normalized).like(pattern),
+                    func.lower(models.AdminUser.email).like(pattern),
+                    func.lower(models.AdminUser.display_name).like(pattern),
+                    func.lower(models.AdminUser.user_id).like(pattern),
+                )
+            )
+        return list(
+            self.session.scalars(
+                statement.order_by(
+                    models.AdminUser.email_normalized,
+                    models.AdminUser.user_id,
+                ).limit(limit)
+            )
+        )
+
+    def get_admin_user_by_organization_user_id(
+        self,
+        organization_user_id: UUID,
+    ) -> models.AdminUser | None:
+        return self.session.scalar(
+            select(models.AdminUser).where(
+                models.AdminUser.organization_user_id == organization_user_id
+            )
+        )
+
+    def update_admin_user(
+        self,
+        user: models.AdminUser,
+        **values: Any,
+    ) -> models.AdminUser:
+        if "email" in values:
+            email = values["email"]
+            if not isinstance(email, str):
+                raise ValueError("admin user email must be provided")
+            user.email = email.strip()
+            user.email_normalized = normalize_admin_email(email)
+        if "display_name" in values:
+            user.display_name = _require_nonblank_string(
+                values["display_name"],
+                field_name="admin user display_name",
+            ).strip()
+        if "status" in values:
+            user.status = _require_allowed_value(
+                values["status"],
+                field_name="admin user status",
+                allowed=ADMIN_USER_STATUSES,
+            )
+        if "updated_at" in values:
+            user.updated_at = values["updated_at"]
+        self.session.flush()
+        return user
+
     def update_admin_user_login(
         self,
         user: models.AdminUser,
@@ -417,6 +486,45 @@ class IntentRoutingRepository:
                 .order_by(models.AdminUserRole.role)
             )
         )
+
+    def delete_admin_user_role_by_key(
+        self,
+        user_id: str,
+        role: str,
+    ) -> models.AdminUserRole | None:
+        role = _require_allowed_value(
+            role,
+            field_name="admin user role",
+            allowed=GLOBAL_ADMIN_ROLES,
+        )
+        role_record = self.session.get(models.AdminUserRole, (user_id, role))
+        if role_record is None:
+            return None
+        self.session.delete(role_record)
+        self.session.flush()
+        return role_record
+
+    def count_login_eligible_admin_users_with_role(self, role: str) -> int:
+        role = _require_allowed_value(
+            role,
+            field_name="admin user role",
+            allowed=GLOBAL_ADMIN_ROLES,
+        )
+        count = self.session.scalar(
+            select(func.count())
+            .select_from(models.AdminUserRole)
+            .join(models.AdminUser)
+            .outerjoin(models.OrganizationUser)
+            .where(models.AdminUserRole.role == role)
+            .where(models.AdminUser.status == "active")
+            .where(
+                or_(
+                    models.AdminUser.organization_user_id.is_(None),
+                    models.OrganizationUser.use_yn == "Y",
+                )
+            )
+        )
+        return int(count or 0)
 
     def create_admin_session(self, **values: Any) -> models.AdminSession:
         return self._add_and_flush(models.AdminSession(**values))
