@@ -15,6 +15,9 @@ declare namespace API {
   };
 
   type ServiceRole = 'service_owner' | 'service_developer' | 'service_operator' | 'auditor';
+  type PermissionRiskSeverity = 'low' | 'medium' | 'high';
+  type PermissionOrganizationLink = 'linked' | 'unlinked';
+  type PermissionAuditEventGroup = 'admin_user' | 'service_membership' | 'all';
 
   type AdminUserLookup = {
     user_id: string;
@@ -54,6 +57,108 @@ declare namespace API {
     status?: ManagedAdminUserStatus;
     global_roles?: GlobalAdminRole[];
   };
+
+  type PermissionDepartmentSummary = {
+    id: string;
+    dept_number: string;
+    name: string;
+    use_yn: UseYn;
+  };
+
+  type PermissionOrganizationUserSummary = {
+    id: string;
+    user_number: string;
+    name: string;
+    use_yn: UseYn;
+    department: PermissionDepartmentSummary | null;
+  };
+
+  type PermissionAdminUserServiceRoleSummary = {
+    service_id: string;
+    service_display_name: string;
+    role: ServiceRole;
+    assigned_by: string;
+    assigned_at: string;
+  };
+
+  type PermissionAdminUserSummary = {
+    user_id: string;
+    email: string;
+    display_name: string;
+    status: ManagedAdminUserStatus;
+    global_roles: GlobalAdminRole[];
+    is_last_active_system_admin: boolean;
+    created_at: string;
+    updated_at: string;
+    last_login_at: string | null;
+    organization_user: PermissionOrganizationUserSummary | null;
+    service_roles: PermissionAdminUserServiceRoleSummary[];
+    risk_flags: string[];
+  };
+
+  type PermissionServiceRoleUserSummary = {
+    user_id: string;
+    email: string;
+    display_name: string;
+    status: ManagedAdminUserStatus;
+  };
+
+  type PermissionServiceRoleOrganizationUserSummary = {
+    id: string;
+    user_number: string;
+    name: string;
+    use_yn: UseYn;
+    department_name: string | null;
+  };
+
+  type PermissionServiceRoleSummary = {
+    service_id: string;
+    service_display_name: string;
+    user: PermissionServiceRoleUserSummary;
+    organization_user: PermissionServiceRoleOrganizationUserSummary | null;
+    role: ServiceRole;
+    assigned_by: string;
+    assigned_at: string;
+  };
+
+  type PermissionRiskFinding = {
+    finding_id: string;
+    severity: PermissionRiskSeverity;
+    category: string;
+    title: string;
+    admin_user_id: string | null;
+    service_id: string | null;
+    evidence: Record<string, unknown>;
+    recommended_action: string;
+  };
+
+  type PermissionAdminUsersQueryParams = {
+    query?: string;
+    status?: ManagedAdminUserStatus;
+    global_role?: GlobalAdminRole;
+    organization_link?: PermissionOrganizationLink;
+    organization_use_yn?: UseYn;
+    limit?: number;
+  };
+
+  type PermissionServiceRolesQueryParams = {
+    service_id?: string;
+    user_id?: string;
+    role?: ServiceRole;
+    query?: string;
+    limit?: number;
+  };
+
+  type PermissionAuditLogsQueryParams = {
+    event_group?: PermissionAuditEventGroup;
+    event_type?: string;
+    actor_id?: string;
+    target_id?: string;
+    service_id?: string;
+    limit?: number;
+  };
+
+  type PermissionRiskFindingsQueryParams = Record<string, never>;
 
   type ServiceMemberRole = {
     role: ServiceRole;
@@ -530,7 +635,7 @@ declare namespace API {
     audit_id: string;
     event_type: string;
     actor_id: string;
-    service_id: string;
+    service_id: string | null;
     trace_id: string | null;
     target_type: string;
     target_id: string;

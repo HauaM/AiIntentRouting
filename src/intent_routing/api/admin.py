@@ -48,6 +48,9 @@ from intent_routing.db.repositories import (
     MASKED_RUNTIME_LOG_FIELD_NAMES,
     AdminSessionContextRecord,
     IntentRoutingRepository,
+    PermissionAdminUserSummaryRecord,
+    PermissionServiceRoleAssignmentRecord,
+    PermissionServiceRoleSummaryRecord,
 )
 from intent_routing.domain.enums import (
     ApiKeyStatus,
@@ -322,6 +325,80 @@ class ServiceMemberResponse(BaseModel):
     service_id: str
     user: AdminUserLookupResponse
     roles: list[ServiceMemberRoleResponse]
+
+
+class PermissionDepartmentSummaryResponse(BaseModel):
+    id: UUID
+    dept_number: str
+    name: str
+    use_yn: str
+
+
+class PermissionOrganizationUserSummaryResponse(BaseModel):
+    id: UUID
+    user_number: str
+    name: str
+    use_yn: str
+    department: PermissionDepartmentSummaryResponse | None
+
+
+class PermissionServiceRoleSummaryResponse(BaseModel):
+    service_id: str
+    service_display_name: str
+    role: str
+    assigned_by: str
+    assigned_at: datetime
+
+
+class PermissionServiceRoleAdminUserResponse(BaseModel):
+    user_id: str
+    email: str
+    display_name: str
+    status: str
+
+
+class PermissionServiceRoleOrganizationUserResponse(BaseModel):
+    id: UUID
+    user_number: str
+    name: str
+    use_yn: str
+    department_name: str | None
+
+
+class PermissionServiceRoleAssignmentResponse(BaseModel):
+    service_id: str
+    service_display_name: str
+    user: PermissionServiceRoleAdminUserResponse
+    organization_user: PermissionServiceRoleOrganizationUserResponse | None
+    role: str
+    assigned_by: str
+    assigned_at: datetime
+
+
+class PermissionAdminUserSummaryResponse(BaseModel):
+    user_id: str
+    email: str
+    display_name: str
+    status: str
+    global_roles: list[str]
+    is_last_active_system_admin: bool
+    created_at: datetime
+    updated_at: datetime
+    last_login_at: datetime | None
+    organization_user: PermissionOrganizationUserSummaryResponse | None
+    service_roles: list[PermissionServiceRoleSummaryResponse]
+    risk_flags: list[str]
+
+
+class PermissionRiskFindingResponse(BaseModel):
+    finding_id: str
+    severity: Literal["low", "medium", "high"]
+    category: str
+    title: str
+    admin_user_id: str | None
+    service_id: str | None
+    evidence: dict[str, object]
+    recommended_action: str
 
 
 ServiceAdminRole = Literal[
@@ -887,7 +964,7 @@ class AuditLogResponse(BaseModel):
     audit_id: UUID
     event_type: str
     actor_id: str
-    service_id: str
+    service_id: str | None
     trace_id: str | None
     target_type: str
     target_id: str
@@ -1545,6 +1622,101 @@ def _service_member_responses(
             )
         )
     return list(members.values())
+
+
+def _permission_department_summary_response(
+    department: Department,
+) -> PermissionDepartmentSummaryResponse:
+    return PermissionDepartmentSummaryResponse(
+        id=department.id,
+        dept_number=department.dept_number,
+        name=department.name,
+        use_yn=department.use_yn,
+    )
+
+
+def _permission_organization_user_summary_response(
+    organization_user: OrganizationUser,
+) -> PermissionOrganizationUserSummaryResponse:
+    return PermissionOrganizationUserSummaryResponse(
+        id=organization_user.id,
+        user_number=organization_user.user_number,
+        name=organization_user.name,
+        use_yn=organization_user.use_yn,
+        department=(
+            _permission_department_summary_response(organization_user.department)
+            if organization_user.department is not None
+            else None
+        ),
+    )
+
+
+def _permission_service_role_summary_response(
+    service_role: PermissionServiceRoleSummaryRecord,
+) -> PermissionServiceRoleSummaryResponse:
+    return PermissionServiceRoleSummaryResponse(
+        service_id=service_role.service_id,
+        service_display_name=service_role.service_display_name,
+        role=service_role.role,
+        assigned_by=service_role.assigned_by,
+        assigned_at=service_role.assigned_at,
+    )
+
+
+def _permission_service_role_assignment_response(
+    service_role: PermissionServiceRoleAssignmentRecord,
+) -> PermissionServiceRoleAssignmentResponse:
+    organization_user = service_role.organization_user
+    return PermissionServiceRoleAssignmentResponse(
+        service_id=service_role.service_id,
+        service_display_name=service_role.service_display_name,
+        user=PermissionServiceRoleAdminUserResponse(
+            user_id=service_role.user.user_id,
+            email=service_role.user.email,
+            display_name=service_role.user.display_name,
+            status=service_role.user.status,
+        ),
+        organization_user=(
+            PermissionServiceRoleOrganizationUserResponse(
+                id=organization_user.id,
+                user_number=organization_user.user_number,
+                name=organization_user.name,
+                use_yn=organization_user.use_yn,
+                department_name=service_role.department_name,
+            )
+            if organization_user is not None
+            else None
+        ),
+        role=service_role.role,
+        assigned_by=service_role.assigned_by,
+        assigned_at=service_role.assigned_at,
+    )
+
+
+def _permission_admin_user_summary_response(
+    summary: PermissionAdminUserSummaryRecord,
+) -> PermissionAdminUserSummaryResponse:
+    return PermissionAdminUserSummaryResponse(
+        user_id=summary.user.user_id,
+        email=summary.user.email,
+        display_name=summary.user.display_name,
+        status=summary.user.status,
+        global_roles=list(summary.global_roles),
+        is_last_active_system_admin=summary.is_last_active_system_admin,
+        created_at=summary.user.created_at,
+        updated_at=summary.user.updated_at,
+        last_login_at=summary.user.last_login_at,
+        organization_user=(
+            _permission_organization_user_summary_response(summary.organization_user)
+            if summary.organization_user is not None
+            else None
+        ),
+        service_roles=[
+            _permission_service_role_summary_response(service_role)
+            for service_role in summary.service_roles
+        ],
+        risk_flags=list(summary.risk_flags),
+    )
 
 
 def _service_role_grant_response(
@@ -2546,6 +2718,123 @@ def list_managed_admin_users(
             query=query,
             limit=limit,
         )
+    ]
+
+
+@router.get(
+    "/permission-management/admin-users",
+    response_model=list[PermissionAdminUserSummaryResponse],
+)
+def list_permission_management_admin_users(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+    query: str | None = None,
+    status: AdminUserStatus | None = None,
+    global_role: GlobalAdminRole | None = None,
+    organization_link: Literal["linked", "unlinked"] | None = None,
+    organization_use_yn: Literal["Y", "N"] | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+) -> list[PermissionAdminUserSummaryResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    return [
+        _permission_admin_user_summary_response(summary)
+        for summary in repository.list_permission_admin_user_summaries(
+            query=query,
+            status=status,
+            global_role=global_role,
+            organization_link=organization_link,
+            organization_use_yn=organization_use_yn,
+            limit=limit,
+        )
+    ]
+
+
+@router.get(
+    "/permission-management/service-roles",
+    response_model=list[PermissionServiceRoleAssignmentResponse],
+)
+def list_permission_management_service_roles(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+    service_id: Annotated[str | None, Query(min_length=1)] = None,
+    user_id: Annotated[str | None, Query(min_length=1)] = None,
+    role: ServiceAdminRole | None = None,
+    query: Annotated[str | None, Query(min_length=1)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> list[PermissionServiceRoleAssignmentResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    return [
+        _permission_service_role_assignment_response(service_role)
+        for service_role in repository.list_permission_service_role_summaries(
+            service_id=service_id,
+            user_id=user_id,
+            role=role,
+            query=query,
+            limit=limit,
+        )
+    ]
+
+
+@router.get(
+    "/permission-management/audit-logs",
+    response_model=list[AuditLogResponse],
+)
+def list_permission_management_audit_logs(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+    event_group: Literal["admin_user", "service_membership", "all"] = "all",
+    event_type: Annotated[str | None, Query(min_length=1)] = None,
+    actor_id: Annotated[str | None, Query(min_length=1)] = None,
+    target_id: Annotated[str | None, Query(min_length=1)] = None,
+    service_id: Annotated[str | None, Query(min_length=1)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> list[AuditLogResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    return [
+        AuditLogResponse.model_validate(safe_audit_log_item(audit_log))
+        for audit_log in repository.list_permission_audit_logs(
+            event_group=event_group,
+            event_type=event_type,
+            actor_id=actor_id,
+            target_id=target_id,
+            service_id=service_id,
+            limit=limit,
+        )
+    ]
+
+
+@router.get(
+    "/permission-management/risk-findings",
+    response_model=list[PermissionRiskFindingResponse],
+)
+def list_permission_management_risk_findings(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> list[PermissionRiskFindingResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    return [
+        PermissionRiskFindingResponse.model_validate(finding)
+        for finding in repository.list_permission_risk_findings()
     ]
 
 

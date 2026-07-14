@@ -491,7 +491,23 @@
 - [ ] Export 기능이 있다면 masking 또는 권한 안내가 명확한지 확인한다.
 - [ ] 검토: append-only evidence 원칙이 UI에서도 드러난다.
 
-## 13. 보안 및 권한 Negative Test
+## 13. Permission Management 권한 감사
+
+### TC-057 Permission Management Admin 계정 현황
+
+- [ ] `system_admin`으로 `/permission-management`에 진입한다.
+- [ ] Admin 계정 탭에 admin user_id, email, display_name, status, 연결된 조직 사용자, global_roles가 보인다.
+- [ ] `users` row만 있는 조직 사용자는 Admin Console 접근 가능자로 표시되지 않는다.
+- [ ] 검토: 운영자가 누가 Admin Console 접근 권한을 갖는지 한 화면에서 이해할 수 있다.
+
+### TC-058 Permission Management 권한 변경 이력
+
+- [ ] `admin_user.global_role_granted` 이벤트가 권한 변경 이력 탭에 표시된다.
+- [ ] `service_membership.role_granted` 이벤트가 권한 변경 이력 탭에 표시된다.
+- [ ] password hash, session token, API secret, raw before/after state가 표시되지 않는다.
+- [ ] 검토: 감사 담당자가 누가 언제 어떤 권한을 바꿨는지 확인할 수 있다.
+
+## 14. 보안 및 권한 Negative Test
 
 ### TC-053 비로그인 접근
 
@@ -520,13 +536,13 @@
 - [ ] 차단 메시지가 `system_admin` 권한이 필요하다고 설명한다.
 - [ ] 검토: 향후 owner delegation이 추가되기 전까지 권한 경계가 명확하다.
 
-### TC-057 Non-system-admin API Key 관리 시도
+### TC-059 Non-system-admin API Key 관리 시도
 
 - [ ] `service_developer`, `service_operator`, `auditor` 계정으로 API key 생성 또는 revoke를 시도한다.
 - [ ] baseline C-3에서는 차단된다.
 - [ ] 검토: runtime key lifecycle이 엄격하게 통제된다.
 
-### TC-058 Secret 노출 검색
+### TC-060 Secret 노출 검색
 
 - [ ] 주요 화면에서 raw API key secret이 재노출되지 않는지 확인한다.
 - [ ] Runtime Logs에서 raw query가 기본 노출되지 않는지 확인한다.
@@ -534,7 +550,7 @@
 - [ ] Network 응답에서도 불필요한 secret 필드가 없는지 확인한다.
 - [ ] 검토: 화면과 API 응답 모두에서 secret 최소 노출 원칙이 지켜진다.
 
-## 14. 개발자 DX 평가 체크리스트
+## 15. 개발자 DX 평가 체크리스트
 
 ### 온보딩 흐름
 
@@ -571,7 +587,7 @@
 - [ ] Release 후보 선택이 명확하다.
 - [ ] Runtime setup guidance를 복사해 client 설정에 바로 사용할 수 있다.
 
-## 15. 최종 완료 판정
+## 16. 최종 완료 판정
 
 아래 항목을 모두 만족하면 UI E2E DX 리뷰 시나리오를 완료로 판정한다.
 

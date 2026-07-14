@@ -488,3 +488,48 @@ export async function listAuditLogs(serviceId: string, params: TableRequestParam
   });
   return toReadOnlyTableResult(rows);
 }
+
+export async function listPermissionAdminUsers(
+  params: API.PermissionAdminUsersQueryParams = {},
+) {
+  return request<API.PermissionAdminUserSummary[]>(
+    '/permission-management/admin-users',
+    {
+      method: 'GET',
+      params,
+    },
+  );
+}
+
+export async function listPermissionServiceRoles(
+  params: API.PermissionServiceRolesQueryParams = {},
+) {
+  return request<API.PermissionServiceRoleSummary[]>(
+    '/permission-management/service-roles',
+    {
+      method: 'GET',
+      params,
+    },
+  );
+}
+
+export async function listPermissionAuditLogs(
+  params: API.PermissionAuditLogsQueryParams = {},
+) {
+  return request<API.AuditLog[]>('/permission-management/audit-logs', {
+    method: 'GET',
+    params,
+  });
+}
+
+export async function listPermissionRiskFindings(
+  params: API.PermissionRiskFindingsQueryParams = {},
+) {
+  return request<API.PermissionRiskFinding[]>(
+    '/permission-management/risk-findings',
+    {
+      method: 'GET',
+      params,
+    },
+  );
+}

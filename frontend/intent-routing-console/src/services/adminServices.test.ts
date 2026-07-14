@@ -27,6 +27,10 @@ import {
   listExamples,
   listIntentRouteCandidates,
   listOrganizationUsers,
+  listPermissionAdminUsers,
+  listPermissionAuditLogs,
+  listPermissionRiskFindings,
+  listPermissionServiceRoles,
   listPolicyVersions,
   listReleases,
   listReleaseCandidates,
@@ -502,5 +506,92 @@ describe('admin service Phase 1 write flow requests', () => {
         limit: 50,
       },
     });
+  });
+
+  it('uses Permission Management read endpoints with GET query params only', async () => {
+    await listPermissionAdminUsers({
+      query: 'admin@example.com',
+      status: 'active',
+      global_role: 'system_admin',
+      organization_link: 'linked',
+      organization_use_yn: 'Y',
+      limit: 100,
+    });
+    await listPermissionServiceRoles({
+      service_id: 'svc/admin',
+      user_id: 'admin/user',
+      role: 'service_owner',
+      query: 'IT지원부',
+      limit: 200,
+    });
+    await listPermissionAuditLogs({
+      event_group: 'service_membership',
+      event_type: 'service_membership.role_granted',
+      actor_id: 'system-admin',
+      target_id: 'svc/admin:admin/user:service_owner',
+      service_id: 'svc/admin',
+      limit: 100,
+    });
+    await listPermissionRiskFindings();
+
+    expect(requestMock).toHaveBeenNthCalledWith(
+      1,
+      '/permission-management/admin-users',
+      {
+        method: 'GET',
+        params: {
+          query: 'admin@example.com',
+          status: 'active',
+          global_role: 'system_admin',
+          organization_link: 'linked',
+          organization_use_yn: 'Y',
+          limit: 100,
+        },
+      },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      2,
+      '/permission-management/service-roles',
+      {
+        method: 'GET',
+        params: {
+          service_id: 'svc/admin',
+          user_id: 'admin/user',
+          role: 'service_owner',
+          query: 'IT지원부',
+          limit: 200,
+        },
+      },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      3,
+      '/permission-management/audit-logs',
+      {
+        method: 'GET',
+        params: {
+          event_group: 'service_membership',
+          event_type: 'service_membership.role_granted',
+          actor_id: 'system-admin',
+          target_id: 'svc/admin:admin/user:service_owner',
+          service_id: 'svc/admin',
+          limit: 100,
+        },
+      },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      4,
+      '/permission-management/risk-findings',
+      {
+        method: 'GET',
+        params: {},
+      },
+    );
+    const calls = requestMock.mock.calls as unknown as Array<
+      [string, Record<string, unknown>]
+    >;
+    for (const [, options] of calls) {
+      expect(options).not.toHaveProperty('data');
+      expect(options).not.toHaveProperty('headers');
+    }
   });
 });

@@ -7,12 +7,13 @@ from uuid import UUID
 from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
 from sqlalchemy import bindparam, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from intent_routing.db import models
 
 ModelT = TypeVar("ModelT")
 RawTextKeyIdCounts = dict[str, dict[str, int] | int]
+type PermissionAuditEventTypes = tuple[str, ...]
 
 MASKED_RUNTIME_LOG_FIELD_NAMES = (
     "trace_id",
@@ -63,6 +64,25 @@ GOVERNED_REQUEST_STATUSES = frozenset(
         "completed",
     }
 )
+PERMISSION_AUDIT_EVENT_GROUPS = frozenset(
+    {"admin_user", "service_membership", "all"}
+)
+PERMISSION_ADMIN_USER_AUDIT_EVENT_TYPES = (
+    "admin_user.created",
+    "admin_user.updated",
+    "admin_user.activated",
+    "admin_user.disabled",
+    "admin_user.global_role_granted",
+    "admin_user.global_role_revoked",
+)
+PERMISSION_SERVICE_MEMBERSHIP_AUDIT_EVENT_TYPES = (
+    "service_membership.role_granted",
+    "service_membership.role_revoked",
+)
+PERMISSION_AUDIT_EVENT_TYPES = (
+    *PERMISSION_ADMIN_USER_AUDIT_EVENT_TYPES,
+    *PERMISSION_SERVICE_MEMBERSHIP_AUDIT_EVENT_TYPES,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +99,37 @@ class AdminSessionContextRecord:
     admin_session: models.AdminSession
     global_roles: frozenset[str]
     service_roles: tuple[models.UserServiceRole, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PermissionServiceRoleSummaryRecord:
+    service_id: str
+    service_display_name: str
+    role: str
+    assigned_by: str
+    assigned_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class PermissionServiceRoleAssignmentRecord:
+    service_id: str
+    service_display_name: str
+    user: models.AdminUser
+    organization_user: models.OrganizationUser | None
+    department_name: str | None
+    role: str
+    assigned_by: str
+    assigned_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class PermissionAdminUserSummaryRecord:
+    user: models.AdminUser
+    global_roles: tuple[str, ...]
+    is_last_active_system_admin: bool
+    organization_user: models.OrganizationUser | None
+    service_roles: tuple[PermissionServiceRoleSummaryRecord, ...]
+    risk_flags: tuple[str, ...]
 
 
 def normalize_admin_email(email: str) -> str:
@@ -99,6 +150,33 @@ def _require_nonblank_string(value: object, *, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field_name} must not be blank")
     return value
+
+
+def _permission_risk_finding(
+    *,
+    category: str,
+    severity: str,
+    title: str,
+    admin_user_id: str | None,
+    service_id: str | None,
+    evidence: dict[str, object],
+    recommended_action: str,
+) -> dict[str, Any]:
+    finding_id = category
+    if admin_user_id is not None:
+        finding_id = f"{finding_id}:{admin_user_id}"
+    if service_id is not None:
+        finding_id = f"{finding_id}:{service_id}"
+    return {
+        "finding_id": finding_id,
+        "severity": severity,
+        "category": category,
+        "title": title,
+        "admin_user_id": admin_user_id,
+        "service_id": service_id,
+        "evidence": evidence,
+        "recommended_action": recommended_action,
+    }
 
 
 class IntentRoutingRepository:
@@ -376,6 +454,442 @@ class IntentRoutingRepository:
                     models.AdminUser.user_id,
                 ).limit(limit)
             )
+        )
+
+    def list_permission_service_role_summaries(
+        self,
+        *,
+        service_id: str | None = None,
+        user_id: str | None = None,
+        role: str | None = None,
+        query: str | None = None,
+        limit: int = 200,
+    ) -> list[PermissionServiceRoleAssignmentRecord]:
+        limit = max(1, min(limit, 500))
+        if role is not None:
+            role = _require_allowed_value(
+                role,
+                field_name="user service role",
+                allowed=SERVICE_ADMIN_ROLES,
+            )
+
+        statement = (
+            select(models.UserServiceRole)
+            .join(models.UserServiceRole.user)
+            .join(models.UserServiceRole.service)
+            .outerjoin(models.AdminUser.organization_user)
+            .outerjoin(models.OrganizationUser.department)
+            .options(
+                joinedload(models.UserServiceRole.service),
+                joinedload(models.UserServiceRole.user)
+                .joinedload(models.AdminUser.organization_user)
+                .joinedload(models.OrganizationUser.department),
+            )
+        )
+        if service_id is not None:
+            statement = statement.where(models.UserServiceRole.service_id == service_id)
+        if user_id is not None:
+            statement = statement.where(models.UserServiceRole.user_id == user_id)
+        if role is not None:
+            statement = statement.where(models.UserServiceRole.role == role)
+        if query is not None and query.strip():
+            pattern = f"%{query.strip().lower()}%"
+            statement = statement.where(
+                or_(
+                    func.lower(models.UserServiceRole.user_id).like(pattern),
+                    func.lower(models.AdminUser.email_normalized).like(pattern),
+                    func.lower(models.AdminUser.email).like(pattern),
+                    func.lower(models.AdminUser.display_name).like(pattern),
+                    func.lower(models.AdminUser.user_id).like(pattern),
+                    func.lower(models.UserServiceRole.service_id).like(pattern),
+                    func.lower(models.Service.display_name).like(pattern),
+                    func.lower(models.OrganizationUser.user_number).like(pattern),
+                    func.lower(models.OrganizationUser.name).like(pattern),
+                    func.lower(models.Department.dept_number).like(pattern),
+                    func.lower(models.Department.name).like(pattern),
+                )
+            )
+
+        role_records = list(
+            self.session.scalars(
+                statement.order_by(
+                    models.Service.display_name,
+                    models.UserServiceRole.service_id,
+                    models.AdminUser.email_normalized,
+                    models.UserServiceRole.user_id,
+                    models.UserServiceRole.role,
+                ).limit(limit)
+            )
+        )
+        summaries: list[PermissionServiceRoleAssignmentRecord] = []
+        for role_record in role_records:
+            organization_user = role_record.user.organization_user
+            department_name = (
+                organization_user.department.name
+                if organization_user is not None
+                and organization_user.department is not None
+                else None
+            )
+            summaries.append(
+                PermissionServiceRoleAssignmentRecord(
+                    service_id=role_record.service_id,
+                    service_display_name=role_record.service.display_name,
+                    user=role_record.user,
+                    organization_user=organization_user,
+                    department_name=department_name,
+                    role=role_record.role,
+                    assigned_by=role_record.assigned_by,
+                    assigned_at=role_record.assigned_at,
+                )
+            )
+        return summaries
+
+    def list_permission_admin_user_summaries(
+        self,
+        *,
+        query: str | None = None,
+        status: str | None = None,
+        global_role: str | None = None,
+        organization_link: str | None = None,
+        organization_use_yn: str | None = None,
+        limit: int = 100,
+    ) -> list[PermissionAdminUserSummaryRecord]:
+        limit = max(1, min(limit, 200))
+        if status is not None:
+            status = _require_allowed_value(
+                status,
+                field_name="admin user status",
+                allowed=ADMIN_USER_STATUSES,
+            )
+        if global_role is not None:
+            global_role = _require_allowed_value(
+                global_role,
+                field_name="admin user role",
+                allowed=GLOBAL_ADMIN_ROLES,
+            )
+        if organization_link is not None:
+            organization_link = _require_allowed_value(
+                organization_link,
+                field_name="organization link",
+                allowed=frozenset({"linked", "unlinked"}),
+            )
+        if organization_use_yn is not None:
+            organization_use_yn = _require_allowed_value(
+                organization_use_yn,
+                field_name="organization user use_yn",
+                allowed=frozenset({"Y", "N"}),
+            )
+
+        statement = (
+            select(models.AdminUser)
+            .outerjoin(models.AdminUser.organization_user)
+            .outerjoin(models.OrganizationUser.department)
+        )
+        if query is not None and query.strip():
+            pattern = f"%{query.strip().lower()}%"
+            service_match_user_ids = (
+                select(models.UserServiceRole.user_id)
+                .join(models.Service)
+                .where(
+                    or_(
+                        func.lower(models.UserServiceRole.service_id).like(pattern),
+                        func.lower(models.Service.display_name).like(pattern),
+                    )
+                )
+            )
+            statement = statement.where(
+                or_(
+                    func.lower(models.AdminUser.email_normalized).like(pattern),
+                    func.lower(models.AdminUser.email).like(pattern),
+                    func.lower(models.AdminUser.display_name).like(pattern),
+                    func.lower(models.AdminUser.user_id).like(pattern),
+                    func.lower(models.OrganizationUser.user_number).like(pattern),
+                    func.lower(models.OrganizationUser.name).like(pattern),
+                    func.lower(models.Department.dept_number).like(pattern),
+                    func.lower(models.Department.name).like(pattern),
+                    models.AdminUser.user_id.in_(service_match_user_ids),
+                )
+            )
+        if status is not None:
+            statement = statement.where(models.AdminUser.status == status)
+        if global_role is not None:
+            role_user_ids = select(models.AdminUserRole.user_id).where(
+                models.AdminUserRole.role == global_role
+            )
+            statement = statement.where(models.AdminUser.user_id.in_(role_user_ids))
+        if organization_link == "linked":
+            statement = statement.where(
+                models.AdminUser.organization_user_id.is_not(None)
+            )
+        elif organization_link == "unlinked":
+            statement = statement.where(models.AdminUser.organization_user_id.is_(None))
+        if organization_use_yn is not None:
+            statement = statement.where(
+                models.OrganizationUser.use_yn == organization_use_yn
+            )
+
+        users = list(
+            self.session.scalars(
+                statement.order_by(
+                    models.AdminUser.email_normalized,
+                    models.AdminUser.user_id,
+                ).limit(limit)
+            )
+        )
+        return self._permission_admin_user_summary_records(users)
+
+    def list_permission_risk_findings(self) -> list[dict[str, Any]]:
+        users = list(
+            self.session.scalars(
+                select(models.AdminUser)
+                .outerjoin(models.AdminUser.organization_user)
+                .outerjoin(models.OrganizationUser.department)
+                .order_by(
+                    models.AdminUser.email_normalized,
+                    models.AdminUser.user_id,
+                )
+            )
+        )
+        findings: list[dict[str, Any]] = []
+        for summary in self._permission_admin_user_summary_records(users):
+            findings.extend(self._permission_risk_findings_for_summary(summary))
+        return sorted(
+            findings,
+            key=lambda finding: (
+                finding["category"],
+                finding["admin_user_id"] or "",
+                finding["service_id"] or "",
+                finding["finding_id"],
+            ),
+        )
+
+    def _permission_admin_user_summary_records(
+        self,
+        users: list[models.AdminUser],
+    ) -> list[PermissionAdminUserSummaryRecord]:
+        user_ids = [user.user_id for user in users]
+        if not user_ids:
+            return []
+
+        global_roles_by_user_id: dict[str, list[str]] = {
+            user_id: [] for user_id in user_ids
+        }
+        for admin_role_record in self.session.scalars(
+            select(models.AdminUserRole)
+            .where(models.AdminUserRole.user_id.in_(user_ids))
+            .order_by(models.AdminUserRole.user_id, models.AdminUserRole.role)
+        ):
+            global_roles_by_user_id.setdefault(admin_role_record.user_id, []).append(
+                admin_role_record.role
+            )
+
+        service_roles_by_user_id: dict[
+            str,
+            list[PermissionServiceRoleSummaryRecord],
+        ] = {user_id: [] for user_id in user_ids}
+        for service_role_record in self.session.scalars(
+            select(models.UserServiceRole)
+            .join(models.Service)
+            .where(models.UserServiceRole.user_id.in_(user_ids))
+            .order_by(
+                models.UserServiceRole.user_id,
+                models.Service.display_name,
+                models.UserServiceRole.service_id,
+                models.UserServiceRole.role,
+            )
+        ):
+            service_roles_by_user_id[service_role_record.user_id].append(
+                PermissionServiceRoleSummaryRecord(
+                    service_id=service_role_record.service_id,
+                    service_display_name=service_role_record.service.display_name,
+                    role=service_role_record.role,
+                    assigned_by=service_role_record.assigned_by,
+                    assigned_at=service_role_record.assigned_at,
+                )
+            )
+
+        active_system_admin_count = self.count_login_eligible_admin_users_with_role(
+            "system_admin"
+        )
+        return [
+            self._permission_admin_user_summary_record(
+                user,
+                global_roles=tuple(sorted(global_roles_by_user_id[user.user_id])),
+                service_roles=tuple(service_roles_by_user_id[user.user_id]),
+                active_system_admin_count=active_system_admin_count,
+            )
+            for user in users
+        ]
+
+    def _permission_risk_findings_for_summary(
+        self,
+        summary: PermissionAdminUserSummaryRecord,
+    ) -> list[dict[str, Any]]:
+        user = summary.user
+        organization_user = summary.organization_user
+        findings: list[dict[str, Any]] = []
+
+        if "linked_inactive_organization_user" in summary.risk_flags:
+            findings.append(
+                _permission_risk_finding(
+                    category="linked_inactive_organization_user",
+                    severity="high",
+                    title="비활성 조직 사용자와 연결된 Admin 계정",
+                    admin_user_id=user.user_id,
+                    service_id=None,
+                    evidence={
+                        "admin_user_status": user.status,
+                        "organization_user_id": (
+                            str(organization_user.id)
+                            if organization_user is not None
+                            else None
+                        ),
+                        "organization_user_use_yn": (
+                            organization_user.use_yn
+                            if organization_user is not None
+                            else None
+                        ),
+                    },
+                    recommended_action=(
+                        "조직 사용자 상태를 활성화하거나 Admin 계정 연결 및 상태를 정리하세요."
+                    ),
+                )
+            )
+
+        if "disabled_admin_has_service_roles" in summary.risk_flags:
+            roles_by_service: dict[
+                str,
+                list[PermissionServiceRoleSummaryRecord],
+            ] = {}
+            for service_role in summary.service_roles:
+                roles_by_service.setdefault(service_role.service_id, []).append(
+                    service_role
+                )
+            for service_id, service_roles in sorted(roles_by_service.items()):
+                findings.append(
+                    _permission_risk_finding(
+                        category="disabled_admin_has_service_roles",
+                        severity="medium",
+                        title="비활성 Admin 계정에 서비스 역할이 남아 있음",
+                        admin_user_id=user.user_id,
+                        service_id=service_id,
+                        evidence={
+                            "admin_user_status": user.status,
+                            "service_display_name": (
+                                service_roles[0].service_display_name
+                                if service_roles
+                                else None
+                            ),
+                            "roles": sorted(
+                                service_role.role for service_role in service_roles
+                            ),
+                        },
+                        recommended_action=(
+                            "비활성 Admin 계정에 남아 있는 서비스 역할을 회수하세요."
+                        ),
+                    )
+                )
+
+        if "active_admin_without_roles" in summary.risk_flags:
+            findings.append(
+                _permission_risk_finding(
+                    category="active_admin_without_roles",
+                    severity="low",
+                    title="활성 Admin 계정에 역할이 없음",
+                    admin_user_id=user.user_id,
+                    service_id=None,
+                    evidence={
+                        "admin_user_status": user.status,
+                        "global_roles": list(summary.global_roles),
+                        "service_role_count": len(summary.service_roles),
+                    },
+                    recommended_action=(
+                        "필요한 전역 또는 서비스 역할을 부여하거나 계정을 비활성화하세요."
+                    ),
+                )
+            )
+
+        if "unlinked_admin_user" in summary.risk_flags:
+            findings.append(
+                _permission_risk_finding(
+                    category="unlinked_admin_user",
+                    severity="medium",
+                    title="조직 사용자와 연결되지 않은 Admin 계정",
+                    admin_user_id=user.user_id,
+                    service_id=None,
+                    evidence={
+                        "admin_user_status": user.status,
+                        "organization_user_id": None,
+                    },
+                    recommended_action=(
+                        "조직 사용자 연결 필요성을 확인하고 계정을 연결하거나 예외 근거를 남기세요."
+                    ),
+                )
+            )
+
+        if "single_active_system_admin" in summary.risk_flags:
+            findings.append(
+                _permission_risk_finding(
+                    category="single_active_system_admin",
+                    severity="high",
+                    title="단일 활성 system_admin 계정",
+                    admin_user_id=user.user_id,
+                    service_id=None,
+                    evidence={
+                        "admin_user_status": user.status,
+                        "global_roles": list(summary.global_roles),
+                        "is_last_active_system_admin": (
+                            summary.is_last_active_system_admin
+                        ),
+                    },
+                    recommended_action=(
+                        "비상 접근을 위해 로그인 가능한 system_admin 계정을 2개 이상 유지하세요."
+                    ),
+                )
+            )
+
+        return findings
+
+    def _permission_admin_user_summary_record(
+        self,
+        user: models.AdminUser,
+        *,
+        global_roles: tuple[str, ...],
+        service_roles: tuple[PermissionServiceRoleSummaryRecord, ...],
+        active_system_admin_count: int,
+    ) -> PermissionAdminUserSummaryRecord:
+        organization_user = user.organization_user
+        is_login_eligible_system_admin = (
+            user.status == "active"
+            and "system_admin" in global_roles
+            and (
+                user.organization_user_id is None
+                or (organization_user is not None and organization_user.use_yn == "Y")
+            )
+        )
+        is_last_active_system_admin = (
+            is_login_eligible_system_admin and active_system_admin_count == 1
+        )
+
+        risk_flags: list[str] = []
+        if organization_user is not None and organization_user.use_yn != "Y":
+            risk_flags.append("linked_inactive_organization_user")
+        if user.status == "disabled" and service_roles:
+            risk_flags.append("disabled_admin_has_service_roles")
+        if user.status == "active" and not global_roles and not service_roles:
+            risk_flags.append("active_admin_without_roles")
+        if user.organization_user_id is None:
+            risk_flags.append("unlinked_admin_user")
+        if is_last_active_system_admin:
+            risk_flags.append("single_active_system_admin")
+
+        return PermissionAdminUserSummaryRecord(
+            user=user,
+            global_roles=global_roles,
+            is_last_active_system_admin=is_last_active_system_admin,
+            organization_user=organization_user,
+            service_roles=service_roles,
+            risk_flags=tuple(risk_flags),
         )
 
     def get_admin_user_by_organization_user_id(
@@ -1549,6 +2063,69 @@ class IntentRoutingRepository:
             statement = statement.where(models.AuditLog.event_type == event_type)
         if trace_id is not None:
             statement = statement.where(models.AuditLog.trace_id == trace_id)
+        statement = statement.order_by(
+            models.AuditLog.created_at.desc(),
+            models.AuditLog.audit_id,
+        ).limit(limit)
+        return list(self.session.scalars(statement))
+
+    def list_permission_audit_logs(
+        self,
+        *,
+        event_group: str,
+        event_type: str | None,
+        actor_id: str | None,
+        target_id: str | None,
+        service_id: str | None,
+        limit: int,
+    ) -> list[models.AuditLog]:
+        event_group = _require_allowed_value(
+            event_group,
+            field_name="permission audit event group",
+            allowed=PERMISSION_AUDIT_EVENT_GROUPS,
+        )
+        limit = max(1, min(limit, 500))
+        statement = select(models.AuditLog)
+        allowed_event_types: PermissionAuditEventTypes
+        if event_group == "admin_user":
+            allowed_event_types = PERMISSION_ADMIN_USER_AUDIT_EVENT_TYPES
+        elif event_group == "service_membership":
+            allowed_event_types = PERMISSION_SERVICE_MEMBERSHIP_AUDIT_EVENT_TYPES
+        else:
+            allowed_event_types = PERMISSION_AUDIT_EVENT_TYPES
+        statement = statement.where(models.AuditLog.event_type.in_(allowed_event_types))
+        if event_type is not None:
+            statement = statement.where(
+                models.AuditLog.event_type
+                == _require_nonblank_string(
+                    event_type,
+                    field_name="permission audit event_type",
+                ).strip()
+            )
+        if actor_id is not None:
+            statement = statement.where(
+                models.AuditLog.actor_id
+                == _require_nonblank_string(
+                    actor_id,
+                    field_name="permission audit actor_id",
+                ).strip()
+            )
+        if target_id is not None:
+            statement = statement.where(
+                models.AuditLog.target_id
+                == _require_nonblank_string(
+                    target_id,
+                    field_name="permission audit target_id",
+                ).strip()
+            )
+        if service_id is not None:
+            statement = statement.where(
+                models.AuditLog.service_id
+                == _require_nonblank_string(
+                    service_id,
+                    field_name="permission audit service_id",
+                ).strip()
+            )
         statement = statement.order_by(
             models.AuditLog.created_at.desc(),
             models.AuditLog.audit_id,
