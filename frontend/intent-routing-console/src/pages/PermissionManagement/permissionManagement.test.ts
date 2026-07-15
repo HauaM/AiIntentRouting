@@ -58,11 +58,13 @@ describe('Permission Management helpers', () => {
 
   it('guards access to system_admin only', () => {
     expect(canAccessPermissionManagement(['system_admin'])).toBe(true);
+    expect(canAccessPermissionManagement(['application_admin'])).toBe(false);
     expect(canAccessPermissionManagement(['service_owner'])).toBe(false);
   });
 
   it('maps risk severity and role labels for table rendering', () => {
     expect(riskSeverityColor('high')).toBe('red');
+    expect(permissionRoleLabel('application_admin')).toBe('application_admin');
     expect(permissionRoleLabel('system_admin')).toBe('system_admin');
   });
 

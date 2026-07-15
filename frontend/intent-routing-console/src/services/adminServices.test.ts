@@ -1,6 +1,7 @@
 import { request } from '@umijs/max';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  approveAdminAccessRequest,
   activateRelease,
   approveExample,
   createApiKey,
@@ -20,6 +21,7 @@ import {
   fetchTestRunResults,
   grantServiceRole,
   listApiKeys,
+  listAdminAccessRequests,
   listAdminUsers,
   listCatalogVersions,
   listDepartments,
@@ -41,6 +43,7 @@ import {
   patchManagedAdminUser,
   patchDepartment,
   patchOrganizationUser,
+  rejectAdminAccessRequest,
   revokeApiKey,
   deleteDepartment,
   deleteOrganizationUser,
@@ -438,6 +441,43 @@ describe('admin service Phase 1 write flow requests', () => {
       method: 'PATCH',
       data: { status: 'active', global_roles: ['system_admin'] },
     });
+    const calls = requestMock.mock.calls as unknown as Array<
+      [string, Record<string, unknown>]
+    >;
+    for (const [, options] of calls) {
+      expect(options).not.toHaveProperty('headers');
+    }
+  });
+
+  it('uses admin access request endpoints without trusted headers', async () => {
+    await listAdminAccessRequests({ status: 'pending', limit: 25 });
+    await approveAdminAccessRequest('request/1', {
+      decision_reason: 'Approved for scoped Admin UI access',
+    });
+    await rejectAdminAccessRequest('request/2', {
+      decision_reason: 'Missing onboarding prerequisites',
+    });
+
+    expect(requestMock).toHaveBeenNthCalledWith(1, '/admin-access-requests', {
+      method: 'GET',
+      params: { status: 'pending', limit: 25 },
+    });
+    expect(requestMock).toHaveBeenNthCalledWith(
+      2,
+      '/admin-access-requests/request%2F1/approve',
+      {
+        method: 'POST',
+        data: { decision_reason: 'Approved for scoped Admin UI access' },
+      },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      3,
+      '/admin-access-requests/request%2F2/reject',
+      {
+        method: 'POST',
+        data: { decision_reason: 'Missing onboarding prerequisites' },
+      },
+    );
     const calls = requestMock.mock.calls as unknown as Array<
       [string, Record<string, unknown>]
     >;

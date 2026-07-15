@@ -31,6 +31,7 @@ const permissionServiceRoles = [
 
 const permissionRoleLabels: Record<string, string> = {
   system_admin: 'system_admin',
+  application_admin: 'application_admin',
   service_owner: 'service_owner',
   service_developer: 'service_developer',
   service_operator: 'service_operator',
@@ -59,7 +60,7 @@ const isManagedAdminUserStatus = (
 ): status is API.ManagedAdminUserStatus => status === 'active' || status === 'disabled';
 
 const isGlobalAdminRole = (role: unknown): role is API.GlobalAdminRole =>
-  role === 'system_admin';
+  role === 'system_admin' || role === 'application_admin';
 
 const isPermissionOrganizationLink = (
   value: unknown,

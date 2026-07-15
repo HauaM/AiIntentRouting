@@ -1364,7 +1364,7 @@ Keep API key creation `system_admin` only for this plan. Add a test proving `app
 - Consumes: new API contracts.
 - Produces: typed Umi request wrappers and UI helper functions.
 
-- [ ] **Step 1: Update frontend API types**
+- [x] **Step 1: Update frontend API types**
 
 Change:
 
@@ -1394,7 +1394,7 @@ type AdminAccessRequest = {
 };
 ```
 
-- [ ] **Step 2: Add service wrappers**
+- [x] **Step 2: Add service wrappers**
 
 In `adminServices.ts`:
 
@@ -1430,7 +1430,7 @@ export async function rejectAdminAccessRequest(
 }
 ```
 
-- [ ] **Step 3: Update helper tests**
+- [x] **Step 3: Update helper tests**
 
 Add tests proving:
 
@@ -1440,7 +1440,7 @@ expect(canAccessPermissionManagement(['application_admin'])).toBe(false);
 expect(canAccessPermissionManagement(['system_admin'])).toBe(true);
 ```
 
-- [ ] **Step 4: Run frontend helper tests**
+- [x] **Step 4: Run frontend helper tests**
 
 Run:
 

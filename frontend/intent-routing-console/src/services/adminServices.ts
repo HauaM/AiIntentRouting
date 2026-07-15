@@ -68,6 +68,41 @@ export async function patchManagedAdminUser(
   );
 }
 
+export async function listAdminAccessRequests(
+  params: { status?: API.AdminAccessRequestStatus; limit?: number } = {},
+) {
+  return request<API.AdminAccessRequest[]>('/admin-access-requests', {
+    method: 'GET',
+    params,
+  });
+}
+
+export async function approveAdminAccessRequest(
+  requestId: string,
+  payload: { decision_reason: string },
+) {
+  return request<API.AdminAccessRequest>(
+    `/admin-access-requests/${encodeURIComponent(requestId)}/approve`,
+    {
+      method: 'POST',
+      data: payload,
+    },
+  );
+}
+
+export async function rejectAdminAccessRequest(
+  requestId: string,
+  payload: { decision_reason: string },
+) {
+  return request<API.AdminAccessRequest>(
+    `/admin-access-requests/${encodeURIComponent(requestId)}/reject`,
+    {
+      method: 'POST',
+      data: payload,
+    },
+  );
+}
+
 export async function listDepartments(
   params: { query?: string; use_yn?: API.UseYn; limit?: number } = {},
 ) {

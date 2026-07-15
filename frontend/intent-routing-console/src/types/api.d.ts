@@ -27,7 +27,26 @@ declare namespace API {
   };
 
   type ManagedAdminUserStatus = 'active' | 'disabled';
-  type GlobalAdminRole = 'system_admin';
+  type GlobalAdminRole = 'system_admin' | 'application_admin';
+
+  type AdminAccessRequestStatus = 'pending' | 'approved' | 'rejected';
+
+  type AdminAccessRequest = {
+    request_id: string;
+    user_number: string;
+    name: string;
+    department_id: string;
+    department?: PermissionDepartmentSummary | null;
+    email: string;
+    access_reason: string;
+    status: AdminAccessRequestStatus;
+    requested_at: string;
+    decided_at: string | null;
+    decided_by: string | null;
+    decision_reason: string | null;
+    created_user_id: string | null;
+    created_admin_user_id: string | null;
+  };
 
   type ManagedAdminUser = {
     user_id: string;
