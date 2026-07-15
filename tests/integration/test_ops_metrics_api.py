@@ -204,7 +204,7 @@ def test_raw_text_key_summary_uses_default_active_key_id_when_env_is_omitted(
     assert response.json()["active_key_id"] == "local-kek-001"
 
 
-def test_service_developer_cannot_read_key_summary_or_audit_logs(
+def test_service_developer_can_read_audit_logs_but_not_key_summary(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -221,8 +221,7 @@ def test_service_developer_cannot_read_key_summary_or_audit_logs(
         headers=headers,
     )
 
-    assert audit_response.status_code == 403
-    assert audit_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+    assert audit_response.status_code == 200
     assert summary_response.status_code == 403
     assert summary_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
 

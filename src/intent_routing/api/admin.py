@@ -3811,10 +3811,10 @@ def create_api_key(
 ) -> ApiKeyCreateResponse:
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
+    _require_api_key_management_access(context, request.service_id)
     service = repository.get_service(request.service_id)
     if service is None:
         _raise_not_found("Service does not exist.")
-    _require_api_key_management_access(context, request.service_id)
 
     api_key, api_key_secret = _create_api_key_for_service(
         repository,

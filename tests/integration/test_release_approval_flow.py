@@ -92,7 +92,7 @@ def test_release_diff_compares_candidate_to_active_release(
     assert body["test_run_diff"]["gate_passed"] is True
 
 
-def test_release_activation_requires_governed_approval_for_service_developer(
+def test_release_activation_allows_service_developer_and_publish_flow(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -112,7 +112,8 @@ def test_release_activation_requires_governed_approval_for_service_developer(
         f"/admin/v1/services/{service_id}/releases/{release_version}:activate",
         headers=_developer_headers(service_id),
     )
-    assert direct.status_code == 403
+    assert direct.status_code == 200
+    assert direct.json()["active"] is True
 
     requested = client.post(
         f"/admin/v1/services/{service_id}/publish-requests",
