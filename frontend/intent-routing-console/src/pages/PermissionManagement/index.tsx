@@ -1017,7 +1017,7 @@ export default function PermissionManagementPage() {
                               placeholder="service-id"
                               value={grantServiceId}
                               onChange={(event) => setGrantServiceId(event.target.value)}
-                              style={{ width: '240px' }}
+                              style={{ width: 240 }}
                             />
                           </Space>
                           <Space direction="vertical" size={4}>
