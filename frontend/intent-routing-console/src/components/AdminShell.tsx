@@ -138,19 +138,19 @@ export function AdminShell({ title, children }: AdminShellProps) {
             <Skeleton active paragraph={{ rows: 8 }} />
           ) : (
             <>
-              <Alert
-                type="info"
-                showIcon
-                message="Sprint 11 Admin UI Phase 1"
-                description="Authenticated console for service-scoped catalog work, test runs, releases, API keys, runtime logs, and audit evidence. Phase 2 governed approval workflows remain informational."
-                style={{ marginBottom: 12 }}
-              />
               <ServiceScopeBar
                 session={session}
                 roles={displayRoles}
                 serviceOptions={serviceOptions}
                 onServiceChange={setServiceId}
                 onLogout={logout}
+              />
+              <Alert
+                type="info"
+                showIcon
+                message="Sprint 11 Admin UI Phase 1"
+                description="Authenticated console for service-scoped catalog work, test runs, releases, API keys, runtime logs, and audit evidence. Phase 2 governed approval workflows remain informational."
+                style={{ marginTop: 12, marginBottom: 12 }}
               />
               <main className="admin-page-content">{children}</main>
             </>
