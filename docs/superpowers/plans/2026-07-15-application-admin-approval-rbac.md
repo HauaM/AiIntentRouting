@@ -1298,7 +1298,7 @@ Expected: PASS.
 - Consumes: `application_admin` login role and existing `user_service_roles`.
 - Produces: proof that `application_admin` alone grants no Service actions.
 
-- [ ] **Step 1: Write failing or guarding tests**
+- [x] **Step 1: Write failing or guarding tests**
 
 Add tests:
 
@@ -1337,7 +1337,7 @@ def test_application_admin_with_service_developer_can_manage_assigned_service(
     assert response.status_code == 200
 ```
 
-- [ ] **Step 2: Run service RBAC tests**
+- [x] **Step 2: Run service RBAC tests**
 
 Run:
 
@@ -1347,7 +1347,7 @@ uv run pytest tests/integration/test_admin_service_rbac_flow.py tests/integratio
 
 Expected: PASS after code keeps service access tied to `user_service_roles`.
 
-- [ ] **Step 3: Review API key creation permission**
+- [x] **Step 3: Review API key creation permission**
 
 Keep API key creation `system_admin` only for this plan. Add a test proving `application_admin` receives `403` for API key creation unless a later ADR changes it.
 

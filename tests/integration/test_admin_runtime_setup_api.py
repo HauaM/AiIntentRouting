@@ -1,69 +1,64 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Iterator
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from intent_routing.api.admin_dependencies import get_admin_session
+from intent_routing.api.admin_dependencies import (
+    get_admin_session,
+    require_admin_context,
+    require_admin_session_context,
+)
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.main import create_app
-from intent_routing.security.admin_sessions import (
-    ADMIN_SESSION_COOKIE_NAME,
-    hash_admin_session_token,
-)
+from intent_routing.security.admin_auth import AdminContext
 
 
-def _client(db_session: Session) -> TestClient:
+def _client(
+    db_session: Session,
+    *,
+    actor_id: str = "runtime-setup-admin",
+    global_roles: frozenset[str] = frozenset({"system_admin"}),
+    service_roles: tuple[tuple[str, str], ...] = (),
+) -> TestClient:
     app = create_app()
+    service_role_records = tuple(
+        SimpleNamespace(service_id=service_id, role=role)
+        for service_id, role in service_roles
+    )
+    service_roles_by_service: dict[str, frozenset[str]] = {}
+    for service_id, role in service_roles:
+        service_roles_by_service[service_id] = frozenset(
+            {*service_roles_by_service.get(service_id, frozenset()), role}
+        )
+    session_context = SimpleNamespace(
+        user=SimpleNamespace(user_id=actor_id),
+        global_roles=global_roles,
+        service_roles=service_role_records,
+    )
+    admin_context = AdminContext(
+        actor_id=actor_id,
+        roles=global_roles,
+        service_scope=frozenset(service_roles_by_service),
+        all_service_scopes="system_admin" in global_roles,
+        service_roles=service_roles_by_service,
+    )
 
     def override_session() -> Iterator[Session]:
         yield db_session
 
     app.dependency_overrides[get_admin_session] = override_session
+    app.dependency_overrides[require_admin_session_context] = lambda: session_context
+    app.dependency_overrides[require_admin_context] = lambda: admin_context
     return TestClient(app, raise_server_exceptions=False)
-
-
-def _system_admin_client(db_session: Session) -> tuple[TestClient, str]:
-    user_id = f"runtime-setup-admin-{uuid4().hex}"
-    raw_token = f"raw-session-{user_id}"
-    now = datetime.now(UTC)
-    repository = IntentRoutingRepository(db_session)
-    repository.create_admin_user(
-        user_id=user_id,
-        email=f"{user_id}@example.com",
-        display_name="Runtime Setup Admin",
-        password_hash="password-hash",
-        status="active",
-        created_at=now,
-        updated_at=now,
-    )
-    repository.assign_admin_user_role(
-        user_id=user_id,
-        role="system_admin",
-        assigned_by="integration-test",
-        assigned_at=now,
-    )
-    repository.create_admin_session(
-        session_id=f"session-{user_id}",
-        user_id=user_id,
-        token_hash=hash_admin_session_token(raw_token),
-        created_at=now,
-        expires_at=now + timedelta(hours=1),
-        revoked_at=None,
-        last_seen_at=None,
-    )
-    db_session.commit()
-
-    client = _client(db_session)
-    client.cookies.set(ADMIN_SESSION_COOKIE_NAME, raw_token)
-    return client, user_id
 
 
 def _create_service(client: TestClient, service_id: str) -> None:
@@ -187,7 +182,16 @@ def _api_key_payload(**overrides: object) -> dict[str, object]:
     return payload
 
 
-def _purge_rows(db_session: Session, *, user_id: str, service_ids: list[str]) -> None:
+def _purge_rows(
+    db_session: Session,
+    *,
+    service_ids: list[str],
+) -> None:
+    for service_id in service_ids:
+        db_session.execute(
+            text("delete from user_service_roles where service_id = :service_id"),
+            {"service_id": service_id},
+        )
     for service_id in service_ids:
         db_session.execute(
             text("delete from audit_logs where service_id = :service_id"),
@@ -232,25 +236,13 @@ def _purge_rows(db_session: Session, *, user_id: str, service_ids: list[str]) ->
             text("delete from services where service_id = :service_id"),
             {"service_id": service_id},
         )
-    db_session.execute(
-        text("delete from admin_sessions where user_id = :user_id"),
-        {"user_id": user_id},
-    )
-    db_session.execute(
-        text("delete from admin_user_roles where user_id = :user_id"),
-        {"user_id": user_id},
-    )
-    db_session.execute(
-        text("delete from admin_users where user_id = :user_id"),
-        {"user_id": user_id},
-    )
     db_session.commit()
 
 
 def test_service_scoped_api_key_lifecycle_never_replays_secret(
     db_session: Session,
 ) -> None:
-    client, user_id = _system_admin_client(db_session)
+    client = _client(db_session)
     service_id = f"svc-runtime-setup-{uuid4().hex}"
     try:
         _create_service(client, service_id)
@@ -336,13 +328,13 @@ def test_service_scoped_api_key_lifecycle_never_replays_secret(
             )
             assert raw_secret not in serialized
     finally:
-        _purge_rows(db_session, user_id=user_id, service_ids=[service_id])
+        _purge_rows(db_session, service_ids=[service_id])
 
 
 def test_service_scoped_key_creation_requires_active_release_candidates(
     db_session: Session,
 ) -> None:
-    client, user_id = _system_admin_client(db_session)
+    client = _client(db_session)
     service_id = f"svc-runtime-scope-{uuid4().hex}"
     try:
         _create_service(client, service_id)
@@ -375,13 +367,39 @@ def test_service_scoped_key_creation_requires_active_release_candidates(
         assert wrong_environment.status_code == 422
         assert "environment" in wrong_environment.json()["error"]["message"]
     finally:
-        _purge_rows(db_session, user_id=user_id, service_ids=[service_id])
+        _purge_rows(db_session, service_ids=[service_id])
+
+
+def test_application_admin_service_developer_cannot_create_service_api_key(
+    db_session: Session,
+) -> None:
+    system_admin_client = _client(db_session)
+    service_id = f"svc-runtime-app-admin-{uuid4().hex}"
+
+    try:
+        _create_service(system_admin_client, service_id)
+        _seed_active_release(db_session, service_id)
+        client = _client(
+            db_session,
+            actor_id="runtime-setup-app-admin",
+            global_roles=frozenset({"application_admin"}),
+            service_roles=((service_id, "service_developer"),),
+        )
+        response = client.post(
+            f"/admin/v1/services/{service_id}/api-keys",
+            json=_api_key_payload(),
+        )
+
+        assert response.status_code == 403
+        assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+    finally:
+        _purge_rows(db_session, service_ids=[service_id])
 
 
 def test_service_scoped_revoke_and_guidance_reject_cross_service_key(
     db_session: Session,
 ) -> None:
-    client, user_id = _system_admin_client(db_session)
+    client = _client(db_session)
     service_a = f"svc-runtime-a-{uuid4().hex}"
     service_b = f"svc-runtime-b-{uuid4().hex}"
     try:
@@ -413,4 +431,4 @@ def test_service_scoped_revoke_and_guidance_reject_cross_service_key(
         assert persisted_key is not None
         assert persisted_key.status == "active"
     finally:
-        _purge_rows(db_session, user_id=user_id, service_ids=[service_a, service_b])
+        _purge_rows(db_session, service_ids=[service_a, service_b])
