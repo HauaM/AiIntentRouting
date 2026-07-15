@@ -41,6 +41,8 @@ def test_local_dev_stack_script_contract() -> None:
     assert "Skipping compose postgres management for custom DATABASE_URL" in text
     assert "prepare_startup_system_admin_provisioning" in text
     assert "current_system_admin_email" in text
+    assert "get_database_url" in text
+    assert "database_url_from_env" not in text
     assert "Existing system_admin owner detected" in text
     assert "Skipping default startup system_admin provisioning" in text
     assert "Startup provisioning will not transfer system_admin ownership" in text

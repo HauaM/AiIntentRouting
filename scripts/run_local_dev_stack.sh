@@ -274,9 +274,9 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from intent_routing.db.models import AdminUser, AdminUserRole
-from intent_routing.db.session import database_url_from_env
+from intent_routing.db.session import get_database_url
 
-engine = create_engine(database_url_from_env())
+engine = create_engine(get_database_url())
 try:
     with Session(engine) as session:
         email = session.scalar(
