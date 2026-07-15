@@ -28,7 +28,9 @@ from intent_routing.api.admin_dependencies import (
 )
 from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekError
 from intent_routing.db.models import (
+    AdminAccessRequest,
     AdminUser,
+    AdminUserRole,
     ApiKey,
     Department,
     GovernedActionRequest,
@@ -80,6 +82,7 @@ from intent_routing.security.admin_auth import (
     AdminContext,
     raise_admin_forbidden,
 )
+from intent_routing.security.admin_passwords import hash_admin_password
 from intent_routing.security.api_keys import (
     fingerprint_secret,
     generate_api_key_secret,
@@ -249,7 +252,7 @@ class AdminUserLookupResponse(BaseModel):
 
 
 AdminUserStatus = Literal["active", "disabled"]
-GlobalAdminRole = Literal["system_admin"]
+GlobalAdminRole = Literal["system_admin", "application_admin"]
 DISABLED_ADMIN_PASSWORD_HASH = "disabled-password:not-set"
 
 
@@ -302,6 +305,24 @@ class ManagedAdminUserPatchRequest(BaseModel):
         return value
 
 
+class SystemAdminTransferRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_admin_user_id: str = Field(min_length=1)
+    to_admin_user_id: str = Field(min_length=1)
+    reason: str = Field(min_length=10)
+
+    @field_validator("from_admin_user_id", "to_admin_user_id", "reason", mode="before")
+    @classmethod
+    def system_admin_transfer_text_must_not_be_blank(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("system admin transfer fields must not be blank")
+            return stripped
+        return value
+
+
 class ManagedAdminUserResponse(BaseModel):
     user_id: str
     email: str
@@ -313,6 +334,58 @@ class ManagedAdminUserResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     last_login_at: datetime | None
+
+
+class AdminAccessRequestCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_number: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    department_id: UUID
+    email: str = Field(min_length=3)
+    password: str = Field(min_length=8)
+    access_reason: str = Field(min_length=10)
+
+    @field_validator("user_number", "name", "email", "password", "access_reason", mode="before")
+    @classmethod
+    def admin_access_request_text_must_not_be_blank(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("admin access request fields must not be blank")
+            return stripped
+        return value
+
+
+class AdminAccessRequestDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision_reason: str = Field(min_length=3)
+
+    @field_validator("decision_reason")
+    @classmethod
+    def admin_access_request_decision_reason_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("decision_reason must not be blank")
+        return stripped
+
+
+class AdminAccessRequestResponse(BaseModel):
+    request_id: UUID
+    user_number: str
+    name: str
+    department_id: UUID
+    department: PermissionDepartmentSummaryResponse | None
+    email: str
+    access_reason: str
+    status: str
+    requested_at: datetime
+    decided_at: datetime | None
+    decided_by: str | None
+    decision_reason: str | None
+    created_user_id: UUID | None
+    created_admin_user_id: str | None
 
 
 class ServiceMemberRoleResponse(BaseModel):
@@ -1277,6 +1350,12 @@ def _require_not_self_last_system_admin(
         _raise_conflict("Cannot remove or disable the last active system_admin.")
 
 
+def _raise_system_admin_transfer_required() -> NoReturn:
+    _raise_conflict(
+        "system_admin already exists. Use system_admin transfer."
+    )
+
+
 def _department_has_active_organization_users(
     session: Session,
     department_id: UUID,
@@ -1597,6 +1676,38 @@ def _managed_admin_user_response(
 
 def _managed_admin_user_audit_state(
     response: ManagedAdminUserResponse,
+) -> dict[str, Any]:
+    return response.model_dump(mode="json")
+
+
+def _admin_access_request_response(
+    request: AdminAccessRequest,
+) -> AdminAccessRequestResponse:
+    department = request.department
+    return AdminAccessRequestResponse(
+        request_id=request.request_id,
+        user_number=request.user_number,
+        name=request.name,
+        department_id=request.department_id,
+        department=(
+            _permission_department_summary_response(department)
+            if department is not None
+            else None
+        ),
+        email=request.email,
+        access_reason=request.access_reason,
+        status=request.status,
+        requested_at=request.requested_at,
+        decided_at=request.decided_at,
+        decided_by=request.decided_by,
+        decision_reason=request.decision_reason,
+        created_user_id=request.created_user_id,
+        created_admin_user_id=request.created_admin_user_id,
+    )
+
+
+def _admin_access_request_audit_state(
+    response: AdminAccessRequestResponse,
 ) -> dict[str, Any]:
     return response.model_dump(mode="json")
 
@@ -2839,6 +2950,242 @@ def list_permission_management_risk_findings(
 
 
 @router.post(
+    "/admin-access-requests",
+    response_model=AdminAccessRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_admin_access_request(
+    request: AdminAccessRequestCreateRequest,
+    http_request: Request,
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> AdminAccessRequestResponse:
+    repository = IntentRoutingRepository(session)
+    department = _require_active_department(session, request.department_id)
+    if repository.get_organization_user_by_user_number(request.user_number) is not None:
+        _raise_conflict("Organization user already exists.")
+    if repository.get_admin_user_by_email(request.email) is not None:
+        _raise_conflict("Admin user already exists.")
+
+    now = datetime.now(UTC)
+    try:
+        request_record = repository.create_admin_access_request(
+            user_number=request.user_number,
+            name=request.name,
+            department_id=department.id,
+            email=request.email,
+            password_hash=hash_admin_password(request.password),
+            access_reason=request.access_reason,
+            requested_at=now,
+        )
+    except IntegrityError:
+        session.rollback()
+        _raise_conflict("A pending admin access request already exists.")
+
+    response = _admin_access_request_response(request_record)
+    repository.insert_audit_log(
+        event_type="admin_access_request.created",
+        actor_id=request_record.email_normalized,
+        service_id=None,
+        trace_id=None,
+        target_type="admin_access_request",
+        target_id=str(request_record.request_id),
+        view_reason=None,
+        source_ip=source_ip_from_request(http_request),
+        before_state=None,
+        after_state=_admin_access_request_audit_state(response),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.get(
+    "/admin-access-requests",
+    response_model=list[AdminAccessRequestResponse],
+)
+def list_admin_access_requests(
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+    status: Annotated[
+        Literal["pending", "approved", "rejected"] | None,
+        Query(),
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+) -> list[AdminAccessRequestResponse]:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    return [
+        _admin_access_request_response(request_row)
+        for request_row in repository.list_admin_access_requests(
+            status=status,
+            limit=limit,
+        )
+    ]
+
+
+@router.post(
+    "/admin-access-requests/{request_id}/approve",
+    response_model=AdminAccessRequestResponse,
+)
+def approve_admin_access_request(
+    request_id: UUID,
+    request: AdminAccessRequestDecisionRequest,
+    http_request: Request,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> AdminAccessRequestResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    request_record = repository.get_admin_access_request_for_update(request_id)
+    if request_record is None:
+        _raise_not_found("Admin access request does not exist.")
+    if request_record.status != "pending":
+        _raise_conflict("Admin access request has already been decided.")
+    if request_record.password_hash is None:
+        _raise_conflict("Pending admin access request is missing a password hash.")
+
+    department = _require_active_department(session, request_record.department_id)
+    if repository.get_organization_user_by_user_number(request_record.user_number) is not None:
+        _raise_conflict("Organization user already exists.")
+    if repository.get_admin_user_by_email(request_record.email) is not None:
+        _raise_conflict("Admin user already exists.")
+
+    now = datetime.now(UTC)
+    try:
+        organization_user = repository.create_organization_user(
+            user_number=request_record.user_number,
+            name=request_record.name,
+            department_id=department.id,
+            use_yn="Y",
+            created_by=context.actor_id,
+            updated_by=context.actor_id,
+            created_at=now,
+            updated_at=now,
+        )
+        admin_user = repository.create_admin_user(
+            user_id=f"admin_{uuid4().hex}",
+            email=request_record.email,
+            display_name=request_record.name,
+            password_hash=request_record.password_hash,
+            admin_access_reason=request_record.access_reason,
+            status="active",
+            organization_user_id=organization_user.id,
+            created_at=now,
+            updated_at=now,
+        )
+        repository.assign_admin_user_role(
+            user_id=admin_user.user_id,
+            role="application_admin",
+            assigned_by=context.actor_id,
+            assigned_at=now,
+        )
+        request_record = repository.approve_admin_access_request(
+            request_record,
+            decided_by=context.actor_id,
+            decided_at=now,
+            decision_reason=request.decision_reason,
+            created_user_id=organization_user.id,
+            created_admin_user_id=admin_user.user_id,
+        )
+    except IntegrityError:
+        session.rollback()
+        _raise_conflict("Admin access request conflicts with existing records.")
+    except ValueError:
+        session.rollback()
+        _raise_conflict("Admin access request has already been decided.")
+
+    response = _admin_access_request_response(request_record)
+    audit_state = _admin_access_request_audit_state(response)
+    repository.insert_audit_log(
+        event_type="admin_access_request.approved",
+        actor_id=context.actor_id,
+        service_id=None,
+        trace_id=None,
+        target_type="admin_access_request",
+        target_id=str(request_record.request_id),
+        view_reason=None,
+        source_ip=source_ip_from_request(http_request),
+        before_state=None,
+        after_state=audit_state,
+        created_at=now,
+    )
+    repository.insert_audit_log(
+        event_type="admin_user.global_role_granted",
+        actor_id=context.actor_id,
+        service_id=None,
+        trace_id=None,
+        target_type="admin_user",
+        target_id=admin_user.user_id,
+        view_reason=None,
+        source_ip=source_ip_from_request(http_request),
+        before_state=None,
+        after_state={"user_id": admin_user.user_id, "role": "application_admin"},
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
+    "/admin-access-requests/{request_id}/reject",
+    response_model=AdminAccessRequestResponse,
+)
+def reject_admin_access_request(
+    request_id: UUID,
+    request: AdminAccessRequestDecisionRequest,
+    http_request: Request,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> AdminAccessRequestResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    repository = IntentRoutingRepository(session)
+    request_record = repository.get_admin_access_request_for_update(request_id)
+    if request_record is None:
+        _raise_not_found("Admin access request does not exist.")
+
+    now = datetime.now(UTC)
+    try:
+        request_record = repository.reject_admin_access_request(
+            request_record,
+            decided_by=context.actor_id,
+            decided_at=now,
+            decision_reason=request.decision_reason,
+        )
+    except ValueError:
+        session.rollback()
+        _raise_conflict("Admin access request has already been decided.")
+
+    response = _admin_access_request_response(request_record)
+    repository.insert_audit_log(
+        event_type="admin_access_request.rejected",
+        actor_id=context.actor_id,
+        service_id=None,
+        trace_id=None,
+        target_type="admin_access_request",
+        target_id=str(request_record.request_id),
+        view_reason=None,
+        source_ip=source_ip_from_request(http_request),
+        before_state=None,
+        after_state=_admin_access_request_audit_state(response),
+        created_at=now,
+    )
+    session.commit()
+    return response
+
+
+@router.post(
     "/admin-users",
     response_model=ManagedAdminUserResponse,
     status_code=status.HTTP_201_CREATED,
@@ -2875,6 +3222,7 @@ def create_managed_admin_user(
             email=request.email,
             display_name=request.display_name,
             password_hash=DISABLED_ADMIN_PASSWORD_HASH,
+            admin_access_reason="Granted managed Admin UI access by system administrator.",
             status=request.status,
             organization_user_id=organization_user.id,
             created_at=now,
@@ -2967,6 +3315,18 @@ def patch_managed_admin_user(
         desired_roles = frozenset(request.global_roles)
         roles_to_grant = desired_roles - current_roles
         roles_to_revoke = current_roles - desired_roles
+        if "system_admin" in roles_to_grant and "system_admin" not in current_roles:
+            existing_system_admin_user_id = session.scalar(
+                select(AdminUser.user_id)
+                .join(AdminUserRole, AdminUserRole.user_id == AdminUser.user_id)
+                .where(AdminUserRole.role == "system_admin")
+                .limit(1)
+            )
+            if (
+                existing_system_admin_user_id is not None
+                and existing_system_admin_user_id != admin_user.user_id
+            ):
+                _raise_system_admin_transfer_required()
         if "system_admin" in roles_to_revoke:
             _require_not_self_last_system_admin(
                 repository,
@@ -3068,6 +3428,90 @@ def patch_managed_admin_user(
         )
     session.commit()
     return response
+
+
+@router.post("/system-admin-transfer", response_model=ManagedAdminUserResponse)
+def transfer_system_admin(
+    request: SystemAdminTransferRequest,
+    http_request: Request,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ManagedAdminUserResponse:
+    context = admin_context_from_session_record(session_context)
+    _require_system_admin(context)
+    if context.actor_id != request.from_admin_user_id:
+        _raise_conflict("Only the current system_admin can transfer ownership.")
+    if request.from_admin_user_id == request.to_admin_user_id:
+        _raise_conflict("system_admin transfer requires different source and target users.")
+
+    repository = IntentRoutingRepository(session)
+    source_user = repository.get_admin_user(request.from_admin_user_id)
+    if source_user is None:
+        _raise_not_found("Source Admin user does not exist.")
+    target_user = repository.get_admin_user(request.to_admin_user_id)
+    if target_user is None:
+        _raise_not_found("Target Admin user does not exist.")
+    if target_user.status != "active":
+        _raise_conflict("Target Admin user must be active.")
+    _require_active_linked_organization_user_for_admin_status(session, target_user)
+
+    source_roles = frozenset(
+        role.role for role in repository.list_admin_user_roles(source_user.user_id)
+    )
+    if "system_admin" not in source_roles:
+        _raise_conflict("Source Admin user must have system_admin.")
+    target_roles = frozenset(
+        role.role for role in repository.list_admin_user_roles(target_user.user_id)
+    )
+    if "application_admin" not in target_roles:
+        _raise_conflict("Target Admin user must have application_admin.")
+
+    source_before = _managed_admin_user_response(repository, source_user)
+    target_before = _managed_admin_user_response(repository, target_user)
+    now = datetime.now(UTC)
+
+    repository.delete_admin_user_role_by_key(source_user.user_id, "system_admin")
+    repository.ensure_admin_user_role(
+        user_id=source_user.user_id,
+        role="application_admin",
+        assigned_by=context.actor_id,
+        assigned_at=now,
+    )
+    repository.ensure_admin_user_role(
+        user_id=target_user.user_id,
+        role="system_admin",
+        assigned_by=context.actor_id,
+        assigned_at=now,
+    )
+    repository.delete_admin_user_role_by_key(target_user.user_id, "application_admin")
+
+    source_after = _managed_admin_user_response(repository, source_user)
+    target_after = _managed_admin_user_response(repository, target_user)
+    repository.insert_audit_log(
+        event_type="admin_user.system_admin_transferred",
+        actor_id=context.actor_id,
+        service_id=None,
+        trace_id=None,
+        target_type="admin_user",
+        target_id=target_user.user_id,
+        view_reason=None,
+        source_ip=source_ip_from_request(http_request),
+        before_state={
+            "from_admin_user": _managed_admin_user_audit_state(source_before),
+            "to_admin_user": _managed_admin_user_audit_state(target_before),
+        },
+        after_state={
+            "from_admin_user": _managed_admin_user_audit_state(source_after),
+            "to_admin_user": _managed_admin_user_audit_state(target_after),
+            "reason": request.reason,
+        },
+        created_at=now,
+    )
+    session.commit()
+    return target_after
 
 
 @router.get("/users", response_model=list[AdminUserLookupResponse])

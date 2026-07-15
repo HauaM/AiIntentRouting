@@ -1,20 +1,33 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  EMPTY_DEPARTMENT_TABLE_FILTERS,
+  EMPTY_ORGANIZATION_USER_TABLE_FILTERS,
   canAccessOrganizationDirectory,
   formatDepartmentNumber,
   formatOrganizationUserNumber,
+  hasIncompleteApplicationAdminAccess,
   hasSystemAdminRole,
   permissionManagementAdminUserUrl,
   toDepartmentOption,
   toDepartmentOptionSearchParams,
   toAdminUserCreateRequest,
   toAdminUserStatusPatchRequest,
-  toSystemAdminRolesPatchRequest,
   toDepartmentCreateRequest,
   toDepartmentUseYnPatchRequest,
   toOrganizationUserCreateRequest,
   toOrganizationUserUseYnPatchRequest,
+  toDepartmentListParamsFromFilters,
+  toOrganizationUserListParamsFromFilters,
 } from './directoryForms';
+
+const pageSource = () =>
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), 'index.tsx'),
+    'utf8',
+  );
 
 describe('directoryForms', () => {
   it('trims department form values', () => {
@@ -127,11 +140,11 @@ describe('directoryForms', () => {
       email: 'Admin.User@Example.COM',
       display_name: '홍길동 Admin',
       status: 'disabled',
-      global_roles: [],
+      global_roles: ['application_admin'],
     });
   });
 
-  it('builds admin status and system_admin role patch requests', () => {
+  it('detects incomplete Admin Console access without application_admin', () => {
     const adminUser: API.ManagedAdminUser = {
       user_id: 'admin-1',
       email: 'admin@example.com',
@@ -145,22 +158,79 @@ describe('directoryForms', () => {
       last_login_at: null,
     };
 
+    expect(hasIncompleteApplicationAdminAccess(adminUser)).toBe(true);
+    expect(
+      hasIncompleteApplicationAdminAccess({
+        ...adminUser,
+        global_roles: ['application_admin'],
+      }),
+    ).toBe(false);
+  });
+
+  it('builds admin status patch requests without direct system_admin role patching helpers', () => {
+    const adminUser: API.ManagedAdminUser = {
+      user_id: 'admin-1',
+      email: 'admin@example.com',
+      display_name: 'Admin One',
+      status: 'active',
+      organization_user_id: 'org-user-1',
+      global_roles: ['application_admin'],
+      is_last_active_system_admin: false,
+      created_at: '2026-07-14T12:43:24Z',
+      updated_at: '2026-07-14T12:43:24Z',
+      last_login_at: null,
+    };
+
     expect(toAdminUserStatusPatchRequest('disabled')).toEqual({ status: 'disabled' });
     expect(hasSystemAdminRole(adminUser)).toBe(false);
-    expect(toSystemAdminRolesPatchRequest(adminUser, true)).toEqual({
-      global_roles: ['system_admin'],
-    });
-    expect(
-      toSystemAdminRolesPatchRequest(
-        { ...adminUser, global_roles: ['system_admin'] },
-        false,
-      ),
-    ).toEqual({ global_roles: [] });
   });
 
   it('builds the Permission Management shortcut URL for linked admin accounts', () => {
     expect(permissionManagementAdminUserUrl(' admin/user 1 ')).toBe(
       '/permission-management?admin_user_id=admin%2Fuser%201',
     );
+  });
+
+  it('shows incomplete access and removes direct system_admin grant copy from the modal', () => {
+    const source = pageSource();
+
+    expect(source).toContain('incomplete access');
+    expect(source).toContain('application_admin');
+    expect(source).not.toContain('system_admin 부여');
+    expect(source).not.toContain('system_admin 해제');
+  });
+
+  it('normalizes department toolbar filters into list params', () => {
+    expect(toDepartmentListParamsFromFilters(EMPTY_DEPARTMENT_TABLE_FILTERS)).toEqual({
+      limit: 100,
+    });
+    expect(
+      toDepartmentListParamsFromFilters({
+        keyword: ' 0969 IT지원부 ',
+        use_yn: 'Y',
+      }),
+    ).toEqual({
+      query: '0969 IT지원부',
+      use_yn: 'Y',
+      limit: 100,
+    });
+  });
+
+  it('normalizes organization user toolbar filters into list params', () => {
+    expect(
+      toOrganizationUserListParamsFromFilters(EMPTY_ORGANIZATION_USER_TABLE_FILTERS),
+    ).toEqual({ limit: 100 });
+    expect(
+      toOrganizationUserListParamsFromFilters({
+        keyword: ' 홍길동 ',
+        department_id: ' dept-1 ',
+        use_yn: 'N',
+      }),
+    ).toEqual({
+      query: '홍길동',
+      department_id: 'dept-1',
+      use_yn: 'N',
+      limit: 100,
+    });
   });
 });

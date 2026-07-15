@@ -9,6 +9,17 @@ export type OrganizationUserFormValues = {
   department_id: string;
 };
 
+export type DepartmentTableFilters = {
+  keyword?: string;
+  use_yn?: API.UseYn;
+};
+
+export type OrganizationUserTableFilters = {
+  keyword?: string;
+  department_id?: string;
+  use_yn?: API.UseYn;
+};
+
 export type AdminAccessCreateFormValues = {
   email: string;
   display_name: string;
@@ -20,6 +31,8 @@ export type DepartmentOption = {
 };
 
 export const DIRECTORY_DEPARTMENT_OPTION_LIMIT = 100;
+export const EMPTY_DEPARTMENT_TABLE_FILTERS: DepartmentTableFilters = {};
+export const EMPTY_ORGANIZATION_USER_TABLE_FILTERS: OrganizationUserTableFilters = {};
 
 export const canAccessOrganizationDirectory = (globalRoles: string[]) =>
   globalRoles.includes('system_admin');
@@ -75,6 +88,34 @@ export const toOrganizationUserUseYnPatchRequest = (
   use_yn: useYn,
 });
 
+const optionalTrimmedString = (value: string | undefined) => {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+};
+
+export const toDepartmentListParamsFromFilters = (
+  filters: DepartmentTableFilters,
+) => ({
+  ...(optionalTrimmedString(filters.keyword)
+    ? { query: optionalTrimmedString(filters.keyword) }
+    : {}),
+  ...(filters.use_yn ? { use_yn: filters.use_yn } : {}),
+  limit: 100,
+});
+
+export const toOrganizationUserListParamsFromFilters = (
+  filters: OrganizationUserTableFilters,
+) => ({
+  ...(optionalTrimmedString(filters.keyword)
+    ? { query: optionalTrimmedString(filters.keyword) }
+    : {}),
+  ...(optionalTrimmedString(filters.department_id)
+    ? { department_id: optionalTrimmedString(filters.department_id) }
+    : {}),
+  ...(filters.use_yn ? { use_yn: filters.use_yn } : {}),
+  limit: 100,
+});
+
 export const toAdminUserCreateRequest = (
   values: AdminAccessCreateFormValues,
   organizationUser: API.OrganizationUser,
@@ -83,7 +124,7 @@ export const toAdminUserCreateRequest = (
   email: values.email.trim(),
   display_name: values.display_name.trim(),
   status: 'disabled',
-  global_roles: [],
+  global_roles: ['application_admin'],
 });
 
 export const permissionManagementAdminUserUrl = (adminUserId: string) =>
@@ -98,14 +139,6 @@ export const toAdminUserStatusPatchRequest = (
 export const hasSystemAdminRole = (adminUser: API.ManagedAdminUser) =>
   adminUser.global_roles.includes('system_admin');
 
-export const toSystemAdminRolesPatchRequest = (
-  adminUser: API.ManagedAdminUser,
-  grant: boolean,
-): API.ManagedAdminUserPatchRequest => {
-  const roleSet = new Set(adminUser.global_roles);
-  if (grant) roleSet.add('system_admin');
-  else roleSet.delete('system_admin');
-  return {
-    global_roles: Array.from(roleSet).sort(),
-  };
-};
+export const hasIncompleteApplicationAdminAccess = (
+  adminUser: Pick<API.ManagedAdminUser, 'global_roles'>,
+) => !adminUser.global_roles.includes('application_admin');

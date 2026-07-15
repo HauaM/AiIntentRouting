@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -39,12 +40,13 @@ def test_admin_account_repository_flow_uses_global_and_service_scoped_roles(
             display_name="Admin Auth IT",
             password_hash="password-hash",
             status="active",
+            admin_access_reason="repository auth integration test",
             created_at=now,
             updated_at=now,
         )
         repository.assign_admin_user_role(
             user_id=user.user_id,
-            role="system_admin",
+            role="application_admin",
             assigned_by="bootstrap",
             assigned_at=now,
         )
@@ -69,7 +71,7 @@ def test_admin_account_repository_flow_uses_global_and_service_scoped_roles(
         assert repository.get_admin_user_by_email("admin-auth-it@example.com") == user
         assert repository.get_admin_user_by_email("ADMIN-AUTH-IT@EXAMPLE.COM") == user
         assert [role.role for role in repository.list_admin_user_roles(user_id)] == [
-            "system_admin"
+            "application_admin"
         ]
         assert [
             role.role for role in repository.list_user_service_roles(user_id, service_id)
@@ -89,7 +91,7 @@ def test_admin_account_repository_flow_uses_global_and_service_scoped_roles(
         assert session_context is not None
         assert session_context.user == user
         assert session_context.admin_session == session
-        assert session_context.global_roles == frozenset({"system_admin"})
+        assert session_context.global_roles == frozenset({"application_admin"})
         assert [
             (role.service_id, role.role) for role in session_context.service_roles
         ] == [(service_id, "service_developer")]
@@ -113,9 +115,9 @@ def test_admin_account_repository_flow_uses_global_and_service_scoped_roles(
             is None
         )
         assert db_session.get(
-            models.UserServiceRole,
-            (user_id, "*", "system_admin"),
-        ) is None
+            models.AdminUserRole,
+            (user_id, "application_admin"),
+        ) is not None
     finally:
         _purge_account_auth_rows(db_session, user_id=user_id, service_id=service_id)
 
@@ -302,6 +304,7 @@ def test_admin_auth_login_rejects_active_admin_linked_to_inactive_organization_u
             password_hash=hash_admin_password(password),
             status="active",
             organization_user_id=organization_user.id,
+            admin_access_reason="inactive linked organization user login test",
             created_at=now,
             updated_at=now,
         )
@@ -332,12 +335,173 @@ def test_admin_auth_login_rejects_active_admin_linked_to_inactive_organization_u
         )
 
 
+def test_application_admin_can_login_without_service_roles(db_session: Session) -> None:
+    app = create_app()
+
+    def override_session() -> Iterator[Session]:
+        yield db_session
+
+    app.dependency_overrides[get_admin_session] = override_session
+    client = TestClient(app)
+    repository = IntentRoutingRepository(db_session)
+    suffix = uuid4().hex
+    user_id = f"app-admin-{suffix}"
+    email = f"app-admin-{suffix}@example.com"
+    service_id = f"svc-app-admin-{suffix}"
+    now = datetime.now(UTC)
+    password = "application-admin-password"
+
+    _purge_account_auth_rows(db_session, user_id=user_id, service_id=service_id)
+    try:
+        user = repository.create_admin_user(
+            user_id=user_id,
+            email=email,
+            display_name="Application Admin",
+            password_hash=hash_admin_password(password),
+            status="active",
+            admin_access_reason="approved request",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.assign_admin_user_role(
+            user_id=user.user_id,
+            role="application_admin",
+            assigned_by="system-admin",
+            assigned_at=now,
+        )
+        db_session.commit()
+
+        response = client.post(
+            "/admin/v1/auth/login",
+            json={"email": user.email, "password": password},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["global_roles"] == ["application_admin"]
+        assert body["service_roles"] == []
+        assert password not in str(body)
+        assert "password_hash" not in str(body)
+        assert "token_hash" not in str(body)
+    finally:
+        _purge_account_auth_rows(db_session, user_id=user_id, service_id=service_id)
+
+
+def test_admin_user_without_access_role_cannot_login(db_session: Session) -> None:
+    app = create_app()
+
+    def override_session() -> Iterator[Session]:
+        yield db_session
+
+    app.dependency_overrides[get_admin_session] = override_session
+    client = TestClient(app)
+    repository = IntentRoutingRepository(db_session)
+    suffix = uuid4().hex
+    user_id = f"no-role-{suffix}"
+    email = f"no-role-{suffix}@example.com"
+    service_id = f"svc-no-role-{suffix}"
+    now = datetime.now(UTC)
+    password = "no-role-password"
+
+    _purge_account_auth_rows(db_session, user_id=user_id, service_id=service_id)
+    try:
+        user = repository.create_admin_user(
+            user_id=user_id,
+            email=email,
+            display_name="No Role",
+            password_hash=hash_admin_password(password),
+            status="active",
+            admin_access_reason="missing access role test",
+            created_at=now,
+            updated_at=now,
+        )
+        db_session.commit()
+
+        response = client.post(
+            "/admin/v1/auth/login",
+            json={"email": user.email, "password": password},
+        )
+
+        assert response.status_code == 401
+    finally:
+        _purge_account_auth_rows(db_session, user_id=user_id, service_id=service_id)
+
+
+def test_auth_me_rejects_existing_session_after_application_admin_role_revocation(
+    db_session: Session,
+) -> None:
+    app = create_app()
+
+    def override_session() -> Iterator[Session]:
+        yield db_session
+
+    app.dependency_overrides[get_admin_session] = override_session
+    client = TestClient(app)
+    repository = IntentRoutingRepository(db_session)
+    suffix = uuid4().hex
+    user_id = f"revoked-app-admin-{suffix}"
+    email = f"revoked-app-admin-{suffix}@example.com"
+    service_id = f"svc-revoked-app-admin-{suffix}"
+    now = datetime.now(UTC)
+    password = "revoked-app-admin-password"
+
+    _purge_account_auth_rows(db_session, user_id=user_id, service_id=service_id)
+    try:
+        user = repository.create_admin_user(
+            user_id=user_id,
+            email=email,
+            display_name="Revoked Application Admin",
+            password_hash=hash_admin_password(password),
+            status="active",
+            admin_access_reason="session revocation test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.assign_admin_user_role(
+            user_id=user.user_id,
+            role="application_admin",
+            assigned_by="system-admin",
+            assigned_at=now,
+        )
+        db_session.commit()
+
+        login_response = client.post(
+            "/admin/v1/auth/login",
+            json={"email": user.email, "password": password},
+        )
+
+        assert login_response.status_code == 200
+        assert login_response.json()["global_roles"] == ["application_admin"]
+        assert ADMIN_SESSION_COOKIE_NAME in client.cookies
+
+        me_response = client.get("/admin/v1/auth/me")
+
+        assert me_response.status_code == 200
+        assert me_response.json()["global_roles"] == ["application_admin"]
+
+        db_session.execute(
+            text(
+                "delete from admin_user_roles "
+                "where user_id = :user_id and role = 'application_admin'"
+            ),
+            {"user_id": user.user_id},
+        )
+        db_session.commit()
+
+        revoked_me_response = client.get("/admin/v1/auth/me")
+
+        assert revoked_me_response.status_code == 401
+    finally:
+        _purge_account_auth_rows(db_session, user_id=user_id, service_id=service_id)
+
+
 def test_admin_startup_provisioning_creates_login_account(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     email = "startup-login@example.com"
     password = "startup-login-password"
+    owner_snapshot = _capture_system_admin_owner_state(db_session)
 
     _purge_admin_by_email(db_session, email)
     monkeypatch.setenv("ADMIN_SYSTEM_ADMIN_EMAIL", email)
@@ -365,6 +529,7 @@ def test_admin_startup_provisioning_creates_login_account(
     app.dependency_overrides[get_admin_session] = override_session
 
     try:
+        _set_system_admin_owner_present(db_session, owner_snapshot, present=False)
         with TestClient(app) as client:
             response = client.post(
                 "/admin/v1/auth/login",
@@ -376,6 +541,49 @@ def test_admin_startup_provisioning_creates_login_account(
         assert response.json()["global_roles"] == ["system_admin"]
     finally:
         _purge_admin_by_email(db_session, email)
+        _set_system_admin_owner_present(db_session, owner_snapshot, present=True)
+
+
+def _capture_system_admin_owner_state(
+    db_session: Session,
+) -> tuple[str, list[str]] | None:
+    repository = IntentRoutingRepository(db_session)
+    owner_user_id = db_session.scalar(
+        text("select user_id from admin_user_roles where role = 'system_admin' limit 1")
+    )
+    if owner_user_id is None:
+        return None
+    return (
+        owner_user_id,
+        [role.role for role in repository.list_admin_user_roles(owner_user_id)],
+    )
+
+
+def _set_system_admin_owner_present(
+    db_session: Session,
+    snapshot: tuple[str, list[str]] | None,
+    *,
+    present: bool,
+) -> None:
+    if snapshot is None:
+        return
+    repository = IntentRoutingRepository(db_session)
+    user_id, original_roles = snapshot
+    current_roles = {
+        role.role for role in repository.list_admin_user_roles(user_id)
+    }
+    if present:
+        if "system_admin" not in current_roles and "system_admin" in original_roles:
+            repository.ensure_admin_user_role(
+                user_id=user_id,
+                role="system_admin",
+                assigned_by="integration-test-restore",
+                assigned_at=datetime.now(UTC),
+            )
+    else:
+        if "system_admin" in current_roles:
+            repository.delete_admin_user_role_by_key(user_id, "system_admin")
+    db_session.commit()
 
 
 def _purge_admin_by_email(db_session: Session, email: str) -> None:

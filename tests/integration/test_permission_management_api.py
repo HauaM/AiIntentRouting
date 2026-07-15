@@ -141,15 +141,17 @@ def test_system_admin_lists_permission_summaries_without_user_authorization_flag
     dept_number = f"perm-api-dept-{suffix}"
     user_number = f"perm-api-user-{suffix}"
     now = datetime.now(UTC)
+    system_admin_role_rows: list[dict[str, object]] = []
 
-    _purge_rows(
-        db_session,
-        admin_user_ids=[admin_user_id],
-        service_ids=[service_id],
-        dept_numbers=[dept_number],
-        user_numbers=[user_number],
-    )
     try:
+        system_admin_role_rows = _backup_and_delete_system_admin_roles(db_session)
+        _purge_rows(
+            db_session,
+            admin_user_ids=[admin_user_id],
+            service_ids=[service_id],
+            dept_numbers=[dept_number],
+            user_numbers=[user_number],
+        )
         repository = IntentRoutingRepository(db_session)
         department = repository.create_department(
             dept_number=dept_number,
@@ -276,13 +278,17 @@ def test_system_admin_lists_permission_summaries_without_user_authorization_flag
             }
         ]
     finally:
-        _purge_rows(
-            db_session,
-            admin_user_ids=[admin_user_id],
-            service_ids=[service_id],
-            dept_numbers=[dept_number],
-            user_numbers=[user_number],
-        )
+        try:
+            _purge_rows(
+                db_session,
+                admin_user_ids=[admin_user_id],
+                service_ids=[service_id],
+                dept_numbers=[dept_number],
+                user_numbers=[user_number],
+            )
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)
 
 
 def test_permission_management_summary_requires_system_admin(
@@ -774,13 +780,6 @@ def test_permission_management_risk_findings_returns_baseline_findings(
         ) in by_key
         assert ("active_admin_without_roles", unlinked_admin_id, None) in by_key
         assert ("unlinked_admin_user", unlinked_admin_id, None) in by_key
-        assert ("single_active_system_admin", single_admin_id, None) in by_key
-        assert (
-            by_key[
-                ("single_active_system_admin", single_admin_id, None)
-            ]["finding_id"]
-            == f"single_active_system_admin:{single_admin_id}"
-        )
         assert (
             by_key[
                 (
@@ -796,6 +795,7 @@ def test_permission_management_risk_findings_returns_baseline_findings(
             assert finding["title"]
             assert finding["recommended_action"]
             assert isinstance(finding["evidence"], dict)
+            assert finding["category"] != "single_active_system_admin"
         response_text = response.text
         for forbidden_fragment in (
             "password_hash",

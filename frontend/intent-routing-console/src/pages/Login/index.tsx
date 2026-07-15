@@ -68,6 +68,16 @@ export default function LoginPage() {
           <Typography.Paragraph type="secondary">
             Sign in with your admin account to continue.
           </Typography.Paragraph>
+          <Typography.Paragraph type="secondary">
+            Need a new admin account?{' '}
+            <Button
+              type="link"
+              onClick={() => history.push('/admin-access-request')}
+              style={{ paddingInline: 0 }}
+            >
+              Submit an access request
+            </Button>
+          </Typography.Paragraph>
           <Form<LoginFormValues>
             layout="vertical"
             requiredMark={false}

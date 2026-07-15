@@ -5,7 +5,9 @@ import {
   Alert,
   Button,
   Card,
+  Form,
   Input,
+  Modal,
   Select,
   Space,
   Tabs,
@@ -16,18 +18,22 @@ import {
 import { AdminShell } from '@/components/AdminShell';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import {
+  approveAdminAccessRequest,
   grantServiceRole,
+  listAdminAccessRequests,
   listPermissionAdminUsers,
   listPermissionAuditLogs,
   listPermissionRiskFindings,
   listPermissionServiceRoles,
   patchManagedAdminUser,
+  rejectAdminAccessRequest,
   revokeServiceRole,
   searchAdminUsers,
+  transferSystemAdmin,
 } from '@/services/adminServices';
 import {
+  buildSystemAdminTransferRequest,
   canAccessPermissionManagement,
-  countActiveLoginEligibleSystemAdmins,
   filterSystemAdminRows,
   isLastActiveSystemAdminProtected,
   permissionAdminUserRowKey,
@@ -115,15 +121,18 @@ const toUserOption = (user: API.AdminUserLookup): UserSelectOption => ({
 export default function PermissionManagementPage() {
   const location = useLocation();
   const { session, restoreSession } = useModel('adminSession');
+  const [rejectRequestForm] = Form.useForm<{ decision_reason: string }>();
+  const [transferReasonForm] = Form.useForm<{ reason: string }>();
   const adminActionRef = useRef<ActionType>();
+  const accessRequestActionRef = useRef<ActionType>();
   const globalRoleActionRef = useRef<ActionType>();
   const serviceRoleActionRef = useRef<ActionType>();
   const auditActionRef = useRef<ActionType>();
   const riskActionRef = useRef<ActionType>();
   const [activeTab, setActiveTab] =
     useState<PermissionManagementTabKey>('admin-users');
-  const [activeSystemAdminCount, setActiveSystemAdminCount] = useState<number>();
   const [mutatingAdminUserId, setMutatingAdminUserId] = useState<string>();
+  const [mutatingAccessRequestId, setMutatingAccessRequestId] = useState<string>();
   const [grantServiceId, setGrantServiceId] = useState('');
   const [grantUserId, setGrantUserId] = useState<string>();
   const [grantRole, setGrantRole] = useState<API.ServiceRole>();
@@ -145,6 +154,7 @@ export default function PermissionManagementPage() {
 
   const reloadAdminRelatedTables = () => {
     adminActionRef.current?.reload();
+    accessRequestActionRef.current?.reload();
     globalRoleActionRef.current?.reload();
     auditActionRef.current?.reload();
     riskActionRef.current?.reload();
@@ -172,7 +182,7 @@ export default function PermissionManagementPage() {
     }
   };
 
-  const handleSystemAdminRoleChange = async (
+  const handleApplicationAdminRoleChange = async (
     row: API.PermissionAdminUserSummary,
     grant: boolean,
   ) => {
@@ -189,6 +199,117 @@ export default function PermissionManagementPage() {
     } finally {
       setMutatingAdminUserId(undefined);
     }
+  };
+
+  const handleSystemAdminTransfer = async (
+    row: API.PermissionAdminUserSummary,
+    reason: string,
+  ) => {
+    if (!session.user) return;
+
+    setMutatingAdminUserId(row.user_id);
+    try {
+      await transferSystemAdmin(
+        buildSystemAdminTransferRequest(session.user.user_id, row.user_id, reason),
+      );
+      await restoreSession();
+      reloadAdminRelatedTables();
+    } finally {
+      setMutatingAdminUserId(undefined);
+    }
+  };
+
+  const openSystemAdminTransferModal = (row: API.PermissionAdminUserSummary) => {
+    transferReasonForm.resetFields();
+
+    Modal.confirm({
+      title: 'system_admin 소유권을 이관하시겠습니까?',
+      okText: 'system_admin 이관',
+      okButtonProps: { danger: true },
+      cancelText: '취소',
+      content: (
+        <Form form={transferReasonForm} layout="vertical" requiredMark={false}>
+          <Typography.Paragraph style={{ marginBottom: 12 }}>
+            {row.display_name} ({row.email}) 계정으로 system_admin 소유권을 이관합니다.
+          </Typography.Paragraph>
+          <Form.Item
+            name="reason"
+            label="이관 사유"
+            rules={[
+              { required: true, whitespace: true, message: '이관 사유를 입력하세요.' },
+              {
+                validator: async (_, value: string | undefined) => {
+                  if ((value?.trim().length ?? 0) < 10) {
+                    throw new Error('이관 사유는 10자 이상 입력하세요.');
+                  }
+                },
+              },
+            ]}
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder="system_admin 이관 사유를 10자 이상 입력하세요."
+            />
+          </Form.Item>
+        </Form>
+      ),
+      async onOk() {
+        const values = await transferReasonForm.validateFields();
+        await handleSystemAdminTransfer(row, values.reason);
+      },
+    });
+  };
+
+  const handleApproveAccessRequest = async (applicant: API.AdminAccessRequest) => {
+    setMutatingAccessRequestId(applicant.request_id);
+    try {
+      await approveAdminAccessRequest(applicant.request_id, {
+        decision_reason: `Approved for ${applicant.email}`,
+      });
+      reloadAdminRelatedTables();
+    } finally {
+      setMutatingAccessRequestId(undefined);
+    }
+  };
+
+  const openRejectAccessRequestModal = (applicant: API.AdminAccessRequest) => {
+    rejectRequestForm.resetFields();
+
+    Modal.confirm({
+      title: '접근 신청을 반려하시겠습니까?',
+      okText: '반려',
+      okButtonProps: { danger: true },
+      cancelText: '취소',
+      content: (
+        <Form form={rejectRequestForm} layout="vertical" requiredMark={false}>
+          <Typography.Paragraph style={{ marginBottom: 12 }}>
+            {applicant.name} ({applicant.email}) 신청을 반려합니다.
+          </Typography.Paragraph>
+          <Form.Item
+            name="decision_reason"
+            label="반려 사유"
+            rules={[
+              { required: true, whitespace: true, message: '반려 사유를 입력하세요.' },
+            ]}
+          >
+            <Input.TextArea rows={4} placeholder="반려 사유를 입력하세요." />
+          </Form.Item>
+        </Form>
+      ),
+      async onOk() {
+        const values = await rejectRequestForm.validateFields();
+        setMutatingAccessRequestId(applicant.request_id);
+        try {
+          await rejectAdminAccessRequest(applicant.request_id, {
+            decision_reason: values.decision_reason.trim(),
+          });
+          reloadAdminRelatedTables();
+          message.success('처리되었습니다.');
+        } finally {
+          setMutatingAccessRequestId(undefined);
+        }
+      },
+    });
   };
 
   const handleUserSearch = async (query: string) => {
@@ -332,6 +453,7 @@ export default function PermissionManagementPage() {
         const protectedLastAdmin = isLastActiveSystemAdminProtected(row);
         const inactiveOrgUser = row.organization_user?.use_yn === 'N';
         const hasSystemAdmin = row.global_roles.includes('system_admin');
+        const hasApplicationAdmin = row.global_roles.includes('application_admin');
         const mutating = mutatingAdminUserId === row.user_id;
 
         return [
@@ -361,30 +483,48 @@ export default function PermissionManagementPage() {
             비활성화
           </ConfirmActionButton>,
           <ConfirmActionButton
-            key="grant-system-admin"
+            key="grant-application-admin"
             type="link"
             size="small"
-            title="Grant system_admin?"
-            okText="system_admin 부여"
-            content={`${row.email} 계정에 system_admin 전역 권한을 부여합니다.`}
-            disabled={mutating || hasSystemAdmin}
-            onConfirm={() => handleSystemAdminRoleChange(row, true)}
+            title="Grant application_admin?"
+            okText="application_admin 부여"
+            content={`${row.email} 계정에 application_admin 전역 권한을 부여합니다.`}
+            disabled={mutating || hasApplicationAdmin}
+            onConfirm={() => handleApplicationAdminRoleChange(row, true)}
           >
-            system_admin 부여
+            application_admin 부여
           </ConfirmActionButton>,
           <ConfirmActionButton
-            key="revoke-system-admin"
+            key="revoke-application-admin"
             danger
             type="link"
             size="small"
-            title="Revoke system_admin?"
-            okText="system_admin 해제"
-            content={`${row.email} 계정의 system_admin 전역 권한을 해제합니다.`}
-            disabled={mutating || !hasSystemAdmin || protectedLastAdmin}
-            onConfirm={() => handleSystemAdminRoleChange(row, false)}
+            title="Revoke application_admin?"
+            okText="application_admin 해제"
+            content={`${row.email} 계정의 application_admin 전역 권한을 해제합니다.`}
+            disabled={mutating || !hasApplicationAdmin || hasSystemAdmin}
+            onConfirm={() => handleApplicationAdminRoleChange(row, false)}
           >
-            system_admin 해제
+            application_admin 해제
           </ConfirmActionButton>,
+          <Button
+            key="transfer-system-admin"
+            danger
+            type="link"
+            size="small"
+            disabled={
+              mutating ||
+              !session.user ||
+              row.user_id === session.user.user_id ||
+              hasSystemAdmin ||
+              !hasApplicationAdmin ||
+              row.status !== 'active' ||
+              inactiveOrgUser
+            }
+            onClick={() => openSystemAdminTransferModal(row)}
+          >
+            system_admin 이관
+          </Button>,
         ];
       },
     },
@@ -434,6 +574,108 @@ export default function PermissionManagementPage() {
         ) : (
           <Tag color="default">normal</Tag>
         ),
+    },
+  ];
+
+  const accessRequestColumns: ProColumns<API.AdminAccessRequest>[] = [
+    {
+      title: 'Requested',
+      dataIndex: 'requested_at',
+      valueType: 'dateTime',
+      width: 168,
+    },
+    {
+      title: 'User #',
+      dataIndex: 'user_number',
+      search: false,
+      render: (_, applicant) => <Typography.Text code>{applicant.user_number}</Typography.Text>,
+      width: 120,
+    },
+    {
+      title: 'Name',
+      dataIndex: 'name',
+      search: false,
+      width: 120,
+    },
+    {
+      title: 'Email',
+      dataIndex: 'email',
+      search: false,
+      ellipsis: true,
+    },
+    {
+      title: 'Department',
+      search: false,
+      render: (_, applicant) => applicant.department?.name ?? applicant.department_id,
+    },
+    {
+      title: 'Access reason',
+      dataIndex: 'access_reason',
+      search: false,
+      ellipsis: true,
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      width: 112,
+      render: (_, applicant) => (
+        <Tag color={applicant.status === 'pending' ? 'orange' : 'default'}>
+          {applicant.status}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Decided by',
+      dataIndex: 'decided_by',
+      search: false,
+      render: (_, applicant) => applicant.decided_by ?? '-',
+    },
+    {
+      title: 'Decision reason',
+      dataIndex: 'decision_reason',
+      search: false,
+      ellipsis: true,
+      render: (_, applicant) => applicant.decision_reason ?? '-',
+    },
+    {
+      title: '',
+      valueType: 'option',
+      width: 120,
+      render: (_, applicant) => {
+        const mutating = mutatingAccessRequestId === applicant.request_id;
+        const pending = applicant.status === 'pending';
+
+        return [
+          <ConfirmActionButton
+            key="approve"
+            type="link"
+            size="small"
+            title="접근 신청을 승인하시겠습니까?"
+            okText="승인"
+            content={
+              <Space direction="vertical" size={4}>
+                <Typography.Text>{applicant.name}</Typography.Text>
+                <Typography.Text type="secondary">{applicant.email}</Typography.Text>
+                <Typography.Text>{applicant.access_reason}</Typography.Text>
+              </Space>
+            }
+            disabled={mutating || !pending}
+            onConfirm={() => handleApproveAccessRequest(applicant)}
+          >
+            승인
+          </ConfirmActionButton>,
+          <Button
+            key="reject"
+            danger
+            type="link"
+            size="small"
+            disabled={mutating || !pending}
+            onClick={() => openRejectAccessRequestModal(applicant)}
+          >
+            반려
+          </Button>,
+        ];
+      },
     },
   ];
 
@@ -661,21 +903,33 @@ export default function PermissionManagementPage() {
                 };
               }
 
+              if (tab.key === 'access-requests') {
+                return {
+                  key: tab.key,
+                  label: tab.label,
+                  children: (
+                    <ProTable<API.AdminAccessRequest>
+                      rowKey="request_id"
+                      actionRef={accessRequestActionRef}
+                      columns={accessRequestColumns}
+                      request={async () => {
+                        const rows = await listAdminAccessRequests({ limit: 100 });
+                        return { data: rows, total: rows.length, success: true };
+                      }}
+                      pagination={false}
+                      search={false}
+                      options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                    />
+                  ),
+                };
+              }
+
               if (tab.key === 'global-roles') {
                 return {
                   key: tab.key,
                   label: tab.label,
                   children: (
-                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                      {activeSystemAdminCount === 1 ? (
-                        <Alert
-                          type="warning"
-                          showIcon
-                          message="active login-eligible system_admin이 1명뿐입니다."
-                          description="마지막 system_admin 보호 상태인 계정은 비활성화와 권한 해제가 비활성화됩니다."
-                        />
-                      ) : null}
-                      <ProTable<API.PermissionAdminUserSummary>
+                    <ProTable<API.PermissionAdminUserSummary>
                         rowKey={permissionAdminUserRowKey}
                         actionRef={globalRoleActionRef}
                         columns={globalRoleColumns}
@@ -685,9 +939,6 @@ export default function PermissionManagementPage() {
                             limit: 100,
                           });
                           const systemAdminRows = filterSystemAdminRows(rows);
-                          setActiveSystemAdminCount(
-                            countActiveLoginEligibleSystemAdmins(systemAdminRows),
-                          );
                           return {
                             data: systemAdminRows,
                             total: systemAdminRows.length,
@@ -698,7 +949,6 @@ export default function PermissionManagementPage() {
                         search={false}
                         options={{ density: true, fullScreen: false, reload: true, setting: true }}
                       />
-                    </Space>
                   ),
                 };
               }

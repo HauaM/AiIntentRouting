@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -12,6 +13,433 @@ from intent_routing.db.repositories import IntentRoutingRepository
 
 def test_repository_exposes_permission_summary_helper() -> None:
     assert "list_permission_admin_user_summaries" in dir(IntentRoutingRepository)
+
+
+def test_repository_allows_application_admin_role(db_session: Session) -> None:
+    repository = IntentRoutingRepository(db_session)
+    user_id = f"app-admin-{uuid4().hex}"
+    now = datetime.now(UTC)
+
+    _purge_rows(
+        db_session,
+        admin_user_ids=[user_id],
+        service_ids=[],
+        dept_numbers=[],
+        user_numbers=[],
+    )
+    try:
+        repository.create_admin_user(
+            user_id=user_id,
+            email=f"{user_id}@example.com",
+            display_name="Application Admin",
+            password_hash="hash",
+            status="active",
+            admin_access_reason="approved test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.assign_admin_user_role(
+            user_id=user_id,
+            role="application_admin",
+            assigned_by="system-admin",
+            assigned_at=now,
+        )
+
+        assert [role.role for role in repository.list_admin_user_roles(user_id)] == [
+            "application_admin"
+        ]
+    finally:
+        _purge_rows(
+            db_session,
+            admin_user_ids=[user_id],
+            service_ids=[],
+            dept_numbers=[],
+            user_numbers=[],
+        )
+
+
+def test_repository_rejects_second_system_admin_role(db_session: Session) -> None:
+    repository = IntentRoutingRepository(db_session)
+    now = datetime.now(UTC)
+    first_id = f"system-admin-a-{uuid4().hex}"
+    second_id = f"system-admin-b-{uuid4().hex}"
+    system_admin_role_rows: list[dict[str, object]] = []
+
+    try:
+        system_admin_role_rows = _backup_and_delete_system_admin_roles(db_session)
+        _purge_rows(
+            db_session,
+            admin_user_ids=[first_id, second_id],
+            service_ids=[],
+            dept_numbers=[],
+            user_numbers=[],
+        )
+        for user_id in (first_id, second_id):
+            repository.create_admin_user(
+                user_id=user_id,
+                email=f"{user_id}@example.com",
+                display_name=user_id,
+                password_hash="hash",
+                status="active",
+                admin_access_reason="single system admin test",
+                created_at=now,
+                updated_at=now,
+            )
+
+        repository.assign_admin_user_role(
+            user_id=first_id,
+            role="system_admin",
+            assigned_by="test",
+            assigned_at=now,
+        )
+
+        with pytest.raises(ValueError, match="system_admin already exists"):
+            repository.assign_admin_user_role(
+                user_id=second_id,
+                role="system_admin",
+                assigned_by="test",
+                assigned_at=now,
+            )
+    finally:
+        try:
+            _purge_rows(
+                db_session,
+                admin_user_ids=[first_id, second_id],
+                service_ids=[],
+                dept_numbers=[],
+                user_numbers=[],
+            )
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)
+
+
+def _backup_and_delete_system_admin_roles(
+    db_session: Session,
+) -> list[dict[str, object]]:
+    rows = [
+        dict(row)
+        for row in db_session.execute(
+            text(
+                "select user_id, role, assigned_by, assigned_at "
+                "from admin_user_roles where role = 'system_admin'"
+            )
+        ).mappings()
+    ]
+    db_session.execute(text("delete from admin_user_roles where role = 'system_admin'"))
+    db_session.commit()
+    return rows
+
+
+def _restore_system_admin_roles(
+    db_session: Session,
+    rows: list[dict[str, object]],
+) -> None:
+    if rows:
+        db_session.execute(
+            text(
+                "insert into admin_user_roles (user_id, role, assigned_by, assigned_at) "
+                "values (:user_id, :role, :assigned_by, :assigned_at) "
+                "on conflict (user_id, role) do update set "
+                "assigned_by = excluded.assigned_by, "
+                "assigned_at = excluded.assigned_at"
+            ),
+            rows,
+        )
+        db_session.commit()
+    else:
+        db_session.commit()
+
+
+def test_repository_creates_admin_access_request_with_normalized_email(
+    db_session: Session,
+) -> None:
+    repository = IntentRoutingRepository(db_session)
+    suffix = uuid4().hex[:8]
+    dept_number = f"request-create-dept-{suffix}"
+    user_number = f"request-create-user-{suffix}"
+    email = f"  Request.Create.{suffix}@Example.COM  "
+    now = datetime.now(UTC).replace(microsecond=0)
+
+    _purge_rows(
+        db_session,
+        admin_user_ids=[],
+        service_ids=[],
+        dept_numbers=[dept_number],
+        user_numbers=[user_number],
+        request_emails=[email],
+        request_user_numbers=[user_number],
+    )
+    try:
+        repository = IntentRoutingRepository(db_session)
+        department = repository.create_department(
+            dept_number=dept_number,
+            name=f"Request Create Department {suffix}",
+            use_yn="Y",
+            created_by="unit-test",
+            updated_by="unit-test",
+            created_at=now,
+            updated_at=now,
+        )
+
+        request = repository.create_admin_access_request(
+            user_number=user_number,
+            name=f"Request Create User {suffix}",
+            department_id=department.id,
+            email=email,
+            password_hash="pending-password-hash",
+            access_reason="Need Admin UI access",
+            requested_at=now,
+        )
+
+        assert request.email == f"Request.Create.{suffix}@Example.COM"
+        assert request.email_normalized == f"request.create.{suffix}@example.com"
+        assert request.status == "pending"
+        assert request.password_hash == "pending-password-hash"
+    finally:
+        _purge_rows(
+            db_session,
+            admin_user_ids=[],
+            service_ids=[],
+            dept_numbers=[dept_number],
+            user_numbers=[user_number],
+            request_emails=[email],
+            request_user_numbers=[user_number],
+        )
+
+
+def test_repository_lists_admin_access_requests_with_filters_order_and_limit(
+    db_session: Session,
+) -> None:
+    suffix = uuid4().hex[:8]
+    dept_number = f"request-list-dept-{suffix}"
+    pending_user_number = f"request-list-pending-{suffix}"
+    approved_user_number = f"request-list-approved-{suffix}"
+    rejected_user_number = f"request-list-rejected-{suffix}"
+    approved_admin_user_id = f"request-list-approved-admin-{suffix}"
+    now = datetime.now(UTC).replace(microsecond=0)
+
+    _purge_rows(
+        db_session,
+        admin_user_ids=[approved_admin_user_id],
+        service_ids=[],
+        dept_numbers=[dept_number],
+        user_numbers=[approved_user_number],
+        request_user_numbers=[
+            pending_user_number,
+            approved_user_number,
+            rejected_user_number,
+        ],
+    )
+    try:
+        repository = IntentRoutingRepository(db_session)
+        department = repository.create_department(
+            dept_number=dept_number,
+            name=f"Request List Department {suffix}",
+            use_yn="Y",
+            created_by="unit-test",
+            updated_by="unit-test",
+            created_at=now,
+            updated_at=now,
+        )
+
+        approved_user = repository.create_organization_user(
+            user_number=approved_user_number,
+            name="Approved Request",
+            department_id=department.id,
+            use_yn="Y",
+            created_by="unit-test",
+            updated_by="unit-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_user(
+            user_id=approved_admin_user_id,
+            organization_user_id=approved_user.id,
+            email=f"{approved_admin_user_id}@example.com",
+            display_name="Approved Request",
+            password_hash="approved-admin-hash",
+            admin_access_reason="approved test",
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+        approved_request = repository.create_admin_access_request(
+            user_number=approved_user_number,
+            name="Approved Request",
+            department_id=department.id,
+            email=f"{approved_user_number}@example.com",
+            password_hash="approved-hash",
+            access_reason="Need access",
+            requested_at=now,
+        )
+        repository.approve_admin_access_request(
+            approved_request,
+            decided_by="system-admin",
+            decided_at=now + timedelta(seconds=1),
+            decision_reason="Approved for test",
+            created_user_id=approved_user.id,
+            created_admin_user_id=approved_admin_user_id,
+        )
+
+        pending_request = repository.create_admin_access_request(
+            user_number=pending_user_number,
+            name="Pending Request",
+            department_id=department.id,
+            email=f"{pending_user_number}@example.com",
+            password_hash="pending-hash",
+            access_reason="Need access",
+            requested_at=now + timedelta(seconds=2),
+        )
+
+        rejected_request = repository.create_admin_access_request(
+            user_number=rejected_user_number,
+            name="Rejected Request",
+            department_id=department.id,
+            email=f"{rejected_user_number}@example.com",
+            password_hash="rejected-hash",
+            access_reason="Need access",
+            requested_at=now + timedelta(seconds=3),
+        )
+        repository.reject_admin_access_request(
+            rejected_request,
+            decided_by="system-admin",
+            decided_at=now + timedelta(seconds=4),
+            decision_reason="Rejected for test",
+        )
+
+        listed = repository.list_admin_access_requests(limit=2)
+
+        assert [request.request_id for request in listed] == [
+            rejected_request.request_id,
+            pending_request.request_id,
+        ]
+        assert [
+            request.request_id
+            for request in repository.list_admin_access_requests(status="pending")
+        ] == [pending_request.request_id]
+    finally:
+        _purge_rows(
+            db_session,
+            admin_user_ids=[approved_admin_user_id],
+            service_ids=[],
+            dept_numbers=[dept_number],
+            user_numbers=[approved_user_number],
+            request_user_numbers=[
+                pending_user_number,
+                approved_user_number,
+                rejected_user_number,
+            ],
+        )
+
+
+def test_repository_decision_helpers_require_pending_status_and_clear_password_hash(
+    db_session: Session,
+) -> None:
+    suffix = uuid4().hex[:8]
+    dept_number = f"request-decision-dept-{suffix}"
+    approve_user_number = f"request-approve-{suffix}"
+    reject_user_number = f"request-reject-{suffix}"
+    approve_admin_user_id = f"request-approve-admin-{suffix}"
+    now = datetime.now(UTC).replace(microsecond=0)
+
+    _purge_rows(
+        db_session,
+        admin_user_ids=[approve_admin_user_id],
+        service_ids=[],
+        dept_numbers=[dept_number],
+        user_numbers=[approve_user_number],
+        request_user_numbers=[approve_user_number, reject_user_number],
+    )
+    try:
+        repository = IntentRoutingRepository(db_session)
+        department = repository.create_department(
+            dept_number=dept_number,
+            name=f"Request Decision Department {suffix}",
+            use_yn="Y",
+            created_by="unit-test",
+            updated_by="unit-test",
+            created_at=now,
+            updated_at=now,
+        )
+        approve_user = repository.create_organization_user(
+            user_number=approve_user_number,
+            name="Approve Me",
+            department_id=department.id,
+            use_yn="Y",
+            created_by="unit-test",
+            updated_by="unit-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_user(
+            user_id=approve_admin_user_id,
+            organization_user_id=approve_user.id,
+            email=f"{approve_admin_user_id}@example.com",
+            display_name="Approve Me",
+            password_hash="approve-admin-hash",
+            admin_access_reason="approved test",
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+        approve_request = repository.create_admin_access_request(
+            user_number=approve_user_number,
+            name="Approve Me",
+            department_id=department.id,
+            email=f"{approve_user_number}@example.com",
+            password_hash="approve-hash",
+            access_reason="Need access",
+            requested_at=now,
+        )
+        reject_request = repository.create_admin_access_request(
+            user_number=reject_user_number,
+            name="Reject Me",
+            department_id=department.id,
+            email=f"{reject_user_number}@example.com",
+            password_hash="reject-hash",
+            access_reason="Need access",
+            requested_at=now + timedelta(seconds=1),
+        )
+
+        approved = repository.approve_admin_access_request(
+            approve_request,
+            decided_by="system-admin",
+            decided_at=now + timedelta(seconds=2),
+            decision_reason="Looks good",
+            created_user_id=approve_user.id,
+            created_admin_user_id=approve_admin_user_id,
+        )
+        rejected = repository.reject_admin_access_request(
+            reject_request,
+            decided_by="system-admin",
+            decided_at=now + timedelta(seconds=3),
+            decision_reason="Not enough context",
+        )
+
+        assert approved.status == "approved"
+        assert approved.password_hash is None
+        assert approved.decided_by == "system-admin"
+        assert approved.decision_reason == "Looks good"
+        assert rejected.status == "rejected"
+        assert rejected.password_hash is None
+
+        with pytest.raises(ValueError, match="admin access request must be pending"):
+            repository.reject_admin_access_request(
+                approve_request,
+                decided_by="system-admin",
+                decided_at=now + timedelta(seconds=4),
+                decision_reason="Too late",
+            )
+    finally:
+        _purge_rows(
+            db_session,
+            admin_user_ids=[approve_admin_user_id],
+            service_ids=[],
+            dept_numbers=[dept_number],
+            user_numbers=[approve_user_number],
+            request_user_numbers=[approve_user_number, reject_user_number],
+        )
 
 
 def test_repository_lists_permission_service_role_summaries_with_metadata_and_filters(
@@ -82,6 +510,7 @@ def test_repository_lists_permission_service_role_summaries_with_metadata_and_fi
             email=f"{admin_user_id}@example.com",
             display_name="Repository Service Roles Admin",
             password_hash="target-password-hash",
+            admin_access_reason="permission service role summary test",
             status="active",
             created_at=now,
             updated_at=now,
@@ -91,6 +520,7 @@ def test_repository_lists_permission_service_role_summaries_with_metadata_and_fi
             email=f"{other_admin_user_id}@example.com",
             display_name="Repository Service Roles Other",
             password_hash="other-password-hash",
+            admin_access_reason="permission service role summary test",
             status="active",
             created_at=now,
             updated_at=now,
@@ -163,7 +593,7 @@ def test_repository_lists_permission_service_role_summaries_with_metadata_and_fi
         )
 
 
-def test_permission_summary_flags_single_active_system_admin_count_without_db() -> None:
+def test_permission_summary_keeps_last_active_system_admin_protection_without_risk_flag() -> None:
     repository = IntentRoutingRepository.__new__(IntentRoutingRepository)
     now = datetime.now(UTC)
     user = models.AdminUser(
@@ -172,6 +602,7 @@ def test_permission_summary_flags_single_active_system_admin_count_without_db() 
         email_normalized="single-active-system-admin@example.com",
         display_name="Single Active System Admin",
         password_hash="password-hash",
+        admin_access_reason="single active system admin summary test",
         status="active",
         created_at=now,
         updated_at=now,
@@ -193,7 +624,7 @@ def test_permission_summary_flags_single_active_system_admin_count_without_db() 
     )
 
     assert single_summary.is_last_active_system_admin is True
-    assert "single_active_system_admin" in single_summary.risk_flags
+    assert "single_active_system_admin" not in single_summary.risk_flags
     assert multiple_summary.is_last_active_system_admin is False
     assert "single_active_system_admin" not in multiple_summary.risk_flags
 
@@ -268,6 +699,7 @@ def test_repository_lists_permission_admin_user_summaries_with_metadata_and_risk
             email=f"{active_admin_id}@example.com",
             display_name="Permission Repository Active",
             password_hash="active-password-hash",
+            admin_access_reason="permission admin summary test",
             status="active",
             created_at=now,
             updated_at=now,
@@ -291,6 +723,7 @@ def test_repository_lists_permission_admin_user_summaries_with_metadata_and_risk
             email=f"{inactive_link_admin_id}@example.com",
             display_name="Permission Repository Inactive Link",
             password_hash="inactive-link-password-hash",
+            admin_access_reason="permission admin summary test",
             status="active",
             created_at=now,
             updated_at=now,
@@ -301,6 +734,7 @@ def test_repository_lists_permission_admin_user_summaries_with_metadata_and_risk
             email=f"{disabled_service_admin_id}@example.com",
             display_name="Permission Repository Disabled Service",
             password_hash="disabled-service-password-hash",
+            admin_access_reason="permission admin summary test",
             status="disabled",
             created_at=now,
             updated_at=now,
@@ -317,6 +751,7 @@ def test_repository_lists_permission_admin_user_summaries_with_metadata_and_risk
             email=f"{unlinked_admin_id}@example.com",
             display_name="Permission Repository Unlinked",
             password_hash="unlinked-password-hash",
+            admin_access_reason="permission admin summary test",
             status="active",
             created_at=now,
             updated_at=now,
@@ -455,7 +890,19 @@ def _purge_rows(
     service_ids: list[str],
     dept_numbers: list[str],
     user_numbers: list[str],
+    request_emails: list[str] | None = None,
+    request_user_numbers: list[str] | None = None,
 ) -> None:
+    if request_emails:
+        db_session.execute(
+            text("delete from admin_access_requests where email = any(:emails)"),
+            {"emails": [email.strip() for email in request_emails]},
+        )
+    if request_user_numbers:
+        db_session.execute(
+            text("delete from admin_access_requests where user_number = any(:user_numbers)"),
+            {"user_numbers": request_user_numbers},
+        )
     if admin_user_ids:
         db_session.execute(
             text("delete from admin_sessions where user_id = any(:user_ids)"),

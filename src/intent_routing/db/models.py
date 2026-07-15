@@ -108,6 +108,7 @@ class AdminUser(Base):
     email_normalized: Mapped[str] = mapped_column(Text)
     display_name: Mapped[str] = mapped_column(Text)
     password_hash: Mapped[str] = mapped_column(Text)
+    admin_access_reason: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, server_default=text("'active'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -164,9 +165,66 @@ class AdminUserRole(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "role in ('system_admin')",
+            "role in ('system_admin', 'application_admin')",
             name="ck_admin_user_roles_role",
         ),
+        Index(
+            "uq_admin_user_roles_single_system_admin",
+            "role",
+            unique=True,
+            postgresql_where=text("role = 'system_admin'"),
+        ),
+    )
+
+
+class AdminAccessRequest(Base):
+    __tablename__ = "admin_access_requests"
+
+    request_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_number: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    department_id: Mapped[UUID] = mapped_column(ForeignKey("departments.id"))
+    email: Mapped[str] = mapped_column(Text)
+    email_normalized: Mapped[str] = mapped_column(Text)
+    password_hash: Mapped[str | None] = mapped_column(Text)
+    access_reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decision_reason: Mapped[str | None] = mapped_column(Text)
+    created_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_admin_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("admin_users.user_id")
+    )
+
+    department: Mapped[Department] = relationship()
+    created_user: Mapped[OrganizationUser | None] = relationship()
+    created_admin_user: Mapped[AdminUser | None] = relationship()
+
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('pending', 'approved', 'rejected')",
+            name="ck_admin_access_requests_status",
+        ),
+        CheckConstraint(
+            "(status = 'pending' and password_hash is not null) or "
+            "(status in ('approved', 'rejected') and password_hash is null)",
+            name="ck_admin_access_requests_password_hash_pending",
+        ),
+        Index(
+            "uq_admin_access_requests_pending_email",
+            "email_normalized",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index(
+            "uq_admin_access_requests_pending_user_number",
+            "user_number",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index("ix_admin_access_requests_status_requested_at", "status", "requested_at"),
     )
 
 

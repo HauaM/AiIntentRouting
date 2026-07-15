@@ -178,6 +178,7 @@ def bootstrap_admin(
             display_name=request.display_name,
             password_hash=hash_admin_password(request.password),
             status="active",
+            admin_access_reason="bootstrap system admin",
             created_at=now,
             updated_at=now,
         )
