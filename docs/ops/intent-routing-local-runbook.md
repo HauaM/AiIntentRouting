@@ -21,12 +21,20 @@ Defaults:
 - Backend: `http://127.0.0.1:30141`
 - Frontend: `http://127.0.0.1:30140`
 - PostgreSQL: `127.0.0.1:30142`
-- Admin login: `local-admin@example.com` / `local-admin-password` from startup provisioning variables
+- Admin login on a fresh local DB: `local-admin@example.com` / `local-admin-password` from startup provisioning variables
 
 The script exports `ADMIN_SYSTEM_ADMIN_EMAIL`, `ADMIN_SYSTEM_ADMIN_PASSWORD`,
 and `ADMIN_SYSTEM_ADMIN_DISPLAY_NAME` so the backend creates or synchronizes the
 local `system_admin` during startup. In non-local deployments, omit those
 variables to skip startup account creation.
+
+If the local DB already has a different `system_admin`, the script preserves that
+owner and skips the default `local-admin@example.com` provisioning variables.
+This keeps the single-owner policy intact and avoids an app startup failure. Log
+in with the existing owner account, or explicitly set `ADMIN_SYSTEM_ADMIN_EMAIL`
+to that existing owner email plus `ADMIN_SYSTEM_ADMIN_PASSWORD` to rotate its
+password. To recreate the default local account, intentionally reset the local DB
+first.
 
 ## Environment
 

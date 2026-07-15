@@ -10,6 +10,12 @@ BACKEND_PORT="${BACKEND_PORT:-30141}"
 FRONTEND_PORT="${FRONTEND_PORT:-30140}"
 ADMIN_UI_SERVICE_ID="${ADMIN_UI_SERVICE_ID:-it-helpdesk-pilot-sprint10-operation-monitoring}"
 DEFAULT_DATABASE_URL="postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing"
+ADMIN_SYSTEM_ADMIN_EMAIL_WAS_SET=0
+ADMIN_SYSTEM_ADMIN_PASSWORD_WAS_SET=0
+ADMIN_SYSTEM_ADMIN_DISPLAY_NAME_WAS_SET=0
+[[ -n "${ADMIN_SYSTEM_ADMIN_EMAIL+x}" ]] && ADMIN_SYSTEM_ADMIN_EMAIL_WAS_SET=1
+[[ -n "${ADMIN_SYSTEM_ADMIN_PASSWORD+x}" ]] && ADMIN_SYSTEM_ADMIN_PASSWORD_WAS_SET=1
+[[ -n "${ADMIN_SYSTEM_ADMIN_DISPLAY_NAME+x}" ]] && ADMIN_SYSTEM_ADMIN_DISPLAY_NAME_WAS_SET=1
 
 export DATABASE_URL="${DATABASE_URL:-${DEFAULT_DATABASE_URL}}"
 export APP_ENV="${APP_ENV:-local}"
@@ -260,6 +266,62 @@ run_migrations() {
   (cd "${ROOT_DIR}" && uv run alembic upgrade head) 2>&1 | prefix_logs backend
 }
 
+current_system_admin_email() {
+  (
+    cd "${ROOT_DIR}"
+    uv run python - <<'PY'
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
+from intent_routing.db.models import AdminUser, AdminUserRole
+from intent_routing.db.session import database_url_from_env
+
+engine = create_engine(database_url_from_env())
+try:
+    with Session(engine) as session:
+        email = session.scalar(
+            select(AdminUser.email)
+            .join(AdminUserRole, AdminUserRole.user_id == AdminUser.user_id)
+            .where(AdminUserRole.role == "system_admin")
+            .limit(1)
+        )
+        if email:
+            print(email)
+finally:
+    engine.dispose()
+PY
+  )
+}
+
+prepare_startup_system_admin_provisioning() {
+  local owner_email
+
+  owner_email="$(current_system_admin_email)"
+  if [[ -z "${owner_email}" ]]; then
+    log "Admin UI login account is configured: ${ADMIN_SYSTEM_ADMIN_EMAIL}"
+    return
+  fi
+
+  if [[ "${owner_email,,}" == "${ADMIN_SYSTEM_ADMIN_EMAIL,,}" ]]; then
+    log "Admin UI login account is configured: ${ADMIN_SYSTEM_ADMIN_EMAIL}"
+    return
+  fi
+
+  if ((ADMIN_SYSTEM_ADMIN_EMAIL_WAS_SET || ADMIN_SYSTEM_ADMIN_PASSWORD_WAS_SET || ADMIN_SYSTEM_ADMIN_DISPLAY_NAME_WAS_SET)); then
+    printf '[local] Existing system_admin owner is %s, but ADMIN_SYSTEM_ADMIN_EMAIL is %s.\n' \
+      "${owner_email}" "${ADMIN_SYSTEM_ADMIN_EMAIL}" >&2
+    printf '[local] Startup provisioning will not transfer system_admin ownership.\n' >&2
+    printf '[local] Set ADMIN_SYSTEM_ADMIN_EMAIL to the existing owner email to rotate its password, or reset the local database intentionally.\n' >&2
+    exit 1
+  fi
+
+  log "Existing system_admin owner detected: ${owner_email}"
+  log "Skipping default startup system_admin provisioning to preserve single-owner policy"
+  unset ADMIN_SYSTEM_ADMIN_EMAIL
+  unset ADMIN_SYSTEM_ADMIN_PASSWORD
+  unset ADMIN_SYSTEM_ADMIN_DISPLAY_NAME
+}
+
 start_backend() {
   local backend_log="${LOG_DIR}/backend.log"
 
@@ -311,8 +373,8 @@ main() {
   cleanup_stale_log_followers
   ensure_local_database
   run_migrations
+  prepare_startup_system_admin_provisioning
   start_backend
-  log "Admin UI login account is configured: ${ADMIN_SYSTEM_ADMIN_EMAIL}"
   seed_local_admin_service
   start_frontend
 

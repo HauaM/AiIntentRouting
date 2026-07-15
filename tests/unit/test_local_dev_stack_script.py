@@ -39,6 +39,13 @@ def test_local_dev_stack_script_contract() -> None:
     assert "docker compose up -d postgres" in text
     assert "Port 30142 is already used by another container" in text
     assert "Skipping compose postgres management for custom DATABASE_URL" in text
+    assert "prepare_startup_system_admin_provisioning" in text
+    assert "current_system_admin_email" in text
+    assert "Existing system_admin owner detected" in text
+    assert "Skipping default startup system_admin provisioning" in text
+    assert "Startup provisioning will not transfer system_admin ownership" in text
+    assert "unset ADMIN_SYSTEM_ADMIN_EMAIL" in text
+    assert "unset ADMIN_SYSTEM_ADMIN_PASSWORD" in text
     assert "uv run uvicorn intent_routing.main:create_app --factory" in text
     assert "seed_local_admin_service" in text
     assert "bootstrap_local_admin_account" not in text
@@ -107,6 +114,9 @@ def test_local_dev_stack_delegates_login_account_to_backend_startup() -> None:
 
     assert "Admin UI login account is configured" in text
     main_body = text.split("main() {", 1)[1]
-    assert main_body.index("Admin UI login account is configured") < main_body.index(
+    assert main_body.index("prepare_startup_system_admin_provisioning") < main_body.index(
+        "start_backend"
+    )
+    assert main_body.index("prepare_startup_system_admin_provisioning") < main_body.index(
         "seed_local_admin_service"
     )
