@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SearchOutlined } from '@ant-design/icons';
 import { ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { history, useModel } from '@umijs/max';
 import {
@@ -37,18 +38,24 @@ import {
   formatOrganizationUserNumber,
   toAdminUserCreateRequest,
   toAdminUserStatusPatchRequest,
+  EMPTY_DEPARTMENT_TABLE_FILTERS,
+  EMPTY_ORGANIZATION_USER_TABLE_FILTERS,
   permissionManagementAdminUserUrl,
   toDepartmentOption,
+  toDepartmentListParamsFromFilters,
   toDepartmentOptionSearchParams,
   toSystemAdminRolesPatchRequest,
   toDepartmentCreateRequest,
   toDepartmentUseYnPatchRequest,
   toOrganizationUserCreateRequest,
+  toOrganizationUserListParamsFromFilters,
   toOrganizationUserUseYnPatchRequest,
   type AdminAccessCreateFormValues,
   type DepartmentFormValues,
   type DepartmentOption,
+  type DepartmentTableFilters,
   type OrganizationUserFormValues,
+  type OrganizationUserTableFilters,
 } from './directoryForms';
 
 type DepartmentFormMode = 'create' | 'edit';
@@ -86,6 +93,14 @@ export default function OrganizationDirectoryPage() {
   const [departmentSelectOptions, setDepartmentSelectOptions] = useState<DepartmentOption[]>([]);
   const [loadingDepartmentFilterOptions, setLoadingDepartmentFilterOptions] = useState(false);
   const [loadingDepartmentSelectOptions, setLoadingDepartmentSelectOptions] = useState(false);
+  const [departmentDraftFilters, setDepartmentDraftFilters] =
+    useState<DepartmentTableFilters>(EMPTY_DEPARTMENT_TABLE_FILTERS);
+  const [departmentFilters, setDepartmentFilters] =
+    useState<DepartmentTableFilters>(EMPTY_DEPARTMENT_TABLE_FILTERS);
+  const [userDraftFilters, setUserDraftFilters] =
+    useState<OrganizationUserTableFilters>(EMPTY_ORGANIZATION_USER_TABLE_FILTERS);
+  const [userFilters, setUserFilters] =
+    useState<OrganizationUserTableFilters>(EMPTY_ORGANIZATION_USER_TABLE_FILTERS);
   const departmentActionRef = useRef<ActionType>();
   const userActionRef = useRef<ActionType>();
   const departmentFilterRequestSeqRef = useRef(0);
@@ -185,6 +200,24 @@ export default function OrganizationDirectoryPage() {
   const reloadUserTable = useCallback(() => {
     userActionRef.current?.reload();
   }, []);
+
+  const applyDepartmentFilters = () => {
+    setDepartmentFilters(departmentDraftFilters);
+  };
+
+  const resetDepartmentFilters = () => {
+    setDepartmentDraftFilters(EMPTY_DEPARTMENT_TABLE_FILTERS);
+    setDepartmentFilters(EMPTY_DEPARTMENT_TABLE_FILTERS);
+  };
+
+  const applyUserFilters = () => {
+    setUserFilters(userDraftFilters);
+  };
+
+  const resetUserFilters = () => {
+    setUserDraftFilters(EMPTY_ORGANIZATION_USER_TABLE_FILTERS);
+    setUserFilters(EMPTY_ORGANIZATION_USER_TABLE_FILTERS);
+  };
 
   const resetAdminAccessState = useCallback(() => {
     adminAccessRequestSeqRef.current += 1;
@@ -739,6 +772,113 @@ export default function OrganizationDirectoryPage() {
     },
   ];
 
+  const renderDepartmentToolbar = () => (
+    <Flex justify="space-between" align="center" wrap="wrap" gap={8} style={{ width: '100%' }}>
+      <Space wrap size={8}>
+        <Input
+          allowClear
+          prefix={<SearchOutlined />}
+          placeholder="부서번호 또는 부서명"
+          style={{ width: 240 }}
+          value={departmentDraftFilters.keyword}
+          onChange={(event) =>
+            setDepartmentDraftFilters((current) => ({
+              ...current,
+              keyword: event.target.value,
+            }))
+          }
+          onPressEnter={applyDepartmentFilters}
+        />
+        <Select<API.UseYn>
+          allowClear
+          placeholder="사용 여부"
+          style={{ width: 128 }}
+          value={departmentDraftFilters.use_yn}
+          options={[
+            { label: 'Y', value: 'Y' },
+            { label: 'N', value: 'N' },
+          ]}
+          onChange={(value) =>
+            setDepartmentDraftFilters((current) => ({
+              ...current,
+              use_yn: value,
+            }))
+          }
+        />
+        <Button onClick={applyDepartmentFilters}>조회</Button>
+        <Button onClick={resetDepartmentFilters}>초기화</Button>
+      </Space>
+      {canManage ? (
+        <Button type="primary" onClick={openCreateDepartmentModal}>
+          부서 추가
+        </Button>
+      ) : null}
+    </Flex>
+  );
+
+  const renderUserToolbar = () => (
+    <Flex justify="space-between" align="center" wrap="wrap" gap={8} style={{ width: '100%' }}>
+      <Space wrap size={8}>
+        <Input
+          allowClear
+          prefix={<SearchOutlined />}
+          placeholder="사번 또는 이름"
+          style={{ width: 220 }}
+          value={userDraftFilters.keyword}
+          onChange={(event) =>
+            setUserDraftFilters((current) => ({
+              ...current,
+              keyword: event.target.value,
+            }))
+          }
+          onPressEnter={applyUserFilters}
+        />
+        <Select
+          allowClear
+          showSearch
+          filterOption={false}
+          loading={loadingDepartmentFilterOptions}
+          placeholder="부서"
+          style={{ width: 180 }}
+          value={userDraftFilters.department_id}
+          options={departmentFilterOptions}
+          onSearch={(value) => {
+            void loadDepartmentOptions(value, 'filter');
+          }}
+          onChange={(value) =>
+            setUserDraftFilters((current) => ({
+              ...current,
+              department_id: value,
+            }))
+          }
+        />
+        <Select<API.UseYn>
+          allowClear
+          placeholder="사용 여부"
+          style={{ width: 128 }}
+          value={userDraftFilters.use_yn}
+          options={[
+            { label: 'Y', value: 'Y' },
+            { label: 'N', value: 'N' },
+          ]}
+          onChange={(value) =>
+            setUserDraftFilters((current) => ({
+              ...current,
+              use_yn: value,
+            }))
+          }
+        />
+        <Button onClick={applyUserFilters}>조회</Button>
+        <Button onClick={resetUserFilters}>초기화</Button>
+      </Space>
+      {canManage ? (
+        <Button type="primary" onClick={openCreateUserModal}>
+          조직 사용자 추가
+        </Button>
+      ) : null}
+    </Flex>
+  );
+
   return (
     <AdminShell title="Users & Departments">
       {ready ? (
@@ -761,23 +901,16 @@ export default function OrganizationDirectoryPage() {
                       rowKey="id"
                       actionRef={departmentActionRef}
                       columns={departmentColumns}
+                      params={departmentFilters}
                       request={async (params) => {
-                        const rows = await listDepartments({
-                          query: typeof params.keyword === 'string' ? params.keyword : undefined,
-                          use_yn: params.use_yn as API.UseYn | undefined,
-                          limit: 100,
-                        });
+                        const rows = await listDepartments(
+                          toDepartmentListParamsFromFilters(params as DepartmentTableFilters),
+                        );
                         return { data: rows, total: rows.length, success: true };
                       }}
                       pagination={false}
-                      search={{ labelWidth: 88 }}
-                      toolbar={{
-                        title: canManage ? (
-                          <Button type="primary" onClick={openCreateDepartmentModal}>
-                            Department 추가
-                          </Button>
-                        ) : undefined,
-                      }}
+                      search={false}
+                      toolbar={{ title: renderDepartmentToolbar() }}
                       options={{ density: true, fullScreen: false, reload: true, setting: true }}
                     />
                   ),
@@ -790,27 +923,18 @@ export default function OrganizationDirectoryPage() {
                       rowKey="id"
                       actionRef={userActionRef}
                       columns={userColumns}
+                      params={userFilters}
                       request={async (params) => {
-                        const rows = await listOrganizationUsers({
-                          query: typeof params.keyword === 'string' ? params.keyword : undefined,
-                          department_id:
-                            typeof params.department_id === 'string'
-                              ? params.department_id
-                              : undefined,
-                          use_yn: params.use_yn as API.UseYn | undefined,
-                          limit: 100,
-                        });
+                        const rows = await listOrganizationUsers(
+                          toOrganizationUserListParamsFromFilters(
+                            params as OrganizationUserTableFilters,
+                          ),
+                        );
                         return { data: rows, total: rows.length, success: true };
                       }}
                       pagination={false}
-                      search={{ labelWidth: 88 }}
-                      toolbar={{
-                        title: canManage ? (
-                          <Button type="primary" onClick={openCreateUserModal}>
-                            User 추가
-                          </Button>
-                        ) : undefined,
-                      }}
+                      search={false}
+                      toolbar={{ title: renderUserToolbar() }}
                       options={{ density: true, fullScreen: false, reload: true, setting: true }}
                     />
                   ),
