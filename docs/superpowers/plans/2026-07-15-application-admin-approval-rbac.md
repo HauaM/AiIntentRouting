@@ -1168,7 +1168,7 @@ Expected: PASS.
 - Consumes: single-system-admin repository validation and partial unique index.
 - Produces: safe transfer semantics and removal of multi-system-admin grant behavior.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add:
 
@@ -1215,7 +1215,7 @@ def test_system_admin_transfer_replaces_single_owner_atomically(
     ]
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -1225,7 +1225,7 @@ uv run pytest tests/integration/test_admin_user_management_api.py::test_cannot_g
 
 Expected: FAIL because transfer endpoint does not exist and grant permits current behavior.
 
-- [ ] **Step 3: Update patch API**
+- [x] **Step 3: Update patch API**
 
 When patch payload attempts to add `system_admin`, return `409` if another `system_admin` exists. Tell callers to use transfer:
 
@@ -1233,7 +1233,7 @@ When patch payload attempts to add `system_admin`, return `409` if another `syst
 _raise_conflict("system_admin already exists. Use system_admin transfer.")
 ```
 
-- [ ] **Step 4: Add transfer endpoint**
+- [x] **Step 4: Add transfer endpoint**
 
 Add schema:
 
@@ -1268,7 +1268,7 @@ The transaction must:
 - remove target `application_admin`
 - audit `admin_user.system_admin_transferred`
 
-- [ ] **Step 5: Update startup provisioning**
+- [x] **Step 5: Update startup provisioning**
 
 `configure_startup_system_admin` must:
 
@@ -1276,7 +1276,7 @@ The transaction must:
 - update password for the configured existing `system_admin`
 - refuse to create another `system_admin` for a different email
 
-- [ ] **Step 6: Run system admin tests**
+- [x] **Step 6: Run system admin tests**
 
 Run:
 
