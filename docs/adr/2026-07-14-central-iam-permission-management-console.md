@@ -61,6 +61,12 @@ The first implementation should be incremental:
 3. Add Service role visibility and grant/revoke actions using the existing
    Service membership model.
 4. Add read-only risk findings derived from existing tables.
+5. Review application admin registration requests and approve them as
+   `system_admin`.
+
+Permission Management remains `system_admin` only. `application_admin` can be
+reviewed there as a pending access request, but it must not gain Permission
+Management access itself.
 
 The existing user edit modal may keep a compact Admin Access section, but the
 central console becomes the canonical place for full permission operations and

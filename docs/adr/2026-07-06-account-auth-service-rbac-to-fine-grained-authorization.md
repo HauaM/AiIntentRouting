@@ -118,10 +118,13 @@ Expected initial domain concepts:
 Expected initial roles:
 
 - `system_admin`
+- `application_admin`
 - `service_owner`
 - `service_developer`
 - `service_operator`
 - `auditor`
+
+`application_admin` is an Admin Console access role only. It does not grant Service scope by itself; Service access still comes from `user_service_roles`.
 
 C-2 expected API shape:
 
