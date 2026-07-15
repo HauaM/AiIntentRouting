@@ -100,10 +100,10 @@ export const canEditCatalog = (session: AdminSession) =>
   hasAnyDisplayRole(session, ['system_admin', 'service_owner', 'service_developer']);
 
 export const canManageReleases = (session: AdminSession) =>
-  hasAnyDisplayRole(session, ['system_admin']);
+  hasAnyDisplayRole(session, ['system_admin', 'service_owner', 'service_developer']);
 
 export const canManageApiKeys = (session: AdminSession) =>
-  hasAnyDisplayRole(session, ['system_admin']);
+  hasAnyDisplayRole(session, ['system_admin', 'service_owner', 'service_developer']);
 
 export const canManageRuntimeSetup = (session: AdminSession) =>
   canManageApiKeys(session);

@@ -46,7 +46,15 @@ describe('admin access request form helpers', () => {
   it('exposes the public request route from config and login', () => {
     expect(configSource()).toContain("path: '/admin-access-request'");
     expect(loginPageSource()).toContain('/admin-access-request');
-    expect(requestPageSource()).toContain('Back to sign in');
+    expect(requestPageSource()).toContain('로그인으로 돌아가기');
+  });
+
+  it('uses a public department selector instead of a raw department id input', () => {
+    const source = requestPageSource();
+
+    expect(source).toContain('listPublicDepartments');
+    expect(source).toContain('placeholder="부서 선택"');
+    expect(source).not.toContain('Department ID');
   });
 
   it('renders backend submission errors as a form-level alert', () => {

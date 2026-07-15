@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchCurrentAdminUser,
   listAccessibleServices,
+  listPublicDepartments,
   loginAdmin,
   logoutAdmin,
   submitAdminAccessRequest,
@@ -85,5 +86,15 @@ describe('auth service cookie session requests', () => {
     ];
     expect(options).not.toHaveProperty('headers');
     expect(options).toHaveProperty('withCredentials', false);
+  });
+
+  it('lists public departments without cookie credentials', async () => {
+    await listPublicDepartments({ query: '개발', limit: 20 });
+
+    expect(requestMock).toHaveBeenCalledWith('/public/departments', {
+      method: 'GET',
+      params: { query: '개발', limit: 20 },
+      withCredentials: false,
+    });
   });
 });

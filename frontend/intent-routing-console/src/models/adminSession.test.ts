@@ -158,6 +158,58 @@ describe('admin session model helpers', () => {
     expect(canManageRuntimeSetup(session)).toBe(true);
   });
 
+  it('allows selected service owners and developers to manage releases and API keys', () => {
+    const serviceOwnerSession = normalizeAuthSession(
+      { ...currentUser, global_roles: [], service_roles: [] },
+      [{ ...services[0], roles: ['service_owner'] }],
+      'svc-a',
+    );
+    const serviceDeveloperSession = normalizeAuthSession(
+      { ...currentUser, global_roles: ['application_admin'], service_roles: [] },
+      [{ ...services[1], roles: ['service_developer'] }],
+      'svc-b',
+    );
+
+    expect(canManageReleases(serviceOwnerSession)).toBe(true);
+    expect(canManageApiKeys(serviceOwnerSession)).toBe(true);
+    expect(canManageRuntimeSetup(serviceOwnerSession)).toBe(true);
+    expect(canManageReleases(serviceDeveloperSession)).toBe(true);
+    expect(canManageApiKeys(serviceDeveloperSession)).toBe(true);
+    expect(canManageRuntimeSetup(serviceDeveloperSession)).toBe(true);
+  });
+
+  it('does not allow read-only service roles to manage releases or API keys', () => {
+    const serviceOperatorSession = normalizeAuthSession(
+      { ...currentUser, global_roles: ['application_admin'], service_roles: [] },
+      [{ ...services[0], roles: ['service_operator'] }],
+      'svc-a',
+    );
+    const auditorSession = normalizeAuthSession(
+      { ...currentUser, global_roles: ['application_admin'], service_roles: [] },
+      [{ ...services[0], roles: ['auditor'] }],
+      'svc-a',
+    );
+
+    expect(canManageReleases(serviceOperatorSession)).toBe(false);
+    expect(canManageApiKeys(serviceOperatorSession)).toBe(false);
+    expect(canManageRuntimeSetup(serviceOperatorSession)).toBe(false);
+    expect(canManageReleases(auditorSession)).toBe(false);
+    expect(canManageApiKeys(auditorSession)).toBe(false);
+    expect(canManageRuntimeSetup(auditorSession)).toBe(false);
+  });
+
+  it('does not let application_admin alone manage service-scoped actions', () => {
+    const session = normalizeAuthSession(
+      { ...currentUser, global_roles: ['application_admin'], service_roles: [] },
+      [],
+      '',
+    );
+
+    expect(canManageReleases(session)).toBe(false);
+    expect(canManageApiKeys(session)).toBe(false);
+    expect(canManageRuntimeSetup(session)).toBe(false);
+  });
+
   it('allows only global system admins to create services', () => {
     const session = normalizeAuthSession(currentUser, services, 'svc-a');
 

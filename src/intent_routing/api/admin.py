@@ -187,6 +187,12 @@ class DepartmentResponse(BaseModel):
     updated_at: datetime
 
 
+class PublicDepartmentSummaryResponse(BaseModel):
+    id: UUID
+    dept_number: str
+    name: str
+
+
 class OrganizationUserCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1268,6 +1274,18 @@ def _require_system_admin(context: AdminContext) -> None:
         raise_admin_forbidden("system_admin role is required for this action.")
 
 
+SERVICE_WRITE_ROLES = frozenset({"service_owner", "service_developer"})
+SERVICE_LOG_READ_ROLES = frozenset(
+    {"service_owner", "service_developer", "service_operator", "auditor"}
+)
+SERVICE_METRICS_READ_ROLES = frozenset(
+    {"service_owner", "service_developer", "service_operator"}
+)
+SERVICE_AUDIT_LOG_READ_ROLES = frozenset(
+    {"service_owner", "service_developer", "service_operator", "auditor"}
+)
+
+
 def _department_or_404(session: Session, department_id: UUID) -> Department:
     department = session.get(Department, department_id)
     if department is None:
@@ -1376,12 +1394,31 @@ def _department_has_active_organization_users(
 def _require_service_catalog_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_any_service_role(
-        service_id,
-        {"service_owner", "service_developer"},
-    ):
+    if context.has_any_service_role(service_id, SERVICE_WRITE_ROLES):
         return
     raise_admin_forbidden("Service catalog scope is required for this action.")
+
+
+def _require_api_key_management_access(
+    context: AdminContext,
+    service_id: str,
+) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(service_id, SERVICE_WRITE_ROLES):
+        return
+    raise_admin_forbidden("API key management scope is required for this action.")
+
+
+def _require_release_management_access(
+    context: AdminContext,
+    service_id: str,
+) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(service_id, SERVICE_WRITE_ROLES):
+        return
+    raise_admin_forbidden("Release management scope is required for this action.")
 
 
 def _require_release_review_access(context: AdminContext, service_id: str) -> None:
@@ -1428,7 +1465,7 @@ def _require_publish_activation_access(context: AdminContext, service_id: str) -
 def _require_runtime_log_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_any_service_role(service_id, {"service_operator", "auditor"}):
+    if context.has_any_service_role(service_id, SERVICE_LOG_READ_ROLES):
         return
     raise_admin_forbidden("Runtime log scope is required for this action.")
 
@@ -1436,9 +1473,17 @@ def _require_runtime_log_access(context: AdminContext, service_id: str) -> None:
 def _require_runtime_metrics_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_service_role(service_id, "service_operator"):
+    if context.has_any_service_role(service_id, SERVICE_METRICS_READ_ROLES):
         return
     raise_admin_forbidden("Runtime metrics scope is required for this action.")
+
+
+def _require_service_audit_log_access(context: AdminContext, service_id: str) -> None:
+    if context.has_role("system_admin"):
+        return
+    if context.has_any_service_role(service_id, SERVICE_AUDIT_LOG_READ_ROLES):
+        return
+    raise_admin_forbidden("Audit log scope is required for this action.")
 
 
 def _require_security_lifecycle_read_access(
@@ -1622,6 +1667,16 @@ def _department_response(department: Department) -> DepartmentResponse:
         updated_by=department.updated_by,
         created_at=department.created_at,
         updated_at=department.updated_at,
+    )
+
+
+def _public_department_summary_response(
+    department: Department,
+) -> PublicDepartmentSummaryResponse:
+    return PublicDepartmentSummaryResponse(
+        id=department.id,
+        dept_number=department.dept_number,
+        name=department.name,
     )
 
 
@@ -2541,6 +2596,26 @@ def list_accessible_services(
             roles=frozenset(context.service_roles.get(service.service_id, frozenset())),
         )
         for service in repository.list_services_for_user(context.actor_id)
+    ]
+
+
+@router.get(
+    "/public/departments",
+    response_model=list[PublicDepartmentSummaryResponse],
+)
+def list_public_departments(
+    session: Annotated[Session, Depends(get_admin_session)],
+    query: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+) -> list[PublicDepartmentSummaryResponse]:
+    repository = IntentRoutingRepository(session)
+    return [
+        _public_department_summary_response(department)
+        for department in repository.list_departments(
+            query=query,
+            use_yn="Y",
+            limit=limit,
+        )
     ]
 
 
@@ -3706,8 +3781,13 @@ def list_api_keys(
     status: ApiKeyStatus | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[ApiKeyResponse]:
-    _require_system_admin(context)
     repository = IntentRoutingRepository(session)
+    if service_id is None:
+        _require_system_admin(context)
+    else:
+        _require_api_key_management_access(context, service_id)
+        if repository.get_service(service_id) is None:
+            _raise_not_found("Service does not exist.")
     return [
         _api_key_response(api_key)
         for api_key in repository.list_api_keys(
@@ -3729,12 +3809,12 @@ def create_api_key(
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> ApiKeyCreateResponse:
-    _require_system_admin(context)
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
     service = repository.get_service(request.service_id)
     if service is None:
         _raise_not_found("Service does not exist.")
+    _require_api_key_management_access(context, request.service_id)
 
     api_key, api_key_secret = _create_api_key_for_service(
         repository,
@@ -3761,12 +3841,12 @@ def revoke_api_key(
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> ApiKeyResponse:
-    _require_system_admin(context)
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
     api_key = repository.get_api_key_by_id(key_id)
     if api_key is None:
         _raise_not_found("API key does not exist.")
+    _require_api_key_management_access(context, api_key.service_id)
 
     _revoke_api_key_record(
         repository,
@@ -3787,11 +3867,11 @@ def list_service_api_keys(
     status: ApiKeyStatus | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[ApiKeyResponse]:
-    _require_system_admin(context)
     repository = IntentRoutingRepository(session)
     service = repository.get_service(service_id)
     if service is None:
         _raise_not_found("Service does not exist.")
+    _require_api_key_management_access(context, service_id)
     if environment is not None:
         _runtime_setup_environment(service, environment)
     return [
@@ -3816,12 +3896,12 @@ def create_service_api_key(
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> ApiKeyCreateResponse:
-    _require_system_admin(context)
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
     service = repository.get_service(service_id)
     if service is None:
         _raise_not_found("Service does not exist.")
+    _require_api_key_management_access(context, service_id)
 
     _validate_runtime_api_key_scope(repository, service, request)
     api_key, api_key_secret = _create_api_key_for_service(
@@ -3853,12 +3933,12 @@ def revoke_service_api_key(
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> ApiKeyResponse:
-    _require_system_admin(context)
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
     service = repository.get_service(service_id)
     if service is None:
         _raise_not_found("Service does not exist.")
+    _require_api_key_management_access(context, service_id)
     api_key = repository.get_api_key_by_id(key_id)
     if api_key is None:
         _raise_not_found("API key does not exist.")
@@ -3887,7 +3967,7 @@ def get_runtime_setup(
     app_id: str | None = None,
     key_id: str | None = None,
 ) -> RuntimeSetupResponse:
-    _require_system_admin(context)
+    _require_api_key_management_access(context, service_id)
     repository = IntentRoutingRepository(session)
     service = repository.get_service(service_id)
     if service is None:
@@ -4035,7 +4115,7 @@ def list_audit_logs(
     event_type: Annotated[str | None, Query(min_length=1)] = None,
     trace_id: Annotated[str | None, Query(min_length=1)] = None,
 ) -> list[AuditLogResponse]:
-    _require_security_lifecycle_read_access(context, service_id)
+    _require_service_audit_log_access(context, service_id)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
     return [
@@ -5302,7 +5382,7 @@ def create_release(
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> ReleaseResponse:
-    _require_system_admin(context)
+    _require_release_management_access(context, service_id)
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
     service = repository.get_service(service_id)
@@ -5507,7 +5587,7 @@ def activate_release(
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> ReleaseResponse:
-    _require_system_admin(context)
+    _require_release_management_access(context, service_id)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
     try:
@@ -5547,7 +5627,7 @@ def rollback_release(
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> ReleaseResponse:
-    _require_system_admin(context)
+    _require_release_management_access(context, service_id)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
     try:

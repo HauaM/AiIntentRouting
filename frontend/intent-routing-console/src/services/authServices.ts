@@ -18,6 +18,17 @@ export async function submitAdminAccessRequest(
   });
 }
 
+export async function listPublicDepartments(params: { query?: string; limit?: number } = {}) {
+  return request<API.PublicDepartment[]>('/public/departments', {
+    method: 'GET',
+    params: {
+      query: params.query,
+      limit: params.limit ?? 100,
+    },
+    withCredentials: false,
+  });
+}
+
 export async function logoutAdmin() {
   return request<API.AdminLogoutResponse>('/auth/logout', {
     method: 'POST',

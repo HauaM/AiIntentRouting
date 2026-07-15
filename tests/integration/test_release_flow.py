@@ -22,6 +22,10 @@ from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.embedding.provider import clear_embedding_provider_cache
 from intent_routing.main import create_app
+from intent_routing.security.admin_sessions import (
+    ADMIN_SESSION_COOKIE_NAME,
+    hash_admin_session_token,
+)
 from intent_routing.security.api_keys import ApiKeyRecord
 
 QUERY_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "dify_request.json"
@@ -853,6 +857,147 @@ def test_release_rollback_activates_rollback_target(
     assert rollback_after_state is not None
     assert rollback_after_state["release_version"] == rollback_target
     assert rollback_after_state["rollback_from"] == current
+
+
+def test_application_admin_service_developer_can_manage_assigned_service_releases(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_id, policy_version, catalog_version, client = _release_setup(
+        db_session,
+        monkeypatch,
+    )
+    other_service_id = f"svc-release-other-{uuid4().hex}"
+    app_admin_user_id: str | None = None
+    try:
+        _create_service(client, other_service_id)
+        cookies, app_admin_user_id = _application_admin_session_cookies(
+            db_session,
+            service_id,
+            role="service_developer",
+        )
+        rollback_target_test_run_id = _seed_test_run(
+            db_session,
+            service_id=service_id,
+            policy_version=policy_version,
+            intent_catalog_version=catalog_version,
+            gate_passed=True,
+            risk_pass_rate=Decimal("1.0"),
+        )
+        rollback_target_response = _create_release_response(
+            client,
+            service_id,
+            policy_version=policy_version,
+            intent_catalog_version=catalog_version,
+            test_run_id=rollback_target_test_run_id,
+            cookies=cookies,
+        )
+        assert rollback_target_response.status_code == 201
+        rollback_target = rollback_target_response.json()["release_version"]
+        assert rollback_target_response.json()["released_by"] == app_admin_user_id
+
+        current_test_run_id = _seed_test_run(
+            db_session,
+            service_id=service_id,
+            policy_version=policy_version,
+            intent_catalog_version=catalog_version,
+            gate_passed=True,
+            risk_pass_rate=Decimal("1.0"),
+        )
+        current_response = _create_release_response(
+            client,
+            service_id,
+            policy_version=policy_version,
+            intent_catalog_version=catalog_version,
+            test_run_id=current_test_run_id,
+            rollback_target=rollback_target,
+            cookies=cookies,
+        )
+        assert current_response.status_code == 201
+        current = current_response.json()["release_version"]
+
+        activate_response = client.post(
+            f"/admin/v1/services/{service_id}/releases/{current}:activate",
+            cookies=cookies,
+        )
+        rollback_response = client.post(
+            f"/admin/v1/services/{service_id}/releases/{current}:rollback",
+            cookies=cookies,
+        )
+        denied_other_create = _create_release_response(
+            client,
+            other_service_id,
+            policy_version=policy_version,
+            intent_catalog_version=catalog_version,
+            test_run_id=current_test_run_id,
+            cookies=cookies,
+        )
+        denied_other_activate = client.post(
+            f"/admin/v1/services/{other_service_id}/releases/{current}:activate",
+            cookies=cookies,
+        )
+        denied_other_rollback = client.post(
+            f"/admin/v1/services/{other_service_id}/releases/{current}:rollback",
+            cookies=cookies,
+        )
+
+        assert activate_response.status_code == 200
+        assert activate_response.json()["active"] is True
+        assert rollback_response.status_code == 200
+        assert rollback_response.json()["release_version"] == rollback_target
+        for denied in (
+            denied_other_create,
+            denied_other_activate,
+            denied_other_rollback,
+        ):
+            assert denied.status_code == 403
+            assert denied.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+    finally:
+        if app_admin_user_id is not None:
+            _purge_admin_user(db_session, app_admin_user_id)
+        _purge_service_rows(db_session, service_id)
+        _purge_service_rows(db_session, other_service_id)
+
+
+def test_application_admin_read_only_service_role_cannot_manage_releases(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_id, policy_version, catalog_version, client = _release_setup(
+        db_session,
+        monkeypatch,
+    )
+    app_admin_user_id: str | None = None
+    try:
+        cookies, app_admin_user_id = _application_admin_session_cookies(
+            db_session,
+            service_id,
+            role="service_operator",
+        )
+        test_run_id = _seed_test_run(
+            db_session,
+            service_id=service_id,
+            policy_version=policy_version,
+            intent_catalog_version=catalog_version,
+            gate_passed=True,
+            risk_pass_rate=Decimal("1.0"),
+        )
+
+        response = _create_release_response(
+            client,
+            service_id,
+            policy_version=policy_version,
+            intent_catalog_version=catalog_version,
+            test_run_id=test_run_id,
+            cookies=cookies,
+        )
+
+        assert response.status_code == 403
+        assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+    finally:
+        if app_admin_user_id is not None:
+            _purge_admin_user(db_session, app_admin_user_id)
+        _purge_service_rows(db_session, service_id)
 
 
 def test_runtime_uses_active_release_versions_after_activation(
@@ -1981,10 +2126,13 @@ def _create_release_response(
     test_run_id: str,
     rollback_target: str | None = None,
     environment: str = "prod",
+    headers: Mapping[str, str] | None = None,
+    cookies: Mapping[str, str] | None = None,
 ) -> Any:
     return client.post(
         f"/admin/v1/services/{service_id}/releases",
-        headers=_admin_headers(),
+        headers=headers or _admin_headers(),
+        cookies=cookies,
         json={
             "environment": environment,
             "policy_version": policy_version,
@@ -2023,6 +2171,72 @@ def _create_valid_release(
     )
     assert response.status_code == 201
     return str(response.json()["release_version"])
+
+
+def _application_admin_session_cookies(
+    db_session: Session,
+    service_id: str,
+    *,
+    role: str,
+) -> tuple[dict[str, str], str]:
+    now = datetime.now(UTC)
+    user_id = f"release-app-admin-{uuid4().hex}"
+    raw_token = f"raw-session-{user_id}"
+    repository = IntentRoutingRepository(db_session)
+    repository.create_admin_user(
+        user_id=user_id,
+        email=f"{user_id}@example.com",
+        display_name="Release Application Admin",
+        password_hash="password-hash",
+        status="active",
+        admin_access_reason="integration test release application admin",
+        created_at=now,
+        updated_at=now,
+    )
+    repository.assign_admin_user_role(
+        user_id=user_id,
+        role="application_admin",
+        assigned_by="integration-test",
+        assigned_at=now,
+    )
+    repository.assign_user_service_role(
+        user_id=user_id,
+        service_id=service_id,
+        role=role,
+        assigned_by="integration-test",
+        assigned_at=now,
+    )
+    repository.create_admin_session(
+        session_id=f"session-{user_id}",
+        user_id=user_id,
+        token_hash=hash_admin_session_token(raw_token),
+        created_at=now,
+        expires_at=now + timedelta(hours=1),
+        revoked_at=None,
+        last_seen_at=None,
+    )
+    db_session.commit()
+    return {ADMIN_SESSION_COOKIE_NAME: raw_token}, user_id
+
+
+def _purge_admin_user(db_session: Session, user_id: str) -> None:
+    db_session.execute(
+        text("delete from admin_sessions where user_id = :user_id"),
+        {"user_id": user_id},
+    )
+    db_session.execute(
+        text("delete from user_service_roles where user_id = :user_id"),
+        {"user_id": user_id},
+    )
+    db_session.execute(
+        text("delete from admin_user_roles where user_id = :user_id"),
+        {"user_id": user_id},
+    )
+    db_session.execute(
+        text("delete from admin_users where user_id = :user_id"),
+        {"user_id": user_id},
+    )
+    db_session.commit()
 
 
 def _audit_log(
