@@ -188,9 +188,7 @@ export default function ServicesPage() {
                       <Tag color="blue">{selectedService.environment}</Tag>
                     </Descriptions.Item>
                     <Descriptions.Item label="Status">
-                      <Tag color={selectedService.status === 'active' ? 'green' : 'default'}>
-                        {selectedService.status}
-                      </Tag>
+                      <StatusTag status={selectedService.status} />
                     </Descriptions.Item>
                     <Descriptions.Item label="Roles">
                       <Space wrap size={4}>

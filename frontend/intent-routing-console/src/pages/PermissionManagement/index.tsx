@@ -102,7 +102,14 @@ const statusTag = (status: API.ManagedAdminUserStatus | string) => (
 );
 
 const useYnTag = (value?: API.UseYn) =>
-  value ? <Tag color={value === 'Y' ? 'green' : 'default'}>{value}</Tag> : '-';
+  value ? (
+    <StatusTag
+      status={value === 'Y' ? 'active' : 'disabled'}
+      label={value === 'Y' ? '사용' : '미사용'}
+    />
+  ) : (
+    '-'
+  );
 
 const roleTags = (roles: readonly string[]) =>
   roles.length ? (
@@ -665,11 +672,7 @@ export default function PermissionManagementPage() {
       title: 'Status',
       dataIndex: 'status',
       width: 112,
-      render: (_, applicant) => (
-        <Tag color={applicant.status === 'pending' ? 'orange' : 'default'}>
-          {applicant.status}
-        </Tag>
-      ),
+      render: (_, applicant) => <StatusTag status={applicant.status} />,
     },
     {
       title: 'Decided by',

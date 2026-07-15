@@ -21,6 +21,7 @@ import {
 import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
+import { StatusTag } from '@/components/StatusTag';
 import {
   createManagedAdminUser,
   createDepartment,
@@ -68,7 +69,10 @@ const useYnValueEnum = {
 } as const;
 
 const UseYnTag = ({ value }: { value: API.UseYn }) => (
-  <Tag color={value === 'Y' ? 'green' : 'default'}>{value}</Tag>
+  <StatusTag
+    status={value === 'Y' ? 'active' : 'disabled'}
+    label={value === 'Y' ? '사용' : '미사용'}
+  />
 );
 
 export default function OrganizationDirectoryPage() {
@@ -473,9 +477,10 @@ export default function OrganizationDirectoryPage() {
                       key: 'status',
                       label: '상태',
                       children: (
-                        <Tag color={managedAdminUser.status === 'active' ? 'green' : 'default'}>
-                          {managedAdminUser.status === 'active' ? '활성' : '비활성'}
-                        </Tag>
+                        <StatusTag
+                          status={managedAdminUser.status}
+                          label={managedAdminUser.status === 'active' ? '활성' : '비활성'}
+                        />
                       ),
                     },
                     {

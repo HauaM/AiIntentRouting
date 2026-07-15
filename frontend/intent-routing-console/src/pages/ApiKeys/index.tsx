@@ -20,6 +20,7 @@ import { AdminSessionRequired } from '@/components/AdminSessionRequired';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import { FieldHelpLabel } from '@/components/FieldHelpLabel';
 import { IntentRouteMultiSelect } from '@/components/IntentRouteMultiSelect';
+import { StatusTag } from '@/components/StatusTag';
 import { canManageRuntimeSetup, isAdminSessionReady } from '@/models/adminSession';
 import {
   createServiceApiKey,
@@ -202,9 +203,7 @@ export default function ApiKeysPage() {
       title: 'Status',
       dataIndex: 'status',
       width: 112,
-      render: (_, row) => (
-        <Tag color={row.status === 'active' ? 'green' : 'default'}>{row.status}</Tag>
-      ),
+      render: (_, row) => <StatusTag status={row.status} />,
     },
     {
       title: 'Expires',
@@ -346,7 +345,7 @@ export default function ApiKeysPage() {
                           key_id {createdKey.key_id}
                         </Typography.Text>
                         <Tag>fingerprint {createdKey.key_fingerprint}</Tag>
-                        <Tag>{createdKey.status}</Tag>
+                        <StatusTag status={createdKey.status} />
                       </Space>
                     </Space>
                   ) : null}
