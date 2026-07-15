@@ -417,11 +417,13 @@ export default function ApiKeysPage() {
                           </Descriptions.Item>
                         ))}
                       </Descriptions>
-                      <Space wrap>
+                      <div className="api-key-checklist">
                         {runtimeSetup.checklist.map((item) => (
-                          <Tag key={item}>{item}</Tag>
+                          <Tag key={item} className="api-key-checklist-item">
+                            {item}
+                          </Tag>
                         ))}
-                      </Space>
+                      </div>
                     </Space>
                   ) : (
                     <Alert

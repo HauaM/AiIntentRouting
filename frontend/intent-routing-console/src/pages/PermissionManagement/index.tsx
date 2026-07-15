@@ -962,6 +962,7 @@ export default function PermissionManagementPage() {
                   label: tab.label,
                   children: (
                     <ProTable<API.AdminAccessRequest>
+                      className="admin-scroll-table"
                       rowKey="request_id"
                       actionRef={accessRequestActionRef}
                       columns={accessRequestColumns}
@@ -970,6 +971,7 @@ export default function PermissionManagementPage() {
                         return { data: rows, total: rows.length, success: true };
                       }}
                       pagination={false}
+                      scroll={{ x: 1120 }}
                       search={false}
                       options={{ density: true, fullScreen: false, reload: true, setting: true }}
                     />
@@ -983,25 +985,27 @@ export default function PermissionManagementPage() {
                   label: tab.label,
                   children: (
                     <ProTable<API.PermissionAdminUserSummary>
-                        rowKey={permissionAdminUserRowKey}
-                        actionRef={globalRoleActionRef}
-                        columns={globalRoleColumns}
-                        request={async () => {
-                          const rows = await listPermissionAdminUsers({
-                            global_role: 'system_admin',
-                            limit: 100,
-                          });
-                          const systemAdminRows = filterSystemAdminRows(rows);
-                          return {
-                            data: systemAdminRows,
-                            total: systemAdminRows.length,
-                            success: true,
-                          };
-                        }}
-                        pagination={false}
-                        search={false}
-                        options={{ density: true, fullScreen: false, reload: true, setting: true }}
-                      />
+                      className="admin-scroll-table"
+                      rowKey={permissionAdminUserRowKey}
+                      actionRef={globalRoleActionRef}
+                      columns={globalRoleColumns}
+                      request={async () => {
+                        const rows = await listPermissionAdminUsers({
+                          global_role: 'system_admin',
+                          limit: 100,
+                        });
+                        const systemAdminRows = filterSystemAdminRows(rows);
+                        return {
+                          data: systemAdminRows,
+                          total: systemAdminRows.length,
+                          success: true,
+                        };
+                      }}
+                      pagination={false}
+                      scroll={{ x: 760 }}
+                      search={false}
+                      options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                    />
                   ),
                 };
               }
@@ -1013,17 +1017,25 @@ export default function PermissionManagementPage() {
                   children: (
                     <Space direction="vertical" size={12} style={{ width: '100%' }}>
                       <Card title="Service role grant">
-                        <Space wrap align="end" size={12}>
-                          <Space direction="vertical" size={4}>
+                        <div className="permission-service-role-grant">
+                          <Space
+                            direction="vertical"
+                            size={4}
+                            className="permission-service-role-grant-field"
+                          >
                             <Typography.Text>Service ID</Typography.Text>
                             <Input
                               placeholder="service-id"
                               value={grantServiceId}
                               onChange={(event) => setGrantServiceId(event.target.value)}
-                              style={{ width: 240 }}
+                              style={{ width: '100%', maxWidth: 240 }}
                             />
                           </Space>
-                          <Space direction="vertical" size={4}>
+                          <Space
+                            direction="vertical"
+                            size={4}
+                            className="permission-service-role-grant-field"
+                          >
                             <Typography.Text>User</Typography.Text>
                             <Select<string, UserSelectOption>
                               showSearch
@@ -1033,7 +1045,7 @@ export default function PermissionManagementPage() {
                               placeholder="Search admin users"
                               value={grantUserId}
                               options={userOptions}
-                              style={{ width: 340 }}
+                              style={{ width: '100%', maxWidth: 340 }}
                               onSearch={handleUserSearch}
                               onChange={setGrantUserId}
                               optionRender={({ data }) => (
@@ -1046,14 +1058,18 @@ export default function PermissionManagementPage() {
                               )}
                             />
                           </Space>
-                          <Space direction="vertical" size={4}>
+                          <Space
+                            direction="vertical"
+                            size={4}
+                            className="permission-service-role-grant-field"
+                          >
                             <Typography.Text>Role</Typography.Text>
                             <Select<API.ServiceRole>
                               allowClear
                               placeholder="Select role"
                               value={grantRole}
                               options={permissionServiceRoleOptions}
-                              style={{ width: 220 }}
+                              style={{ width: '100%', maxWidth: 220 }}
                               onChange={setGrantRole}
                             />
                           </Space>
@@ -1072,9 +1088,10 @@ export default function PermissionManagementPage() {
                           >
                             Grant role
                           </ConfirmActionButton>
-                        </Space>
+                        </div>
                       </Card>
                       <ProTable<API.PermissionServiceRoleSummary>
+                        className="admin-scroll-table"
                         rowKey={permissionServiceRoleRowKey}
                         actionRef={serviceRoleActionRef}
                         columns={serviceRoleColumns}
@@ -1085,6 +1102,7 @@ export default function PermissionManagementPage() {
                           return { data: rows, total: rows.length, success: true };
                         }}
                         pagination={false}
+                        scroll={{ x: 1120 }}
                         search={{ labelWidth: 104 }}
                         options={{ density: true, fullScreen: false, reload: true, setting: true }}
                       />
@@ -1099,6 +1117,7 @@ export default function PermissionManagementPage() {
                   label: tab.label,
                   children: (
                     <ProTable<API.AuditLog>
+                      className="admin-scroll-table"
                       rowKey={permissionAuditLogRowKey}
                       actionRef={auditActionRef}
                       columns={auditColumns}
@@ -1109,6 +1128,7 @@ export default function PermissionManagementPage() {
                         return { data: rows, total: rows.length, success: true };
                       }}
                       pagination={false}
+                      scroll={{ x: 960 }}
                       search={{ labelWidth: 104 }}
                       options={{ density: true, fullScreen: false, reload: true, setting: true }}
                     />
@@ -1121,6 +1141,7 @@ export default function PermissionManagementPage() {
                 label: tab.label,
                 children: (
                   <ProTable<API.PermissionRiskFinding>
+                    className="admin-scroll-table"
                     rowKey={riskFindingRowKey}
                     actionRef={riskActionRef}
                     columns={riskColumns}
@@ -1129,6 +1150,7 @@ export default function PermissionManagementPage() {
                       return { data: rows, total: rows.length, success: true };
                     }}
                     pagination={false}
+                    scroll={{ x: 860 }}
                     search={false}
                     options={{ density: true, fullScreen: false, reload: true, setting: true }}
                   />

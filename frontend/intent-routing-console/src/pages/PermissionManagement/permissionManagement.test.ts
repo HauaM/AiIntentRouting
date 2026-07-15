@@ -30,6 +30,22 @@ const pageSource = () =>
     'utf8',
   );
 
+const globalStyleSource = () =>
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../../global.less'),
+    'utf8',
+  );
+
+const proTableSourceContaining = (source: string, marker: string) => {
+  const markerIndex = source.indexOf(marker);
+  expect(markerIndex).toBeGreaterThan(-1);
+  const tableStart = source.lastIndexOf('<ProTable', markerIndex);
+  const tableEnd = source.indexOf('/>', markerIndex);
+  expect(tableStart).toBeGreaterThan(-1);
+  expect(tableEnd).toBeGreaterThan(tableStart);
+  return source.slice(tableStart, tableEnd);
+};
+
 const validAdminCurrentUser = {
   user: {
     user_id: 'admin-1',
@@ -322,18 +338,47 @@ describe('Permission Management helpers', () => {
     expect(adminUserColumnsSource).not.toContain('width: 240');
   });
 
-  it('preserves unrelated service role grant input width while compacting admin actions', () => {
+  it('keeps service role grant controls bounded while compacting admin actions', () => {
     const source = pageSource();
     const grantCardSource = source.match(
       /<Card title="Service role grant">[\s\S]*?<\/Card>/,
     )?.[0];
 
-    expect(grantCardSource).toContain('style={{ width: 240 }}');
+    expect(grantCardSource).toContain('className="permission-service-role-grant"');
+    expect(grantCardSource).toContain("style={{ width: '100%', maxWidth: 240 }}");
+    expect(grantCardSource).toContain("style={{ width: '100%', maxWidth: 340 }}");
   });
 
   it('adds a scrollable tabs class for mobile Permission Management tabs', () => {
     const source = pageSource();
 
     expect(source).toContain('className="permission-management-tabs"');
+  });
+
+  it('bounds every Permission Management tab table with internal scroll', () => {
+    const source = pageSource();
+    const tableMarkers = [
+      'actionRef={adminActionRef}',
+      'rowKey="request_id"',
+      'actionRef={globalRoleActionRef}',
+      'actionRef={serviceRoleActionRef}',
+      'actionRef={auditActionRef}',
+      'actionRef={riskActionRef}',
+    ];
+
+    tableMarkers.forEach((marker) => {
+      const tableSource = proTableSourceContaining(source, marker);
+
+      expect(tableSource).toContain('className="admin-scroll-table"');
+      expect(tableSource).toContain('scroll={{');
+    });
+  });
+
+  it('clips the Permission Management tab rail inside the viewport on mobile', () => {
+    const source = globalStyleSource();
+
+    expect(source).toContain('.permission-management-tabs .ant-tabs-nav-wrap');
+    expect(source).toContain('overflow-x: auto');
+    expect(source).toContain('min-width: 0');
   });
 });

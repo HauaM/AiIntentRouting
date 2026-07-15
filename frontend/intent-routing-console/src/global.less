@@ -148,6 +148,20 @@ body {
   max-width: 100%;
 }
 
+.api-key-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.api-key-checklist-item {
+  line-height: 20px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .admin-ellipsis-cell {
   display: inline-block;
   max-width: 100%;
@@ -171,16 +185,45 @@ body {
   padding-inline: 8px;
 }
 
-.permission-management-tabs .ant-tabs-nav {
+.permission-management-tabs,
+.permission-management-tabs .ant-tabs-nav,
+.permission-management-tabs .ant-tabs-nav-wrap {
   max-width: 100%;
+  min-width: 0;
+}
+
+.permission-management-tabs .ant-tabs-nav-wrap {
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .permission-management-tabs .ant-tabs-nav-list {
   min-width: max-content;
 }
 
+.permission-service-role-grant {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  max-width: 100%;
+}
+
+.permission-service-role-grant-field {
+  max-width: 100%;
+  min-width: 0;
+}
+
 @media (max-width: 640px) {
+  .permission-service-role-grant {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .permission-service-role-grant-field {
+    width: 100%;
+  }
+
   .service-scope-bar,
   .toolbar-line {
     align-items: stretch;

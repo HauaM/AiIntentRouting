@@ -12,6 +12,9 @@ import {
 const apiKeysPageSource = () =>
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.tsx'), 'utf8');
 
+const globalStyleSource = () =>
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../global.less'), 'utf8');
+
 const guidance: API.RuntimeSetupGuidance = {
   service_id: 'svc-a',
   environment: 'prod',
@@ -96,5 +99,14 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toContain('column={{ xs: 1, md: 2 }}');
     expect(source).toContain("style={{ width: '100%', maxWidth: 320 }}");
     expect(source).toContain('layout="vertical"');
+  });
+
+  it('wraps runtime setup checklist items inside a bounded container', () => {
+    const source = apiKeysPageSource();
+    const styles = globalStyleSource();
+
+    expect(source).toContain('className="api-key-checklist"');
+    expect(styles).toContain('.api-key-checklist');
+    expect(styles).toContain('overflow-wrap: anywhere');
   });
 });
