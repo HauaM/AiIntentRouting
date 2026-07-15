@@ -213,7 +213,7 @@ declare namespace API {
 
   type AdminCurrentUserResponse = {
     user: AdminUser;
-    global_roles: string[];
+    global_roles: GlobalAdminRole[];
     service_roles: AdminServiceRole[];
   };
 

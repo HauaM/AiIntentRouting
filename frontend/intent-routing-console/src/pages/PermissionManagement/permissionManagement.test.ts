@@ -29,6 +29,26 @@ const pageSource = () =>
     'utf8',
   );
 
+const validAdminCurrentUser = {
+  user: {
+    user_id: 'admin-1',
+    email: 'admin1@example.com',
+    display_name: 'Admin One',
+    status: 'active',
+    created_at: '2026-07-14T12:43:24Z',
+    updated_at: '2026-07-14T12:43:24Z',
+    last_login_at: '2026-07-14T12:43:24Z',
+  },
+  global_roles: ['application_admin'],
+  service_roles: [],
+} satisfies API.AdminCurrentUserResponse;
+
+const invalidAdminCurrentUser = {
+  ...validAdminCurrentUser,
+  // @ts-expect-error AdminCurrentUserResponse.global_roles must reject arbitrary strings.
+  global_roles: ['not_a_real_role'],
+} satisfies API.AdminCurrentUserResponse;
+
 describe('Permission Management helpers', () => {
   const systemAdminRow: API.PermissionAdminUserSummary = {
     user_id: 'admin-1',
