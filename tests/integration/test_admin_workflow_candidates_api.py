@@ -29,40 +29,48 @@ def _client(db_session: Session) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
-def _system_admin_client(db_session: Session) -> tuple[TestClient, str]:
+def _system_admin_client(
+    db_session: Session,
+) -> tuple[TestClient, str, list[dict[str, object]]]:
     user_id = f"workflow-admin-{uuid4().hex}"
     raw_token = f"raw-session-{user_id}"
     now = datetime.now(UTC)
+    system_admin_role_rows = _backup_and_delete_system_admin_roles(db_session)
     repository = IntentRoutingRepository(db_session)
-    repository.create_admin_user(
-        user_id=user_id,
-        email=f"{user_id}@example.com",
-        display_name="Workflow Admin",
-        password_hash="password-hash",
-        status="active",
-        created_at=now,
-        updated_at=now,
-    )
-    repository.assign_admin_user_role(
-        user_id=user_id,
-        role="system_admin",
-        assigned_by="integration-test",
-        assigned_at=now,
-    )
-    repository.create_admin_session(
-        session_id=f"session-{user_id}",
-        user_id=user_id,
-        token_hash=hash_admin_session_token(raw_token),
-        created_at=now,
-        expires_at=now + timedelta(hours=1),
-        revoked_at=None,
-        last_seen_at=None,
-    )
-    db_session.commit()
+    try:
+        repository.create_admin_user(
+            user_id=user_id,
+            email=f"{user_id}@example.com",
+            display_name="Workflow Admin",
+            password_hash="password-hash",
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.assign_admin_user_role(
+            user_id=user_id,
+            role="system_admin",
+            assigned_by="integration-test",
+            assigned_at=now,
+        )
+        repository.create_admin_session(
+            session_id=f"session-{user_id}",
+            user_id=user_id,
+            token_hash=hash_admin_session_token(raw_token),
+            created_at=now,
+            expires_at=now + timedelta(hours=1),
+            revoked_at=None,
+            last_seen_at=None,
+        )
+        db_session.commit()
+    except Exception:
+        db_session.rollback()
+        _restore_system_admin_roles(db_session, system_admin_role_rows)
+        raise
 
     client = _client(db_session)
     client.cookies.set(ADMIN_SESSION_COOKIE_NAME, raw_token)
-    return client, user_id
+    return client, user_id, system_admin_role_rows
 
 
 def _create_service(client: TestClient, service_id: str) -> None:
@@ -224,8 +232,43 @@ def _purge_rows(db_session: Session, *, user_id: str, service_id: str) -> None:
     db_session.commit()
 
 
+def _backup_and_delete_system_admin_roles(
+    db_session: Session,
+) -> list[dict[str, object]]:
+    rows = [
+        dict(row)
+        for row in db_session.execute(
+            text(
+                "select user_id, role, assigned_by, assigned_at "
+                "from admin_user_roles where role = 'system_admin'"
+            )
+        ).mappings()
+    ]
+    db_session.execute(text("delete from admin_user_roles where role = 'system_admin'"))
+    db_session.commit()
+    return rows
+
+
+def _restore_system_admin_roles(
+    db_session: Session,
+    rows: list[dict[str, object]],
+) -> None:
+    if rows:
+        db_session.execute(
+            text(
+                "insert into admin_user_roles (user_id, role, assigned_by, assigned_at) "
+                "values (:user_id, :role, :assigned_by, :assigned_at) "
+                "on conflict (user_id, role) do update set "
+                "assigned_by = excluded.assigned_by, "
+                "assigned_at = excluded.assigned_at"
+            ),
+            rows,
+        )
+    db_session.commit()
+
+
 def test_lists_policy_and_catalog_versions(db_session: Session) -> None:
-    client, user_id = _system_admin_client(db_session)
+    client, user_id, system_admin_role_rows = _system_admin_client(db_session)
     service_id = f"svc-workflow-{uuid4().hex}"
     try:
         _create_service(client, service_id)
@@ -250,11 +293,15 @@ def test_lists_policy_and_catalog_versions(db_session: Session) -> None:
         assert catalogs.json()[0]["intent_count"] == 0
         assert catalogs.json()[0]["approved_example_count"] == 0
     finally:
-        _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        try:
+            _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)
 
 
 def test_lists_test_runs_with_dataset_source_filename(db_session: Session) -> None:
-    client, user_id = _system_admin_client(db_session)
+    client, user_id, system_admin_role_rows = _system_admin_client(db_session)
     service_id = f"svc-test-runs-{uuid4().hex}"
     try:
         _create_service(client, service_id)
@@ -275,13 +322,17 @@ def test_lists_test_runs_with_dataset_source_filename(db_session: Session) -> No
         assert isinstance(row["block_reasons"], list)
         assert isinstance(row["recommendations"], list)
     finally:
-        _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        try:
+            _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)
 
 
 def test_release_candidates_include_eligibility_and_release_state(
     db_session: Session,
 ) -> None:
-    client, user_id = _system_admin_client(db_session)
+    client, user_id, system_admin_role_rows = _system_admin_client(db_session)
     service_id = f"svc-release-candidates-{uuid4().hex}"
     try:
         _create_service(client, service_id)
@@ -334,13 +385,17 @@ def test_release_candidates_include_eligibility_and_release_state(
         assert after["already_released"] is True
         assert after["existing_release_version"].startswith("rel-")
     finally:
-        _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        try:
+            _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)
 
 
 def test_release_candidates_require_exact_full_risk_pass_rate(
     db_session: Session,
 ) -> None:
-    client, user_id = _system_admin_client(db_session)
+    client, user_id, system_admin_role_rows = _system_admin_client(db_session)
     service_id = f"svc-release-risk-{uuid4().hex}"
     try:
         _create_service(client, service_id)
@@ -360,13 +415,17 @@ def test_release_candidates_require_exact_full_risk_pass_rate(
         assert row["eligible"] is False
         assert "risk pass rate must be 100%" in row["block_reasons"]
     finally:
-        _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        try:
+            _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)
 
 
 def test_release_candidates_block_environment_mismatch(
     db_session: Session,
 ) -> None:
-    client, user_id = _system_admin_client(db_session)
+    client, user_id, system_admin_role_rows = _system_admin_client(db_session)
     service_id = f"svc-release-env-{uuid4().hex}"
     try:
         _create_service(client, service_id)
@@ -386,13 +445,17 @@ def test_release_candidates_block_environment_mismatch(
             "block_reasons"
         ]
     finally:
-        _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        try:
+            _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)
 
 
 def test_intent_route_candidates_are_selectable_scope_values(
     db_session: Session,
 ) -> None:
-    client, user_id = _system_admin_client(db_session)
+    client, user_id, system_admin_role_rows = _system_admin_client(db_session)
     service_id = f"svc-intent-route-{uuid4().hex}"
     try:
         _create_service(client, service_id)
@@ -451,4 +514,8 @@ def test_intent_route_candidates_are_selectable_scope_values(
         assert active_release_response.status_code == 200
         assert active_release_response.json() == []
     finally:
-        _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        try:
+            _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)

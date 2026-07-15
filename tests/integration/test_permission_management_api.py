@@ -141,15 +141,17 @@ def test_system_admin_lists_permission_summaries_without_user_authorization_flag
     dept_number = f"perm-api-dept-{suffix}"
     user_number = f"perm-api-user-{suffix}"
     now = datetime.now(UTC)
+    system_admin_role_rows: list[dict[str, object]] = []
 
-    _purge_rows(
-        db_session,
-        admin_user_ids=[admin_user_id],
-        service_ids=[service_id],
-        dept_numbers=[dept_number],
-        user_numbers=[user_number],
-    )
     try:
+        system_admin_role_rows = _backup_and_delete_system_admin_roles(db_session)
+        _purge_rows(
+            db_session,
+            admin_user_ids=[admin_user_id],
+            service_ids=[service_id],
+            dept_numbers=[dept_number],
+            user_numbers=[user_number],
+        )
         repository = IntentRoutingRepository(db_session)
         department = repository.create_department(
             dept_number=dept_number,
@@ -276,13 +278,17 @@ def test_system_admin_lists_permission_summaries_without_user_authorization_flag
             }
         ]
     finally:
-        _purge_rows(
-            db_session,
-            admin_user_ids=[admin_user_id],
-            service_ids=[service_id],
-            dept_numbers=[dept_number],
-            user_numbers=[user_number],
-        )
+        try:
+            _purge_rows(
+                db_session,
+                admin_user_ids=[admin_user_id],
+                service_ids=[service_id],
+                dept_numbers=[dept_number],
+                user_numbers=[user_number],
+            )
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)
 
 
 def test_permission_management_summary_requires_system_admin(
