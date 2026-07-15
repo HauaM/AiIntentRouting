@@ -1574,7 +1574,7 @@ Expected: PASS.
 - Consumes: all prior tasks.
 - Produces: verified implementation ready for PR.
 
-- [ ] **Step 1: Run backend targeted tests**
+- [x] **Step 1: Run backend targeted tests**
 
 Run:
 
@@ -1584,7 +1584,7 @@ uv run pytest tests/unit/test_account_auth_schema_contract.py tests/unit/test_pe
 
 Expected: PASS.
 
-- [ ] **Step 2: Run backend static checks**
+- [x] **Step 2: Run backend static checks**
 
 Run:
 
@@ -1595,7 +1595,7 @@ uv run mypy src tests
 
 Expected: PASS.
 
-- [ ] **Step 3: Run frontend checks**
+- [x] **Step 3: Run frontend checks**
 
 Run:
 
@@ -1616,7 +1616,7 @@ select user_id, role from admin_user_roles where role = 'system_admin';
 
 Expected: exactly one row. If more than one row exists, choose the canonical `system_admin`, remove or transfer the others before applying migration `0008_app_admin_rbac`.
 
-- [ ] **Step 5: Run changed-file forbidden pattern search**
+- [x] **Step 5: Run changed-file forbidden pattern search**
 
 Run with the actual changed files:
 
@@ -1626,7 +1626,7 @@ rg -n "React Query|@tanstack|useQuery|useMutation|queryClient|invalidateQueries|
 
 Expected: no implementation matches.
 
-- [ ] **Step 6: Run diff hygiene**
+- [x] **Step 6: Run diff hygiene**
 
 Run:
 

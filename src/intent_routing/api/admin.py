@@ -28,6 +28,7 @@ from intent_routing.api.admin_dependencies import (
 )
 from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekError
 from intent_routing.db.models import (
+    AdminAccessRequest,
     AdminUser,
     AdminUserRole,
     ApiKey,
@@ -1680,7 +1681,7 @@ def _managed_admin_user_audit_state(
 
 
 def _admin_access_request_response(
-    request: models.AdminAccessRequest,
+    request: AdminAccessRequest,
 ) -> AdminAccessRequestResponse:
     department = request.department
     return AdminAccessRequestResponse(
@@ -3003,12 +3004,12 @@ def create_admin_access_request(
     response_model=list[AdminAccessRequestResponse],
 )
 def list_admin_access_requests(
-    status: Annotated[str | None, Query()] = None,
     session_context: Annotated[
         AdminSessionContextRecord,
         Depends(require_admin_session_context),
-    ] = None,
-    session: Annotated[Session, Depends(get_admin_session)] = None,
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+    status: Annotated[str | None, Query()] = None,
 ) -> list[AdminAccessRequestResponse]:
     context = admin_context_from_session_record(session_context)
     _require_system_admin(context)

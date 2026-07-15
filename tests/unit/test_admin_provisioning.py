@@ -259,8 +259,9 @@ def test_configure_startup_system_admin_refuses_different_email_when_owner_exist
             )
             db_session.commit()
         else:
-            owner = repository.get_admin_user(owner_user_id)
-            assert owner is not None
+            existing_owner = repository.get_admin_user(owner_user_id)
+            assert existing_owner is not None
+            owner = existing_owner
         original_roles = [
             role.role for role in repository.list_admin_user_roles(owner.user_id)
         ]

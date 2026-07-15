@@ -105,7 +105,10 @@ def test_alembic_revision_ids_fit_default_version_table_and_0008_leaves_it_alone
     migration_0008 = Path(
         "alembic/versions/0008_application_admin_approval_rbac.py"
     ).read_text()
-    assert 'op.alter_column("alembic_version", "version_num", type_=sa.Text())' not in migration_0008
+    assert (
+        'op.alter_column("alembic_version", "version_num", type_=sa.Text())'
+        not in migration_0008
+    )
 
 
 def test_repository_exposes_account_auth_helpers() -> None:
@@ -560,8 +563,8 @@ def test_repository_ensures_and_deletes_user_service_roles(
 def test_admin_user_roles_allow_application_admin_and_single_system_admin_index(
     db_session: Session,
 ) -> None:
-    inspector = inspect(db_session.bind)
-    admin_user_roles = models.AdminUserRole.__table__
+    inspector = inspect(db_session.get_bind())
+    admin_user_roles = cast(Any, models.AdminUserRole.__table__)
 
     assert _has_check_constraint(admin_user_roles, "ck_admin_user_roles_role")
     check_sql = " ".join(
@@ -577,7 +580,7 @@ def test_admin_user_roles_allow_application_admin_and_single_system_admin_index(
 
 
 def test_admin_access_requests_schema_exists(db_session: Session) -> None:
-    inspector = inspect(db_session.bind)
+    inspector = inspect(db_session.get_bind())
     assert "admin_access_requests" in inspector.get_table_names()
 
     columns = {

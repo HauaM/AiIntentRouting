@@ -20,7 +20,13 @@ def test_repository_allows_application_admin_role(db_session: Session) -> None:
     user_id = f"app-admin-{uuid4().hex}"
     now = datetime.now(UTC)
 
-    _purge_rows(db_session, admin_user_ids=[user_id], service_ids=[], dept_numbers=[], user_numbers=[])
+    _purge_rows(
+        db_session,
+        admin_user_ids=[user_id],
+        service_ids=[],
+        dept_numbers=[],
+        user_numbers=[],
+    )
     try:
         repository.create_admin_user(
             user_id=user_id,
@@ -43,7 +49,13 @@ def test_repository_allows_application_admin_role(db_session: Session) -> None:
             "application_admin"
         ]
     finally:
-        _purge_rows(db_session, admin_user_ids=[user_id], service_ids=[], dept_numbers=[], user_numbers=[])
+        _purge_rows(
+            db_session,
+            admin_user_ids=[user_id],
+            service_ids=[],
+            dept_numbers=[],
+            user_numbers=[],
+        )
 
 
 def test_repository_rejects_second_system_admin_role(db_session: Session) -> None:
@@ -204,14 +216,15 @@ def test_repository_lists_admin_access_requests_with_filters_order_and_limit(
     pending_user_number = f"request-list-pending-{suffix}"
     approved_user_number = f"request-list-approved-{suffix}"
     rejected_user_number = f"request-list-rejected-{suffix}"
+    approved_admin_user_id = f"request-list-approved-admin-{suffix}"
     now = datetime.now(UTC).replace(microsecond=0)
 
     _purge_rows(
         db_session,
-        admin_user_ids=[],
+        admin_user_ids=[approved_admin_user_id],
         service_ids=[],
         dept_numbers=[dept_number],
-        user_numbers=[],
+        user_numbers=[approved_user_number],
         request_user_numbers=[
             pending_user_number,
             approved_user_number,
@@ -230,6 +243,27 @@ def test_repository_lists_admin_access_requests_with_filters_order_and_limit(
             updated_at=now,
         )
 
+        approved_user = repository.create_organization_user(
+            user_number=approved_user_number,
+            name="Approved Request",
+            department_id=department.id,
+            use_yn="Y",
+            created_by="unit-test",
+            updated_by="unit-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_user(
+            user_id=approved_admin_user_id,
+            organization_user_id=approved_user.id,
+            email=f"{approved_admin_user_id}@example.com",
+            display_name="Approved Request",
+            password_hash="approved-admin-hash",
+            admin_access_reason="approved test",
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
         approved_request = repository.create_admin_access_request(
             user_number=approved_user_number,
             name="Approved Request",
@@ -240,10 +274,12 @@ def test_repository_lists_admin_access_requests_with_filters_order_and_limit(
             requested_at=now,
         )
         repository.approve_admin_access_request(
-            approved_request.request_id,
+            approved_request,
             decided_by="system-admin",
             decided_at=now + timedelta(seconds=1),
             decision_reason="Approved for test",
+            created_user_id=approved_user.id,
+            created_admin_user_id=approved_admin_user_id,
         )
 
         pending_request = repository.create_admin_access_request(
@@ -266,7 +302,7 @@ def test_repository_lists_admin_access_requests_with_filters_order_and_limit(
             requested_at=now + timedelta(seconds=3),
         )
         repository.reject_admin_access_request(
-            rejected_request.request_id,
+            rejected_request,
             decided_by="system-admin",
             decided_at=now + timedelta(seconds=4),
             decision_reason="Rejected for test",
@@ -278,16 +314,17 @@ def test_repository_lists_admin_access_requests_with_filters_order_and_limit(
             rejected_request.request_id,
             pending_request.request_id,
         ]
-        assert [request.request_id for request in repository.list_admin_access_requests(status="pending")] == [
-            pending_request.request_id
-        ]
+        assert [
+            request.request_id
+            for request in repository.list_admin_access_requests(status="pending")
+        ] == [pending_request.request_id]
     finally:
         _purge_rows(
             db_session,
-            admin_user_ids=[],
+            admin_user_ids=[approved_admin_user_id],
             service_ids=[],
             dept_numbers=[dept_number],
-            user_numbers=[],
+            user_numbers=[approved_user_number],
             request_user_numbers=[
                 pending_user_number,
                 approved_user_number,
@@ -303,14 +340,15 @@ def test_repository_decision_helpers_require_pending_status_and_clear_password_h
     dept_number = f"request-decision-dept-{suffix}"
     approve_user_number = f"request-approve-{suffix}"
     reject_user_number = f"request-reject-{suffix}"
+    approve_admin_user_id = f"request-approve-admin-{suffix}"
     now = datetime.now(UTC).replace(microsecond=0)
 
     _purge_rows(
         db_session,
-        admin_user_ids=[],
+        admin_user_ids=[approve_admin_user_id],
         service_ids=[],
         dept_numbers=[dept_number],
-        user_numbers=[],
+        user_numbers=[approve_user_number],
         request_user_numbers=[approve_user_number, reject_user_number],
     )
     try:
@@ -321,6 +359,27 @@ def test_repository_decision_helpers_require_pending_status_and_clear_password_h
             use_yn="Y",
             created_by="unit-test",
             updated_by="unit-test",
+            created_at=now,
+            updated_at=now,
+        )
+        approve_user = repository.create_organization_user(
+            user_number=approve_user_number,
+            name="Approve Me",
+            department_id=department.id,
+            use_yn="Y",
+            created_by="unit-test",
+            updated_by="unit-test",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.create_admin_user(
+            user_id=approve_admin_user_id,
+            organization_user_id=approve_user.id,
+            email=f"{approve_admin_user_id}@example.com",
+            display_name="Approve Me",
+            password_hash="approve-admin-hash",
+            admin_access_reason="approved test",
+            status="active",
             created_at=now,
             updated_at=now,
         )
@@ -344,13 +403,15 @@ def test_repository_decision_helpers_require_pending_status_and_clear_password_h
         )
 
         approved = repository.approve_admin_access_request(
-            approve_request.request_id,
+            approve_request,
             decided_by="system-admin",
             decided_at=now + timedelta(seconds=2),
             decision_reason="Looks good",
+            created_user_id=approve_user.id,
+            created_admin_user_id=approve_admin_user_id,
         )
         rejected = repository.reject_admin_access_request(
-            reject_request.request_id,
+            reject_request,
             decided_by="system-admin",
             decided_at=now + timedelta(seconds=3),
             decision_reason="Not enough context",
@@ -365,7 +426,7 @@ def test_repository_decision_helpers_require_pending_status_and_clear_password_h
 
         with pytest.raises(ValueError, match="admin access request must be pending"):
             repository.reject_admin_access_request(
-                approve_request.request_id,
+                approve_request,
                 decided_by="system-admin",
                 decided_at=now + timedelta(seconds=4),
                 decision_reason="Too late",
@@ -373,10 +434,10 @@ def test_repository_decision_helpers_require_pending_status_and_clear_password_h
     finally:
         _purge_rows(
             db_session,
-            admin_user_ids=[],
+            admin_user_ids=[approve_admin_user_id],
             service_ids=[],
             dept_numbers=[dept_number],
-            user_numbers=[],
+            user_numbers=[approve_user_number],
             request_user_numbers=[approve_user_number, reject_user_number],
         )
 
