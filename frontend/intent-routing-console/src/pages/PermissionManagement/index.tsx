@@ -123,6 +123,7 @@ export default function PermissionManagementPage() {
   const location = useLocation();
   const { session, restoreSession } = useModel('adminSession');
   const [rejectRequestForm] = Form.useForm<{ decision_reason: string }>();
+  const [transferReasonForm] = Form.useForm<{ reason: string }>();
   const adminActionRef = useRef<ActionType>();
   const accessRequestActionRef = useRef<ActionType>();
   const globalRoleActionRef = useRef<ActionType>();
@@ -218,6 +219,47 @@ export default function PermissionManagementPage() {
     } finally {
       setMutatingAdminUserId(undefined);
     }
+  };
+
+  const openSystemAdminTransferModal = (row: API.PermissionAdminUserSummary) => {
+    transferReasonForm.resetFields();
+
+    Modal.confirm({
+      title: 'system_admin 소유권을 이관하시겠습니까?',
+      okText: 'system_admin 이관',
+      okButtonProps: { danger: true },
+      cancelText: '취소',
+      content: (
+        <Form form={transferReasonForm} layout="vertical" requiredMark={false}>
+          <Typography.Paragraph style={{ marginBottom: 12 }}>
+            {row.display_name} ({row.email}) 계정으로 system_admin 소유권을 이관합니다.
+          </Typography.Paragraph>
+          <Form.Item
+            name="reason"
+            label="이관 사유"
+            rules={[
+              { required: true, whitespace: true, message: '이관 사유를 입력하세요.' },
+              {
+                validator: async (_, value: string | undefined) => {
+                  if ((value?.trim().length ?? 0) < 10) {
+                    throw new Error('이관 사유는 10자 이상 입력하세요.');
+                  }
+                },
+              },
+            ]}
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder="system_admin 이관 사유를 10자 이상 입력하세요."
+            />
+          </Form.Item>
+        </Form>
+      ),
+      async onOk() {
+        const values = await transferReasonForm.validateFields();
+        await handleSystemAdminTransfer(row, values.reason);
+      },
+    });
   };
 
   const handleApproveAccessRequest = async (applicant: API.AdminAccessRequest) => {
@@ -467,14 +509,11 @@ export default function PermissionManagementPage() {
           >
             application_admin 해제
           </ConfirmActionButton>,
-          <ConfirmActionButton
+          <Button
             key="transfer-system-admin"
             danger
             type="link"
             size="small"
-            title="Transfer system_admin?"
-            okText="system_admin 이관"
-            content={`${row.display_name} (${row.email}) 계정으로 system_admin 소유권을 이관합니다.`}
             disabled={
               mutating ||
               !session.user ||
@@ -484,15 +523,10 @@ export default function PermissionManagementPage() {
               row.status !== 'active' ||
               inactiveOrgUser
             }
-            onConfirm={() =>
-              handleSystemAdminTransfer(
-                row,
-                `Transfer system_admin ownership to ${row.user_id} from Permission Management.`,
-              )
-            }
+            onClick={() => openSystemAdminTransferModal(row)}
           >
             system_admin 이관
-          </ConfirmActionButton>,
+          </Button>,
         ];
       },
     },

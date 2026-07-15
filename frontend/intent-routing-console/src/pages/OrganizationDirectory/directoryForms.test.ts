@@ -13,7 +13,6 @@ import {
   toDepartmentOptionSearchParams,
   toAdminUserCreateRequest,
   toAdminUserStatusPatchRequest,
-  toSystemAdminRolesPatchRequest,
   toDepartmentCreateRequest,
   toDepartmentUseYnPatchRequest,
   toOrganizationUserCreateRequest,
@@ -164,7 +163,7 @@ describe('directoryForms', () => {
     ).toBe(false);
   });
 
-  it('builds admin status and system_admin role patch requests', () => {
+  it('builds admin status patch requests without direct system_admin role patching helpers', () => {
     const adminUser: API.ManagedAdminUser = {
       user_id: 'admin-1',
       email: 'admin@example.com',
@@ -180,15 +179,6 @@ describe('directoryForms', () => {
 
     expect(toAdminUserStatusPatchRequest('disabled')).toEqual({ status: 'disabled' });
     expect(hasSystemAdminRole(adminUser)).toBe(false);
-    expect(toSystemAdminRolesPatchRequest(adminUser, true)).toEqual({
-      global_roles: ['application_admin', 'system_admin'],
-    });
-    expect(
-      toSystemAdminRolesPatchRequest(
-        { ...adminUser, global_roles: ['application_admin', 'system_admin'] },
-        false,
-      ),
-    ).toEqual({ global_roles: ['application_admin'] });
   });
 
   it('builds the Permission Management shortcut URL for linked admin accounts', () => {

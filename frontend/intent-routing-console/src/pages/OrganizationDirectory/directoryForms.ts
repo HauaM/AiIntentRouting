@@ -101,15 +101,3 @@ export const hasSystemAdminRole = (adminUser: API.ManagedAdminUser) =>
 export const hasIncompleteApplicationAdminAccess = (
   adminUser: Pick<API.ManagedAdminUser, 'global_roles'>,
 ) => !adminUser.global_roles.includes('application_admin');
-
-export const toSystemAdminRolesPatchRequest = (
-  adminUser: API.ManagedAdminUser,
-  grant: boolean,
-): API.ManagedAdminUserPatchRequest => {
-  const roleSet = new Set(adminUser.global_roles);
-  if (grant) roleSet.add('system_admin');
-  else roleSet.delete('system_admin');
-  return {
-    global_roles: Array.from(roleSet).sort(),
-  };
-};

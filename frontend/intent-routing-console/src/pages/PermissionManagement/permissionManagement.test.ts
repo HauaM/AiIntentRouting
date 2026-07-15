@@ -156,7 +156,7 @@ describe('Permission Management helpers', () => {
     ).toEqual({ global_roles: ['application_admin'] });
   });
 
-  it('builds a guarded system_admin transfer payload', () => {
+  it('builds a guarded system_admin transfer payload from operator-entered reason', () => {
     expect(
       buildSystemAdminTransferRequest(' admin-1 ', ' admin-2 ', ' Transfer platform ownership '),
     ).toEqual({
@@ -166,6 +166,9 @@ describe('Permission Management helpers', () => {
     });
     expect(() =>
       buildSystemAdminTransferRequest('admin-1', 'admin-2', 'too short'),
+    ).toThrow('reason must be at least 10 characters');
+    expect(() =>
+      buildSystemAdminTransferRequest('admin-1', 'admin-2', '          '),
     ).toThrow('reason must be at least 10 characters');
   });
 
@@ -289,5 +292,17 @@ describe('Permission Management helpers', () => {
     expect(source).toContain('Modal.confirm({');
     expect(source).toContain("name=\"decision_reason\"");
     expect(source).toContain('rejectAdminAccessRequest');
+  });
+
+  it('requires operator-entered transfer reason instead of a canned string', () => {
+    const source = pageSource();
+
+    expect(source).toContain('openSystemAdminTransferModal');
+    expect(source).toContain("name=\"reason\"");
+    expect(source).toContain('buildSystemAdminTransferRequest');
+    expect(source).toContain('values.reason');
+    expect(source).not.toContain(
+      '`Transfer system_admin ownership to ${row.user_id} from Permission Management.`',
+    );
   });
 });
