@@ -4,7 +4,13 @@ from pathlib import Path
 from typing import Any, Literal, TypedDict, cast
 
 import pytest
-from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKeyConstraint,
+    UniqueConstraint,
+    inspect,
+    text,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,6 +23,7 @@ class _AdminUserValues(TypedDict):
     email: str
     display_name: str
     password_hash: str
+    admin_access_reason: str
     status: str
     created_at: datetime
     updated_at: datetime
@@ -25,6 +32,7 @@ class _AdminUserValues(TypedDict):
 def test_account_auth_models_expose_expected_tables_and_constraints() -> None:
     assert {
         "admin_users",
+        "admin_access_requests",
         "admin_sessions",
         "admin_user_roles",
         "user_service_roles",
@@ -115,6 +123,7 @@ def test_repository_normalizes_email_and_rejects_unknown_roles() -> None:
         email=" Admin.User@Example.COM ",
         display_name="Admin User",
         password_hash="password-hash",
+        admin_access_reason="Needs admin UI access for service support.",
     )
 
     assert user.email == "Admin.User@Example.COM"
@@ -326,6 +335,7 @@ def test_repository_updates_admin_password_and_ensures_role(
             email="password-sync@example.com",
             display_name="Password Sync",
             password_hash="old-password-hash",
+            admin_access_reason="Approved to operate assigned application services.",
             status="active",
             created_at=now,
             updated_at=now,
@@ -379,6 +389,7 @@ def test_repository_searches_admin_users_without_secret_fields(
             "email": "Repo.Search.Alpha@example.com",
             "display_name": "Repository Alpha Owner",
             "password_hash": "alpha-password-hash",
+            "admin_access_reason": "Approved for alpha service administration.",
             "status": "active",
             "created_at": now,
             "updated_at": now,
@@ -388,6 +399,7 @@ def test_repository_searches_admin_users_without_secret_fields(
             "email": "repo.search.beta@example.com",
             "display_name": "Repository Beta Reviewer",
             "password_hash": "beta-password-hash",
+            "admin_access_reason": "Approved for beta service review work.",
             "status": "disabled",
             "created_at": now,
             "updated_at": now,
@@ -455,6 +467,7 @@ def test_repository_ensures_and_deletes_user_service_roles(
             email="repo.membership@example.com",
             display_name="Repository Membership",
             password_hash="membership-password-hash",
+            admin_access_reason="Approved for membership management test coverage.",
             status="active",
             created_at=now,
             updated_at=now,
@@ -513,6 +526,54 @@ def test_repository_ensures_and_deletes_user_service_roles(
         ) is None
     finally:
         _purge_service_membership_rows(db_session, user_id=user_id, service_id=service_id)
+
+
+def test_admin_user_roles_allow_application_admin_and_single_system_admin_index(
+    db_session: Session,
+) -> None:
+    inspector = inspect(db_session.bind)
+    admin_user_roles = models.AdminUserRole.__table__
+
+    assert _has_check_constraint(admin_user_roles, "ck_admin_user_roles_role")
+    check_sql = " ".join(
+        constraint.sqltext.text
+        for constraint in admin_user_roles.constraints
+        if getattr(constraint, "name", "") == "ck_admin_user_roles_role"
+    )
+    assert "system_admin" in check_sql
+    assert "application_admin" in check_sql
+
+    index_names = {index["name"] for index in inspector.get_indexes("admin_user_roles")}
+    assert "uq_admin_user_roles_single_system_admin" in index_names
+
+
+def test_admin_access_requests_schema_exists(db_session: Session) -> None:
+    inspector = inspect(db_session.bind)
+    assert "admin_access_requests" in inspector.get_table_names()
+
+    columns = {
+        column["name"] for column in inspector.get_columns("admin_access_requests")
+    }
+    assert {
+        "request_id",
+        "user_number",
+        "name",
+        "department_id",
+        "email",
+        "email_normalized",
+        "password_hash",
+        "access_reason",
+        "status",
+        "requested_at",
+        "decided_at",
+        "decided_by",
+        "decision_reason",
+        "created_user_id",
+        "created_admin_user_id",
+    } <= columns
+
+    admin_columns = {column["name"] for column in inspector.get_columns("admin_users")}
+    assert "admin_access_reason" in admin_columns
 
 
 def _has_unique_constraint(table: Any, column_names: list[str]) -> bool:

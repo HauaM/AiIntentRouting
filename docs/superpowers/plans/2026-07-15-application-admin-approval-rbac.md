@@ -420,7 +420,7 @@ Expected: all three documents mention the new role and the request/approval mode
 - Consumes: current `admin_users`, `admin_user_roles`, `users`, and `departments`.
 - Produces: `admin_access_requests` table, `admin_users.admin_access_reason`, `application_admin` check constraint, and unique single-`system_admin` index.
 
-- [ ] **Step 1: Write failing schema tests**
+- [x] **Step 1: Write failing schema tests**
 
 Add tests to `tests/unit/test_account_auth_schema_contract.py`:
 
@@ -473,7 +473,7 @@ def test_admin_access_requests_schema_exists(db_session: Session) -> None:
     assert "admin_access_reason" in admin_columns
 ```
 
-- [ ] **Step 2: Run tests to confirm failure**
+- [x] **Step 2: Run tests to confirm failure**
 
 Run:
 
@@ -483,7 +483,7 @@ uv run pytest tests/unit/test_account_auth_schema_contract.py::test_admin_user_r
 
 Expected: FAIL because migration/model changes do not exist yet.
 
-- [ ] **Step 3: Add Alembic migration**
+- [x] **Step 3: Add Alembic migration**
 
 Create `alembic/versions/0008_application_admin_approval_rbac.py`:
 
@@ -613,7 +613,7 @@ def downgrade() -> None:
     )
 ```
 
-- [ ] **Step 4: Update SQLAlchemy models**
+- [x] **Step 4: Update SQLAlchemy models**
 
 In `src/intent_routing/db/models.py`, update `AdminUser`, `AdminUserRole`, and add:
 
@@ -667,7 +667,7 @@ CheckConstraint(
 )
 ```
 
-- [ ] **Step 5: Run schema tests**
+- [x] **Step 5: Run schema tests**
 
 Run:
 
