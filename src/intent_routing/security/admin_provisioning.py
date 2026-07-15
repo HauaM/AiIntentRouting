@@ -7,8 +7,10 @@ from datetime import UTC, datetime
 from os import environ
 from uuid import uuid4
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from intent_routing.db.models import AdminUserRole
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.security.admin_passwords import (
     hash_admin_password,
@@ -65,8 +67,17 @@ def configure_startup_system_admin(
         repository.acquire_advisory_xact_lock(STARTUP_ADMIN_LOCK_KEY)
         now = datetime.now(UTC)
         user = repository.get_admin_user_by_email(config.email)
+        existing_system_admin_user_id = session.scalar(
+            select(AdminUserRole.user_id)
+            .where(AdminUserRole.role == "system_admin")
+            .limit(1)
+        )
 
         if user is None:
+            if existing_system_admin_user_id is not None:
+                raise ValueError(
+                    "Configured startup system_admin email does not match existing owner"
+                )
             user = repository.create_admin_user(
                 user_id=f"admin_{uuid4().hex}",
                 email=config.email,
@@ -84,6 +95,14 @@ def configure_startup_system_admin(
                 assigned_at=now,
             )
             return "created"
+
+        if (
+            existing_system_admin_user_id is not None
+            and existing_system_admin_user_id != user.user_id
+        ):
+            raise ValueError(
+                "Configured startup system_admin email does not match existing owner"
+            )
 
         has_matching_password = verify_admin_password(config.password, user.password_hash)
         roles_before = {

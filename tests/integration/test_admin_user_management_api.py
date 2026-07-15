@@ -349,6 +349,137 @@ def test_current_user_cannot_disable_or_revoke_own_last_system_admin(
             _purge_rows(db_session, admin_user_ids=[actor_id], emails=[f"{actor_id}@example.com"])
 
 
+def test_cannot_grant_second_system_admin(db_session: Session) -> None:
+    suffix = uuid4().hex[:8]
+    target_user_id = f"sys-b-{suffix}"
+    target_email = f"{target_user_id}@example.com"
+    dept_number = f"sys-admin-transfer-dept-{suffix}"
+    target_user_number = f"sys-admin-target-{suffix}"
+    source = _existing_or_created_system_admin(db_session, suffix=suffix)
+
+    _purge_rows(
+        db_session,
+        admin_user_ids=[target_user_id],
+        emails=[target_email],
+        dept_numbers=[dept_number],
+        user_numbers=[target_user_number],
+    )
+    try:
+        target = _create_admin_user(
+            db_session,
+            user_id=target_user_id,
+            email=target_email,
+            dept_number=dept_number,
+            user_number=target_user_number,
+            role="application_admin",
+        )
+        client = _client(db_session, actor_id=source.user_id)
+
+        response = client.patch(
+            f"/admin/v1/admin-users/{target.user_id}",
+            json={"global_roles": ["application_admin", "system_admin"]},
+        )
+
+        assert response.status_code == 409
+        assert "system_admin already exists" in response.text
+    finally:
+        _purge_rows(
+            db_session,
+            admin_user_ids=[target_user_id],
+            emails=[target_email],
+            dept_numbers=[dept_number],
+            user_numbers=[target_user_number],
+        )
+
+
+def test_system_admin_transfer_replaces_single_owner_atomically(
+    db_session: Session,
+) -> None:
+    suffix = uuid4().hex[:8]
+    target_user_id = f"sys-target-{suffix}"
+    target_email = f"{target_user_id}@example.com"
+    dept_number = f"sys-admin-transfer-dept-{suffix}"
+    target_user_number = f"sys-admin-target-{suffix}"
+    source = _existing_or_created_system_admin(db_session, suffix=suffix)
+
+    _purge_rows(
+        db_session,
+        admin_user_ids=[target_user_id],
+        emails=[target_email],
+        dept_numbers=[dept_number],
+        user_numbers=[target_user_number],
+    )
+    try:
+        before_source_roles = [
+            role.role for role in IntentRoutingRepository(db_session).list_admin_user_roles(source.user_id)
+        ]
+        target = _create_admin_user(
+            db_session,
+            user_id=target_user_id,
+            email=target_email,
+            dept_number=dept_number,
+            user_number=target_user_number,
+            role="application_admin",
+        )
+        client = _client(db_session, actor_id=source.user_id)
+
+        response = client.post(
+            "/admin/v1/system-admin-transfer",
+            json={
+                "from_admin_user_id": source.user_id,
+                "to_admin_user_id": target.user_id,
+                "reason": "Platform ownership rotation.",
+            },
+        )
+
+        assert response.status_code == 200
+        repository = IntentRoutingRepository(db_session)
+        assert [role.role for role in repository.list_admin_user_roles(source.user_id)] == [
+            "application_admin"
+        ]
+        assert [role.role for role in repository.list_admin_user_roles(target.user_id)] == [
+            "system_admin"
+        ]
+        audit_events = list(
+            db_session.scalars(
+                select(models.AuditLog.event_type)
+                .where(models.AuditLog.target_type == "admin_user")
+                .where(models.AuditLog.target_id == target.user_id)
+                .order_by(models.AuditLog.created_at, models.AuditLog.event_type)
+            )
+        )
+        assert "admin_user.system_admin_transferred" in audit_events
+    finally:
+        repository = IntentRoutingRepository(db_session)
+        target_user = repository.get_admin_user(target_user_id)
+        if target_user is not None:
+            current_target_roles = {
+                role.role for role in repository.list_admin_user_roles(target_user.user_id)
+            }
+            if "system_admin" in current_target_roles:
+                repository.delete_admin_user_role_by_key(target_user.user_id, "system_admin")
+            if "application_admin" in current_target_roles:
+                repository.delete_admin_user_role_by_key(
+                    target_user.user_id,
+                    "application_admin",
+                )
+            if "system_admin" not in before_source_roles:
+                repository.ensure_admin_user_role(
+                    user_id=source.user_id,
+                    role="system_admin",
+                    assigned_by="integration-test-restore",
+                    assigned_at=datetime.now(UTC),
+                )
+            db_session.commit()
+        _purge_rows(
+            db_session,
+            admin_user_ids=[target_user_id],
+            emails=[target_email],
+            dept_numbers=[dept_number],
+            user_numbers=[target_user_number],
+        )
+
+
 def test_admin_user_management_routes_require_system_admin(
     db_session: Session,
 ) -> None:
@@ -596,6 +727,82 @@ def _create_organization_user(
     )
     db_session.commit()
     return organization_user
+
+
+def _create_admin_user(
+    db_session: Session,
+    *,
+    user_id: str,
+    email: str,
+    dept_number: str,
+    user_number: str,
+    role: str,
+) -> models.AdminUser:
+    repository = IntentRoutingRepository(db_session)
+    now = datetime.now(UTC)
+    organization_user = _create_organization_user(
+        db_session,
+        dept_number=dept_number,
+        user_number=user_number,
+        use_yn="Y",
+    )
+    admin_user = repository.create_admin_user(
+        user_id=user_id,
+        email=email,
+        display_name=f"Admin {user_id}",
+        password_hash="password-hash",
+        status="active",
+        organization_user_id=organization_user.id,
+        admin_access_reason="integration test setup",
+        created_at=now,
+        updated_at=now,
+    )
+    repository.assign_admin_user_role(
+        user_id=admin_user.user_id,
+        role=role,
+        assigned_by="integration-test",
+        assigned_at=now,
+    )
+    db_session.commit()
+    return admin_user
+
+
+def _existing_or_created_system_admin(
+    db_session: Session,
+    *,
+    suffix: str,
+) -> models.AdminUser:
+    repository = IntentRoutingRepository(db_session)
+    existing_user_id = db_session.scalar(
+        select(models.AdminUserRole.user_id).where(models.AdminUserRole.role == "system_admin")
+    )
+    if existing_user_id is not None:
+        existing = repository.get_admin_user(existing_user_id)
+        assert existing is not None
+        return existing
+
+    user_id = f"seed-system-admin-{suffix}"
+    email = f"{user_id}@example.com"
+    _purge_rows(db_session, admin_user_ids=[user_id], emails=[email])
+    now = datetime.now(UTC)
+    admin_user = repository.create_admin_user(
+        user_id=user_id,
+        email=email,
+        display_name="Seed System Admin",
+        password_hash="password-hash",
+        status="active",
+        admin_access_reason="integration test seed system admin",
+        created_at=now,
+        updated_at=now,
+    )
+    repository.assign_admin_user_role(
+        user_id=admin_user.user_id,
+        role="system_admin",
+        assigned_by="integration-test",
+        assigned_at=now,
+    )
+    db_session.commit()
+    return admin_user
 
 
 def _purge_rows(

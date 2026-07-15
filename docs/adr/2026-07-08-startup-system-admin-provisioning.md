@@ -16,7 +16,8 @@ bootstrap or break-glass use.
 ## Decision
 
 If `ADMIN_SYSTEM_ADMIN_EMAIL` and `ADMIN_SYSTEM_ADMIN_PASSWORD` are both set,
-the backend creates or synchronizes that account during startup.
+the backend creates or synchronizes the single allowed `system_admin` account
+during startup.
 
 If neither variable is set, startup does nothing. If only one variable is set,
 startup fails.
@@ -29,7 +30,10 @@ For an existing user with the same normalized email:
 - Ensure the user has the `system_admin` role.
 
 For a missing user, create an active admin user and assign the `system_admin`
-role.
+role only when no other `system_admin` exists.
+
+If a different `system_admin` already exists, startup fails instead of creating
+or reassigning ownership to the configured email.
 
 ## Alternatives Considered
 
@@ -85,7 +89,9 @@ Verify with tests for:
 - Missing user is created.
 - Matching password leaves the password hash unchanged.
 - Different password updates the password hash.
-- Missing `system_admin` role is assigned.
+- Missing `system_admin` role is assigned for the configured owner.
+- Different configured email is rejected when another `system_admin` already
+  exists.
 - Login succeeds after startup provisioning.
 
 ## Rollback Or Revisit Conditions
