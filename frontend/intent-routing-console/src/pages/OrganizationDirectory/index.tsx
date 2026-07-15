@@ -137,7 +137,7 @@ export default function OrganizationDirectoryPage() {
       } catch {
         if (requestSeq !== requestSeqRef.current) return;
         setOptions([]);
-        message.error('Failed to load department options.');
+        message.error('부서 선택 항목을 불러오지 못했습니다.');
       } finally {
         if (requestSeq === requestSeqRef.current) {
           setLoading(false);
@@ -173,7 +173,7 @@ export default function OrganizationDirectoryPage() {
       }
       setDepartmentFilterOptions([]);
       setDepartmentSelectOptions([]);
-      message.error('Failed to load department options.');
+      message.error('부서 선택 항목을 불러오지 못했습니다.');
     } finally {
       if (filterRequestSeq === departmentFilterRequestSeqRef.current) {
         setLoadingDepartmentFilterOptions(false);
@@ -242,7 +242,7 @@ export default function OrganizationDirectoryPage() {
       setManagedAdminUser(rows[0]);
     } catch {
       if (requestSeq !== adminAccessRequestSeqRef.current) return;
-      message.error('Failed to load Admin access.');
+      message.error('Admin 접근 정보를 불러오지 못했습니다.');
     } finally {
       if (requestSeq === adminAccessRequestSeqRef.current) {
         setAdminAccessLoading(false);
@@ -314,10 +314,10 @@ export default function OrganizationDirectoryPage() {
       const payload = toDepartmentCreateRequest(values);
       if (departmentFormMode === 'create') {
         await createDepartment(payload);
-        message.success('Department created.');
+        message.success('부서를 생성했습니다.');
       } else if (editingDepartment) {
         await patchDepartment(editingDepartment.id, payload);
-        message.success('Department updated.');
+        message.success('부서를 수정했습니다.');
       }
       closeDepartmentModal();
       reloadDepartmentViews();
@@ -348,10 +348,10 @@ export default function OrganizationDirectoryPage() {
       const payload = toOrganizationUserCreateRequest(values);
       if (userFormMode === 'create') {
         await createOrganizationUser(payload);
-        message.success('User created.');
+        message.success('조직 사용자를 생성했습니다.');
       } else if (editingUser) {
         await patchOrganizationUser(editingUser.id, payload);
-        message.success('User updated.');
+        message.success('조직 사용자를 수정했습니다.');
       }
       closeUserModal();
       reloadUserTable();
@@ -379,11 +379,11 @@ export default function OrganizationDirectoryPage() {
   const handleCreateManagedAdminUser = async () => {
     if (!editingUser) return;
     if (editingUser.use_yn !== 'Y') {
-      message.warning('비활성 조직 사용자에게는 active Admin 계정을 부여할 수 없습니다.');
+      message.warning('비활성 조직 사용자에게는 활성 Admin 계정을 부여할 수 없습니다.');
       return;
     }
     if (!adminAccessDraft.email.trim() || !adminAccessDraft.display_name.trim()) {
-      message.warning('Admin email and display name are required.');
+      message.warning('Admin 이메일과 표시 이름을 모두 입력하세요.');
       return;
     }
 
@@ -405,7 +405,7 @@ export default function OrganizationDirectoryPage() {
   ) => {
     if (!editingUser || adminUser.status === statusValue) return;
     if (statusValue === 'active' && editingUser.use_yn !== 'Y') {
-      message.warning('비활성 조직 사용자에게는 active Admin 계정을 부여할 수 없습니다.');
+      message.warning('비활성 조직 사용자에게는 활성 Admin 계정을 부여할 수 없습니다.');
       return;
     }
 
@@ -462,7 +462,7 @@ export default function OrganizationDirectoryPage() {
         <Form.Item label="연결된 Admin 계정">
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             {adminAccessLoading ? (
-              <Typography.Text type="secondary">Loading Admin access...</Typography.Text>
+              <Typography.Text type="secondary">Admin 접근 정보를 불러오는 중...</Typography.Text>
             ) : managedAdminUser ? (
               <>
                 <Descriptions
@@ -472,31 +472,31 @@ export default function OrganizationDirectoryPage() {
                   items={[
                     {
                       key: 'user_id',
-                      label: 'admin user_id',
+                      label: 'Admin 사용자 ID',
                       children: <Typography.Text code>{managedAdminUser.user_id}</Typography.Text>,
                     },
                     {
                       key: 'email',
-                      label: 'email',
+                      label: '이메일',
                       children: managedAdminUser.email,
                     },
                     {
                       key: 'display_name',
-                      label: 'display_name',
+                      label: '표시 이름',
                       children: managedAdminUser.display_name,
                     },
                     {
                       key: 'status',
-                      label: 'status',
+                      label: '상태',
                       children: (
                         <Tag color={managedAdminUser.status === 'active' ? 'green' : 'default'}>
-                          {managedAdminUser.status}
+                          {managedAdminUser.status === 'active' ? '활성' : '비활성'}
                         </Tag>
                       ),
                     },
                     {
                       key: 'global_roles',
-                      label: 'global_roles',
+                      label: '전역 권한',
                       children: managedAdminUser.global_roles.length ? (
                         <Space size={4} wrap>
                           {managedAdminUser.global_roles.map((role) => (
@@ -524,7 +524,7 @@ export default function OrganizationDirectoryPage() {
                   <Alert
                     type="warning"
                     showIcon
-                    message="비활성 조직 사용자에게는 active Admin 계정을 부여할 수 없습니다."
+                    message="비활성 조직 사용자에게는 활성 Admin 계정을 부여할 수 없습니다."
                   />
                 ) : null}
                 {isSelfLastSystemAdmin ? (
@@ -570,7 +570,7 @@ export default function OrganizationDirectoryPage() {
                   <ConfirmActionButton
                     disabled={adminAccessSaving || hasSystemAdmin}
                     style={{ boxShadow: 'none' }}
-                    title="Grant system_admin?"
+                    title="system_admin 권한을 부여할까요?"
                     okText="system_admin 부여"
                     content={`${managedAdminUser.email} 계정에 system_admin 전역 권한을 부여합니다.`}
                     onConfirm={() => handleSystemAdminRoleChange(managedAdminUser, true)}
@@ -581,7 +581,7 @@ export default function OrganizationDirectoryPage() {
                     danger
                     disabled={adminAccessSaving || !hasSystemAdmin || isSelfLastSystemAdmin}
                     style={{ boxShadow: 'none' }}
-                    title="Revoke system_admin?"
+                    title="system_admin 권한을 해제할까요?"
                     okText="system_admin 해제"
                     content={`${managedAdminUser.email} 계정의 system_admin 전역 권한을 해제합니다.`}
                     onConfirm={() => handleSystemAdminRoleChange(managedAdminUser, false)}
@@ -597,13 +597,13 @@ export default function OrganizationDirectoryPage() {
                   showIcon
                   message={
                     inactiveOrganizationUser
-                      ? '비활성 조직 사용자에게는 active Admin 계정을 부여할 수 없습니다.'
+                      ? '비활성 조직 사용자에게는 활성 Admin 계정을 부여할 수 없습니다.'
                       : '관리자 권한 없음'
                   }
                   description={
                     inactiveOrganizationUser
                       ? undefined
-                      : '초기 비밀번호 발급 흐름이 없어 생성 시 disabled 상태로 시작합니다.'
+                      : '초기 비밀번호 발급 흐름이 없어 생성 시 비활성 상태로 시작합니다.'
                   }
                 />
                 <Flex gap={8} wrap="wrap" align="end">
@@ -621,7 +621,7 @@ export default function OrganizationDirectoryPage() {
                   />
                   <Input
                     disabled={adminAccessSaving || inactiveOrganizationUser}
-                    placeholder="Display name"
+                    placeholder="표시 이름"
                     style={{ flex: '1 1 180px' }}
                     value={adminAccessDraft.display_name}
                     onChange={(event) =>
@@ -640,9 +640,9 @@ export default function OrganizationDirectoryPage() {
                     }
                     style={{ boxShadow: 'none' }}
                     type="primary"
-                    title="Create Admin account?"
+                    title="Admin 계정을 생성할까요?"
                     okText="관리자 계정 생성"
-                    content={`${editingUser.user_number} ${editingUser.name} 사용자와 연결된 disabled Admin 계정을 생성합니다.`}
+                    content={`${editingUser.user_number} ${editingUser.name} 사용자와 연결된 비활성 Admin 계정을 생성합니다.`}
                     onConfirm={handleCreateManagedAdminUser}
                   >
                     관리자 계정 생성
@@ -890,7 +890,7 @@ export default function OrganizationDirectoryPage() {
           <Alert
             type="info"
             showIcon
-            message="Organization directory access requires system_admin."
+            message="조직 디렉터리에 접근하려면 system_admin 권한이 필요합니다."
           />
         ) : (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
