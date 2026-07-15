@@ -43,19 +43,25 @@ def test_session_service_developer_can_manage_only_assigned_service(
         repository = IntentRoutingRepository(db_session)
         _create_service(repository, service_a, now=now)
         _create_service(repository, service_b, now=now)
-        developer_token = _create_user_session(
+        developer_token = _create_login_eligible_user_session(
             repository,
             developer_user,
             now=now,
             service_roles=[(service_a, "service_developer")],
+            grant_application_admin_access=True,
         )
-        operator_token = _create_user_session(
+        operator_token = _create_login_eligible_user_session(
             repository,
             operator_user,
             now=now,
             service_roles=[(service_a, "service_operator")],
+            grant_application_admin_access=True,
         )
-        system_admin_token, system_admin_session_user_id = _create_system_admin_session(
+        (
+            system_admin_token,
+            system_admin_session_user_id,
+            system_admin_session_id,
+        ) = _create_system_admin_session(
             repository,
             now=now,
         )
@@ -94,7 +100,7 @@ def test_session_service_developer_can_manage_only_assigned_service(
             db_session,
             user_ids=[developer_user, operator_user],
             service_ids=[service_a, service_b],
-            session_only_user_ids=[system_admin_session_user_id],
+            session_only_session_ids=[system_admin_session_id],
         )
 
 
@@ -109,11 +115,12 @@ def test_application_admin_without_service_role_cannot_modify_service_catalog(
     try:
         repository = IntentRoutingRepository(db_session)
         _create_service(repository, service_id, now=now)
-        app_admin_token = _create_user_session(
+        app_admin_token = _create_login_eligible_user_session(
             repository,
             user_id,
             now=now,
             global_roles=["application_admin"],
+            grant_application_admin_access=False,
         )
         db_session.commit()
 
@@ -141,12 +148,13 @@ def test_application_admin_with_service_developer_can_manage_assigned_service(
     try:
         repository = IntentRoutingRepository(db_session)
         _create_service(repository, service_id, now=now)
-        app_admin_token = _create_user_session(
+        app_admin_token = _create_login_eligible_user_session(
             repository,
             user_id,
             now=now,
             global_roles=["application_admin"],
             service_roles=[(service_id, "service_developer")],
+            grant_application_admin_access=False,
         )
         db_session.commit()
 
@@ -179,13 +187,18 @@ def test_me_services_returns_session_accessible_services(
         repository = IntentRoutingRepository(db_session)
         _create_service(repository, service_a, now=now)
         _create_service(repository, service_b, now=now)
-        developer_token = _create_user_session(
+        developer_token = _create_login_eligible_user_session(
             repository,
             developer_user,
             now=now,
             service_roles=[(service_a, "service_developer")],
+            grant_application_admin_access=True,
         )
-        system_admin_token, system_admin_session_user_id = _create_system_admin_session(
+        (
+            system_admin_token,
+            system_admin_session_user_id,
+            system_admin_session_id,
+        ) = _create_system_admin_session(
             repository,
             now=now,
         )
@@ -223,7 +236,7 @@ def test_me_services_returns_session_accessible_services(
             db_session,
             user_ids=[developer_user],
             service_ids=[service_a, service_b],
-            session_only_user_ids=[system_admin_session_user_id],
+            session_only_session_ids=[system_admin_session_id],
         )
 
 
@@ -242,12 +255,17 @@ def test_me_services_reflects_role_grant_and_revoke_from_membership_api(
     try:
         repository = IntentRoutingRepository(db_session)
         _create_service(repository, service_id, now=now)
-        developer_token = _create_user_session(
+        developer_token = _create_login_eligible_user_session(
             repository,
             developer_user,
             now=now,
+            grant_application_admin_access=True,
         )
-        system_admin_token, system_admin_session_user_id = _create_system_admin_session(
+        (
+            system_admin_token,
+            system_admin_session_user_id,
+            system_admin_session_id,
+        ) = _create_system_admin_session(
             repository,
             now=now,
         )
@@ -316,7 +334,7 @@ def test_me_services_reflects_role_grant_and_revoke_from_membership_api(
             db_session,
             user_ids=[developer_user],
             service_ids=[service_id],
-            session_only_user_ids=[system_admin_session_user_id],
+            session_only_session_ids=[system_admin_session_id],
         )
 
 
@@ -335,12 +353,17 @@ def test_system_admin_can_search_users_and_grant_revoke_service_roles(
     try:
         repository = IntentRoutingRepository(db_session)
         _create_service(repository, service_id, now=now)
-        _create_user_session(
+        _create_login_eligible_user_session(
             repository,
             developer_user,
             now=now,
+            grant_application_admin_access=True,
         )
-        system_admin_token, system_admin_session_user_id = _create_system_admin_session(
+        (
+            system_admin_token,
+            system_admin_session_user_id,
+            system_admin_session_id,
+        ) = _create_system_admin_session(
             repository,
             now=now,
         )
@@ -503,7 +526,7 @@ def test_system_admin_can_search_users_and_grant_revoke_service_roles(
             db_session,
             user_ids=[developer_user],
             service_ids=[service_id],
-            session_only_user_ids=[system_admin_session_user_id],
+            session_only_session_ids=[system_admin_session_id],
         )
 
 
@@ -526,7 +549,12 @@ def test_non_system_admin_cannot_grant_or_revoke_service_roles(
     try:
         repository = IntentRoutingRepository(db_session)
         _create_service(repository, service_id, now=now)
-        _create_user_session(repository, target_user, now=now)
+        _create_login_eligible_user_session(
+            repository,
+            target_user,
+            now=now,
+            grant_application_admin_access=False,
+        )
         repository.assign_user_service_role(
             user_id=target_user,
             service_id=service_id,
@@ -535,18 +563,20 @@ def test_non_system_admin_cannot_grant_or_revoke_service_roles(
             assigned_at=now,
         )
         tokens_by_actor = {
-            actor_user: _create_user_session(
+            actor_user: _create_login_eligible_user_session(
                 repository,
                 actor_user,
                 now=now,
                 service_roles=[(service_id, role)],
+                grant_application_admin_access=True,
             )
             for role, actor_user in actor_by_role.items()
         }
-        tokens_by_actor[unrelated_user] = _create_user_session(
+        tokens_by_actor[unrelated_user] = _create_login_eligible_user_session(
             repository,
             unrelated_user,
             now=now,
+            grant_application_admin_access=False,
         )
         db_session.commit()
 
@@ -566,10 +596,16 @@ def test_non_system_admin_cannot_grant_or_revoke_service_roles(
                 cookies={ADMIN_SESSION_COOKIE_NAME: token},
             )
 
-            assert grant_response.status_code == 403, actor_user
-            assert grant_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
-            assert revoke_response.status_code == 403, actor_user
-            assert revoke_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+            if actor_user == unrelated_user:
+                assert grant_response.status_code == 401, actor_user
+                assert grant_response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
+                assert revoke_response.status_code == 401, actor_user
+                assert revoke_response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
+            else:
+                assert grant_response.status_code == 403, actor_user
+                assert grant_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+                assert revoke_response.status_code == 403, actor_user
+                assert revoke_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
 
         absent_grant_role = db_session.scalar(
             select(models.UserServiceRole)
@@ -634,11 +670,12 @@ def _create_service(
     )
 
 
-def _create_user_session(
+def _create_login_eligible_user_session(
     repository: IntentRoutingRepository,
     user_id: str,
     *,
     now: datetime,
+    grant_application_admin_access: bool,
     global_roles: list[str] | None = None,
     service_roles: list[tuple[str, str]] | None = None,
 ) -> str:
@@ -652,7 +689,7 @@ def _create_user_session(
         updated_at=now,
     )
     roles_to_assign = list(global_roles or [])
-    if "system_admin" not in roles_to_assign and "application_admin" not in roles_to_assign:
+    if grant_application_admin_access and "application_admin" not in roles_to_assign:
         roles_to_assign.append("application_admin")
     for role in roles_to_assign:
         repository.assign_admin_user_role(
@@ -684,7 +721,7 @@ def _create_system_admin_session(
     repository: IntentRoutingRepository,
     *,
     now: datetime,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     user_id = repository.session.scalar(
         select(models.AdminUserRole.user_id)
         .where(models.AdminUserRole.role == "system_admin")
@@ -708,14 +745,15 @@ def _create_system_admin_session(
             assigned_at=now,
         )
     raw_token = f"raw-session-{user_id}-{uuid4().hex}"
+    session_id = f"session-{user_id}-{uuid4().hex}"
     repository.create_admin_session(
-        session_id=f"session-{user_id}-{uuid4().hex}",
+        session_id=session_id,
         user_id=user_id,
         token_hash=hash_admin_session_token(raw_token),
         created_at=now,
         expires_at=now + timedelta(hours=1),
     )
-    return raw_token, user_id
+    return raw_token, user_id, session_id
 
 
 def _intent_payload(route_key: str) -> dict[str, object]:
@@ -735,7 +773,7 @@ def _purge_rows(
     *,
     user_ids: list[str],
     service_ids: list[str],
-    session_only_user_ids: list[str] | None = None,
+    session_only_session_ids: list[str] | None = None,
 ) -> None:
     db_session.execute(
         text("delete from audit_logs where service_id = any(:service_ids)"),
@@ -751,8 +789,13 @@ def _purge_rows(
     )
     db_session.execute(
         text("delete from admin_sessions where user_id = any(:user_ids)"),
-        {"user_ids": [*user_ids, *(session_only_user_ids or [])]},
+        {"user_ids": user_ids},
     )
+    if session_only_session_ids:
+        db_session.execute(
+            text("delete from admin_sessions where session_id = any(:session_ids)"),
+            {"session_ids": session_only_session_ids},
+        )
     db_session.execute(
         text("delete from admin_users where user_id = any(:user_ids)"),
         {"user_ids": user_ids},

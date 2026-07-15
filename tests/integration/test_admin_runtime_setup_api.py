@@ -1,64 +1,147 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from intent_routing.api.admin_dependencies import (
-    get_admin_session,
-    require_admin_context,
-    require_admin_session_context,
-)
+from intent_routing.api.admin_dependencies import get_admin_session
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.main import create_app
-from intent_routing.security.admin_auth import AdminContext
+from intent_routing.security.admin_sessions import (
+    ADMIN_SESSION_COOKIE_NAME,
+    hash_admin_session_token,
+)
 
 
-def _client(
-    db_session: Session,
-    *,
-    actor_id: str = "runtime-setup-admin",
-    global_roles: frozenset[str] = frozenset({"system_admin"}),
-    service_roles: tuple[tuple[str, str], ...] = (),
-) -> TestClient:
+@dataclass(frozen=True)
+class _SessionFixture:
+    user_id: str
+    session_id: str
+    created_user: bool
+
+
+def _client(db_session: Session) -> TestClient:
     app = create_app()
-    service_role_records = tuple(
-        SimpleNamespace(service_id=service_id, role=role)
-        for service_id, role in service_roles
-    )
-    service_roles_by_service: dict[str, frozenset[str]] = {}
-    for service_id, role in service_roles:
-        service_roles_by_service[service_id] = frozenset(
-            {*service_roles_by_service.get(service_id, frozenset()), role}
-        )
-    session_context = SimpleNamespace(
-        user=SimpleNamespace(user_id=actor_id),
-        global_roles=global_roles,
-        service_roles=service_role_records,
-    )
-    admin_context = AdminContext(
-        actor_id=actor_id,
-        roles=global_roles,
-        service_scope=frozenset(service_roles_by_service),
-        all_service_scopes="system_admin" in global_roles,
-        service_roles=service_roles_by_service,
-    )
 
     def override_session() -> Iterator[Session]:
         yield db_session
 
     app.dependency_overrides[get_admin_session] = override_session
-    app.dependency_overrides[require_admin_session_context] = lambda: session_context
-    app.dependency_overrides[require_admin_context] = lambda: admin_context
     return TestClient(app, raise_server_exceptions=False)
+
+
+def _system_admin_client(
+    db_session: Session,
+) -> tuple[TestClient, _SessionFixture]:
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(db_session)
+    user_id = db_session.scalar(
+        select(models.AdminUserRole.user_id)
+        .where(models.AdminUserRole.role == "system_admin")
+        .limit(1)
+    )
+    created_user = False
+    if user_id is None:
+        created_user = True
+        user_id = f"runtime-setup-admin-{uuid4().hex}"
+        repository.create_admin_user(
+            user_id=user_id,
+            email=f"{user_id}@example.com",
+            display_name="Runtime Setup Admin",
+            password_hash="password-hash",
+            status="active",
+            admin_access_reason="integration test runtime setup system admin",
+            created_at=now,
+            updated_at=now,
+        )
+        repository.assign_admin_user_role(
+            user_id=user_id,
+            role="system_admin",
+            assigned_by="integration-test",
+            assigned_at=now,
+        )
+    raw_token = f"raw-session-{user_id}-{uuid4().hex}"
+    session_id = f"session-{user_id}-{uuid4().hex}"
+    repository.create_admin_session(
+        session_id=session_id,
+        user_id=user_id,
+        token_hash=hash_admin_session_token(raw_token),
+        created_at=now,
+        expires_at=now + timedelta(hours=1),
+        revoked_at=None,
+        last_seen_at=None,
+    )
+    db_session.commit()
+
+    client = _client(db_session)
+    client.cookies.set(ADMIN_SESSION_COOKIE_NAME, raw_token)
+    return client, _SessionFixture(
+        user_id=user_id,
+        session_id=session_id,
+        created_user=created_user,
+    )
+
+
+def _application_admin_client(
+    db_session: Session,
+    *,
+    service_roles: tuple[tuple[str, str], ...] = (),
+) -> tuple[TestClient, _SessionFixture]:
+    now = datetime.now(UTC)
+    user_id = f"runtime-setup-app-admin-{uuid4().hex}"
+    raw_token = f"raw-session-{user_id}"
+    session_id = f"session-{user_id}"
+    repository = IntentRoutingRepository(db_session)
+    repository.create_admin_user(
+        user_id=user_id,
+        email=f"{user_id}@example.com",
+        display_name="Runtime Setup Application Admin",
+        password_hash="password-hash",
+        status="active",
+        admin_access_reason="integration test runtime setup application admin",
+        created_at=now,
+        updated_at=now,
+    )
+    repository.assign_admin_user_role(
+        user_id=user_id,
+        role="application_admin",
+        assigned_by="integration-test",
+        assigned_at=now,
+    )
+    for service_id, role in service_roles:
+        repository.assign_user_service_role(
+            user_id=user_id,
+            service_id=service_id,
+            role=role,
+            assigned_by="integration-test",
+            assigned_at=now,
+        )
+    repository.create_admin_session(
+        session_id=session_id,
+        user_id=user_id,
+        token_hash=hash_admin_session_token(raw_token),
+        created_at=now,
+        expires_at=now + timedelta(hours=1),
+        revoked_at=None,
+        last_seen_at=None,
+    )
+    db_session.commit()
+
+    client = _client(db_session)
+    client.cookies.set(ADMIN_SESSION_COOKIE_NAME, raw_token)
+    return client, _SessionFixture(
+        user_id=user_id,
+        session_id=session_id,
+        created_user=True,
+    )
 
 
 def _create_service(client: TestClient, service_id: str) -> None:
@@ -239,10 +322,31 @@ def _purge_rows(
     db_session.commit()
 
 
+def _purge_session_fixture(db_session: Session, fixture: _SessionFixture) -> None:
+    db_session.execute(
+        text("delete from admin_sessions where session_id = :session_id"),
+        {"session_id": fixture.session_id},
+    )
+    if fixture.created_user:
+        db_session.execute(
+            text("delete from user_service_roles where user_id = :user_id"),
+            {"user_id": fixture.user_id},
+        )
+        db_session.execute(
+            text("delete from admin_user_roles where user_id = :user_id"),
+            {"user_id": fixture.user_id},
+        )
+        db_session.execute(
+            text("delete from admin_users where user_id = :user_id"),
+            {"user_id": fixture.user_id},
+        )
+    db_session.commit()
+
+
 def test_service_scoped_api_key_lifecycle_never_replays_secret(
     db_session: Session,
 ) -> None:
-    client = _client(db_session)
+    client, session_fixture = _system_admin_client(db_session)
     service_id = f"svc-runtime-setup-{uuid4().hex}"
     try:
         _create_service(client, service_id)
@@ -329,12 +433,13 @@ def test_service_scoped_api_key_lifecycle_never_replays_secret(
             assert raw_secret not in serialized
     finally:
         _purge_rows(db_session, service_ids=[service_id])
+        _purge_session_fixture(db_session, session_fixture)
 
 
 def test_service_scoped_key_creation_requires_active_release_candidates(
     db_session: Session,
 ) -> None:
-    client = _client(db_session)
+    client, session_fixture = _system_admin_client(db_session)
     service_id = f"svc-runtime-scope-{uuid4().hex}"
     try:
         _create_service(client, service_id)
@@ -368,21 +473,21 @@ def test_service_scoped_key_creation_requires_active_release_candidates(
         assert "environment" in wrong_environment.json()["error"]["message"]
     finally:
         _purge_rows(db_session, service_ids=[service_id])
+        _purge_session_fixture(db_session, session_fixture)
 
 
 def test_application_admin_service_developer_cannot_create_service_api_key(
     db_session: Session,
 ) -> None:
-    system_admin_client = _client(db_session)
+    system_admin_client, system_admin_session_fixture = _system_admin_client(db_session)
     service_id = f"svc-runtime-app-admin-{uuid4().hex}"
+    application_admin_session_fixture: _SessionFixture | None = None
 
     try:
         _create_service(system_admin_client, service_id)
         _seed_active_release(db_session, service_id)
-        client = _client(
+        client, application_admin_session_fixture = _application_admin_client(
             db_session,
-            actor_id="runtime-setup-app-admin",
-            global_roles=frozenset({"application_admin"}),
             service_roles=((service_id, "service_developer"),),
         )
         response = client.post(
@@ -394,12 +499,15 @@ def test_application_admin_service_developer_cannot_create_service_api_key(
         assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
     finally:
         _purge_rows(db_session, service_ids=[service_id])
+        if application_admin_session_fixture is not None:
+            _purge_session_fixture(db_session, application_admin_session_fixture)
+        _purge_session_fixture(db_session, system_admin_session_fixture)
 
 
 def test_service_scoped_revoke_and_guidance_reject_cross_service_key(
     db_session: Session,
 ) -> None:
-    client = _client(db_session)
+    client, session_fixture = _system_admin_client(db_session)
     service_a = f"svc-runtime-a-{uuid4().hex}"
     service_b = f"svc-runtime-b-{uuid4().hex}"
     try:
@@ -432,3 +540,4 @@ def test_service_scoped_revoke_and_guidance_reject_cross_service_key(
         assert persisted_key.status == "active"
     finally:
         _purge_rows(db_session, service_ids=[service_a, service_b])
+        _purge_session_fixture(db_session, session_fixture)
