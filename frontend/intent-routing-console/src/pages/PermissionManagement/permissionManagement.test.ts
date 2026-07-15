@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  buildSystemAdminTransferRequest,
   canAccessPermissionManagement,
   countActiveLoginEligibleSystemAdmins,
   filterSystemAdminRows,
@@ -91,6 +92,7 @@ describe('Permission Management helpers', () => {
   it('keeps stable tab keys and table row keys', () => {
     expect(permissionTabs.map((tab) => tab.key)).toEqual([
       'admin-users',
+      'access-requests',
       'global-roles',
       'service-roles',
       'audit-logs',
@@ -138,15 +140,33 @@ describe('Permission Management helpers', () => {
 
   it('builds admin status and global role patch payloads', () => {
     expect(toPermissionAdminStatusPatchRequest('disabled')).toEqual({ status: 'disabled' });
-    expect(toPermissionAdminGlobalRolesPatchRequest(systemAdminRow, false)).toEqual({
-      global_roles: [],
+    expect(
+      toPermissionAdminGlobalRolesPatchRequest(
+        { ...systemAdminRow, global_roles: ['application_admin', 'system_admin'] },
+        false,
+      ),
+    ).toEqual({
+      global_roles: ['system_admin'],
     });
     expect(
       toPermissionAdminGlobalRolesPatchRequest(
         { global_roles: [] },
         true,
       ),
-    ).toEqual({ global_roles: ['system_admin'] });
+    ).toEqual({ global_roles: ['application_admin'] });
+  });
+
+  it('builds a guarded system_admin transfer payload', () => {
+    expect(
+      buildSystemAdminTransferRequest(' admin-1 ', ' admin-2 ', ' Transfer platform ownership '),
+    ).toEqual({
+      from_admin_user_id: 'admin-1',
+      to_admin_user_id: 'admin-2',
+      reason: 'Transfer platform ownership',
+    });
+    expect(() =>
+      buildSystemAdminTransferRequest('admin-1', 'admin-2', 'too short'),
+    ).toThrow('reason must be at least 10 characters');
   });
 
   it('exposes service role options and validates grant requests', () => {
@@ -240,5 +260,34 @@ describe('Permission Management helpers', () => {
     expect(grantCardSource).toContain('<ConfirmActionButton');
     expect(grantCardSource).toContain('onConfirm={handleGrantServiceRole}');
     expect(grantCardSource).not.toContain('onClick={handleGrantServiceRole}');
+  });
+
+  it('renders access request review and application_admin-based role actions', () => {
+    const source = pageSource();
+
+    expect(permissionTabs.map((tab) => tab.label)).toContain('접근 신청');
+    expect(source).toContain('listAdminAccessRequests');
+    expect(source).toContain('approveAdminAccessRequest');
+    expect(source).toContain('rejectAdminAccessRequest');
+    expect(source).toContain('requested_at');
+    expect(source).toContain('user_number');
+    expect(source).toContain('access_reason');
+    expect(source).toContain('decision_reason');
+    expect(source).toContain('application_admin 부여');
+    expect(source).toContain('application_admin 해제');
+    expect(source).toContain('system_admin 이관');
+    expect(source).not.toContain('system_admin 부여');
+  });
+
+  it('requires confirm flows for approval and decision-reason rejection', () => {
+    const source = pageSource();
+
+    expect(source).toContain('okText="승인"');
+    expect(source).toContain('applicant.name');
+    expect(source).toContain('applicant.email');
+    expect(source).toContain('applicant.access_reason');
+    expect(source).toContain('Modal.confirm({');
+    expect(source).toContain("name=\"decision_reason\"");
+    expect(source).toContain('rejectAdminAccessRequest');
   });
 });

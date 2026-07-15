@@ -51,6 +51,7 @@ import {
   revokeServiceApiKey,
   rollbackRelease,
   searchAdminUsers,
+  transferSystemAdmin,
 } from './adminServices';
 
 vi.mock('@umijs/max', () => ({
@@ -484,6 +485,28 @@ describe('admin service Phase 1 write flow requests', () => {
     for (const [, options] of calls) {
       expect(options).not.toHaveProperty('headers');
     }
+  });
+
+  it('uses the guarded system_admin transfer endpoint without trusted headers', async () => {
+    await transferSystemAdmin({
+      from_admin_user_id: 'admin-1',
+      to_admin_user_id: 'admin-2',
+      reason: 'Transfer platform ownership',
+    });
+
+    expect(requestMock).toHaveBeenCalledWith('/system-admin-transfer', {
+      method: 'POST',
+      data: {
+        from_admin_user_id: 'admin-1',
+        to_admin_user_id: 'admin-2',
+        reason: 'Transfer platform ownership',
+      },
+    });
+    const [, options] = requestMock.mock.calls[0] as unknown as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(options).not.toHaveProperty('headers');
   });
 
   it('lists admin users with a default limit and optional empty query', async () => {

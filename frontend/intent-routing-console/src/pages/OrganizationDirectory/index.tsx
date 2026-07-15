@@ -32,6 +32,7 @@ import {
 } from '@/services/adminServices';
 import {
   hasSystemAdminRole,
+  hasIncompleteApplicationAdminAccess,
   canAccessOrganizationDirectory,
   formatDepartmentNumber,
   formatOrganizationUserNumber,
@@ -40,7 +41,6 @@ import {
   permissionManagementAdminUserUrl,
   toDepartmentOption,
   toDepartmentOptionSearchParams,
-  toSystemAdminRolesPatchRequest,
   toDepartmentCreateRequest,
   toDepartmentUseYnPatchRequest,
   toOrganizationUserCreateRequest,
@@ -390,25 +390,6 @@ export default function OrganizationDirectoryPage() {
     }
   };
 
-  const handleSystemAdminRoleChange = async (
-    adminUser: API.ManagedAdminUser,
-    grant: boolean,
-  ) => {
-    setAdminAccessSaving(true);
-    try {
-      const updatedAdminUser = await patchManagedAdminUser(
-        adminUser.user_id,
-        toSystemAdminRolesPatchRequest(adminUser, grant),
-      );
-      setManagedAdminUser(updatedAdminUser);
-      if (updatedAdminUser.user_id === session.user?.user_id) {
-        void restoreSession();
-      }
-    } finally {
-      setAdminAccessSaving(false);
-    }
-  };
-
   const renderAdminAccessSection = () => {
     if (userFormMode !== 'edit' || !editingUser) return null;
 
@@ -420,6 +401,9 @@ export default function OrganizationDirectoryPage() {
     );
     const hasSystemAdmin = managedAdminUser
       ? hasSystemAdminRole(managedAdminUser)
+      : false;
+    const incompleteAccess = managedAdminUser
+      ? hasIncompleteApplicationAdminAccess(managedAdminUser)
       : false;
 
     return (
@@ -498,6 +482,14 @@ export default function OrganizationDirectoryPage() {
                   message="마지막 system_admin인 자신의 계정은 비활성화하거나 권한을 해제할 수 없습니다."
                 />
               ) : null}
+              {incompleteAccess ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="incomplete access"
+                  description="linked Admin account에 application_admin이 없어 Admin UI 접근이 완전하지 않습니다. 권한관리에 가서 application_admin을 부여하세요."
+                />
+              ) : null}
               <Flex gap={8} wrap="wrap">
                 <ConfirmActionButton
                   disabled={
@@ -507,7 +499,7 @@ export default function OrganizationDirectoryPage() {
                   }
                   style={{ boxShadow: 'none' }}
                   type="primary"
-                  title="Activate Admin account?"
+                  title="Admin 계정을 활성화할까요?"
                   okText="활성화"
                   content={`${managedAdminUser.email} Admin 계정을 활성화합니다.`}
                   onConfirm={() => handleManagedAdminStatusChange(managedAdminUser, 'active')}
@@ -522,7 +514,7 @@ export default function OrganizationDirectoryPage() {
                     isSelfLastSystemAdmin
                   }
                   style={{ boxShadow: 'none' }}
-                  title="Disable Admin account?"
+                  title="Admin 계정을 비활성화할까요?"
                   okText="비활성화"
                   content={`${managedAdminUser.email} Admin 계정을 비활성화합니다.`}
                   onConfirm={() => handleManagedAdminStatusChange(managedAdminUser, 'disabled')}
@@ -530,29 +522,13 @@ export default function OrganizationDirectoryPage() {
                   비활성화
                 </ConfirmActionButton>
               </Flex>
-              <Flex gap={8} wrap="wrap">
-                <ConfirmActionButton
-                  disabled={adminAccessSaving || hasSystemAdmin}
-                  style={{ boxShadow: 'none' }}
-                  title="Grant system_admin?"
-                  okText="system_admin 부여"
-                  content={`${managedAdminUser.email} 계정에 system_admin 전역 권한을 부여합니다.`}
-                  onConfirm={() => handleSystemAdminRoleChange(managedAdminUser, true)}
-                >
-                  system_admin 부여
-                </ConfirmActionButton>
-                <ConfirmActionButton
-                  danger
-                  disabled={adminAccessSaving || !hasSystemAdmin || isSelfLastSystemAdmin}
-                  style={{ boxShadow: 'none' }}
-                  title="Revoke system_admin?"
-                  okText="system_admin 해제"
-                  content={`${managedAdminUser.email} 계정의 system_admin 전역 권한을 해제합니다.`}
-                  onConfirm={() => handleSystemAdminRoleChange(managedAdminUser, false)}
-                >
-                  system_admin 해제
-                </ConfirmActionButton>
-              </Flex>
+              {hasSystemAdmin ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="system_admin 변경은 권한관리에서만 이관할 수 있습니다."
+                />
+              ) : null}
             </>
           ) : (
             <>
@@ -820,8 +796,8 @@ export default function OrganizationDirectoryPage() {
             <Modal
               destroyOnClose
               open={departmentModalOpen}
-              title={departmentFormMode === 'create' ? 'Create Department' : 'Edit Department'}
-              okText={departmentFormMode === 'create' ? 'Create' : 'Save'}
+              title={departmentFormMode === 'create' ? '부서 등록' : '부서 수정'}
+              okText={departmentFormMode === 'create' ? '등록' : '저장'}
               cancelText="취소"
               confirmLoading={departmentSaving}
               onCancel={closeDepartmentModal}
@@ -842,7 +818,7 @@ export default function OrganizationDirectoryPage() {
                   name="dept_number"
                   label="Dept_Number"
                   rules={[
-                    { required: true, whitespace: true, message: 'Dept_Number is required.' },
+                    { required: true, whitespace: true, message: '부서번호를 입력하세요.' },
                   ]}
                 >
                   <Input placeholder="0969" />
@@ -850,7 +826,7 @@ export default function OrganizationDirectoryPage() {
                 <Form.Item
                   name="name"
                   label="Name"
-                  rules={[{ required: true, whitespace: true, message: 'Name is required.' }]}
+                  rules={[{ required: true, whitespace: true, message: '이름을 입력하세요.' }]}
                 >
                   <Input placeholder="IT지원부" />
                 </Form.Item>
@@ -871,8 +847,8 @@ export default function OrganizationDirectoryPage() {
                           disabled={departmentSaving || editingDepartment.use_yn === 'Y'}
                           style={{ boxShadow: 'none' }}
                           type="primary"
-                          title="Activate department?"
-                          okText="Activate"
+                          title="부서를 활성화할까요?"
+                          okText="활성화"
                           content={`${editingDepartment.dept_number} ${editingDepartment.name} 부서를 활성화합니다.`}
                           onConfirm={() => handleDepartmentUseYnChange('Y')}
                         >
@@ -882,8 +858,8 @@ export default function OrganizationDirectoryPage() {
                           danger
                           disabled={departmentSaving || editingDepartment.use_yn === 'N'}
                           style={{ boxShadow: 'none' }}
-                          title="Deactivate department?"
-                          okText="Deactivate"
+                          title="부서를 비활성화할까요?"
+                          okText="비활성화"
                           content={`${editingDepartment.dept_number} ${editingDepartment.name} 부서를 비활성화합니다.`}
                           onConfirm={() => handleDepartmentUseYnChange('N')}
                         >
@@ -898,8 +874,8 @@ export default function OrganizationDirectoryPage() {
             <Modal
               destroyOnClose
               open={userModalOpen}
-              title={userFormMode === 'create' ? 'Create User' : 'Edit User'}
-              okText={userFormMode === 'create' ? 'Create' : 'Save'}
+              title={userFormMode === 'create' ? '조직 사용자 등록' : '조직 사용자 수정'}
+              okText={userFormMode === 'create' ? '등록' : '저장'}
               cancelText="취소"
               confirmLoading={userSaving}
               onCancel={closeUserModal}
@@ -920,7 +896,7 @@ export default function OrganizationDirectoryPage() {
                   name="user_number"
                   label="User number"
                   rules={[
-                    { required: true, whitespace: true, message: 'User number is required.' },
+                    { required: true, whitespace: true, message: '사용자번호를 입력하세요.' },
                   ]}
                 >
                   <Input placeholder="21P0031" />
@@ -928,14 +904,14 @@ export default function OrganizationDirectoryPage() {
                 <Form.Item
                   name="name"
                   label="Name"
-                  rules={[{ required: true, whitespace: true, message: 'Name is required.' }]}
+                  rules={[{ required: true, whitespace: true, message: '이름을 입력하세요.' }]}
                 >
                   <Input placeholder="홍길동" />
                 </Form.Item>
                 <Form.Item
                   name="department_id"
                   label="Department"
-                  rules={[{ required: true, message: 'Department is required.' }]}
+                  rules={[{ required: true, message: '부서를 선택하세요.' }]}
                 >
                   <Select
                     loading={loadingDepartmentSelectOptions}
@@ -965,8 +941,8 @@ export default function OrganizationDirectoryPage() {
                           disabled={userSaving || editingUser.use_yn === 'Y'}
                           style={{ boxShadow: 'none' }}
                           type="primary"
-                          title="Activate user?"
-                          okText="Activate"
+                          title="조직 사용자를 활성화할까요?"
+                          okText="활성화"
                           content={`${editingUser.user_number} ${editingUser.name} 사용자를 활성화합니다.`}
                           onConfirm={() => handleOrganizationUserUseYnChange('Y')}
                         >
@@ -976,8 +952,8 @@ export default function OrganizationDirectoryPage() {
                           danger
                           disabled={userSaving || editingUser.use_yn === 'N'}
                           style={{ boxShadow: 'none' }}
-                          title="Deactivate user?"
-                          okText="Deactivate"
+                          title="조직 사용자를 비활성화할까요?"
+                          okText="비활성화"
                           content={`${editingUser.user_number} ${editingUser.name} 사용자를 비활성화합니다.`}
                           onConfirm={() => handleOrganizationUserUseYnChange('N')}
                         >

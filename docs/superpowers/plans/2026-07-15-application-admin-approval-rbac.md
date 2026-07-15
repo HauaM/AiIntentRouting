@@ -1462,7 +1462,7 @@ Expected: PASS.
 - Consumes: `listAdminAccessRequests`, `approveAdminAccessRequest`, `rejectAdminAccessRequest`, `GlobalAdminRole`.
 - Produces: system-admin-only request review UX and clearer role management UX.
 
-- [ ] **Step 1: Add request review tab**
+- [x] **Step 1: Add request review tab**
 
 Add tab label `접근 신청` to Permission Management. The table must show:
 
@@ -1477,11 +1477,11 @@ Add tab label `접근 신청` to Permission Management. The table must show:
 - decision_reason
 - actions: `승인`, `반려`
 
-- [ ] **Step 2: Add approval/rejection modals**
+- [x] **Step 2: Add approval/rejection modals**
 
 Use `ConfirmActionButton` for approval and rejection. Rejection must require decision reason input with a modal form. Approval content must include the applicant name, email, and reason.
 
-- [ ] **Step 3: Update role actions**
+- [x] **Step 3: Update role actions**
 
 Do not show row-level `system_admin 부여` for normal Admin rows. Replace with:
 
@@ -1491,11 +1491,11 @@ Do not show row-level `system_admin 부여` for normal Admin rows. Replace with:
 
 Only `system_admin 이관` can change the single platform owner.
 
-- [ ] **Step 4: Update Organization Directory modal**
+- [x] **Step 4: Update Organization Directory modal**
 
 When a linked Admin account has no `application_admin`, show it as incomplete access. Keep direct Admin account creation available only as a system-admin managed flow, and default global roles to `application_admin`, not `system_admin`.
 
-- [ ] **Step 5: Run frontend tests**
+- [x] **Step 5: Run frontend tests**
 
 Run:
 

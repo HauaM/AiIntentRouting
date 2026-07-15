@@ -103,6 +103,15 @@ export async function rejectAdminAccessRequest(
   );
 }
 
+export async function transferSystemAdmin(
+  payload: API.SystemAdminTransferRequest,
+) {
+  return request<API.ManagedAdminUser>('/system-admin-transfer', {
+    method: 'POST',
+    data: payload,
+  });
+}
+
 export async function listDepartments(
   params: { query?: string; use_yn?: API.UseYn; limit?: number } = {},
 ) {

@@ -1,5 +1,6 @@
 export type PermissionManagementTabKey =
   | 'admin-users'
+  | 'access-requests'
   | 'global-roles'
   | 'service-roles'
   | 'audit-logs'
@@ -10,6 +11,7 @@ export const permissionTabs: Array<{
   label: string;
 }> = [
   { key: 'admin-users', label: 'Admin 계정' },
+  { key: 'access-requests', label: '접근 신청' },
   { key: 'global-roles', label: '전역 권한' },
   { key: 'service-roles', label: '서비스 권한' },
   { key: 'audit-logs', label: '권한 변경 이력' },
@@ -122,9 +124,29 @@ export function toPermissionAdminGlobalRolesPatchRequest(
   grant: boolean,
 ): API.ManagedAdminUserPatchRequest {
   const roleSet = new Set<API.GlobalAdminRole>(row.global_roles);
-  if (grant) roleSet.add('system_admin');
-  else roleSet.delete('system_admin');
+  if (grant) roleSet.add('application_admin');
+  else roleSet.delete('application_admin');
   return { global_roles: Array.from(roleSet).sort() };
+}
+
+export function buildSystemAdminTransferRequest(
+  fromAdminUserId: string,
+  toAdminUserId: string,
+  reason: string,
+): API.SystemAdminTransferRequest {
+  const from_admin_user_id = trimString(fromAdminUserId);
+  const to_admin_user_id = trimString(toAdminUserId);
+  const trimmedReason = trimString(reason);
+
+  if (!from_admin_user_id) throw new Error('from_admin_user_id is required');
+  if (!to_admin_user_id) throw new Error('to_admin_user_id is required');
+  if (trimmedReason.length < 10) throw new Error('reason must be at least 10 characters');
+
+  return {
+    from_admin_user_id,
+    to_admin_user_id,
+    reason: trimmedReason,
+  };
 }
 
 export function toPermissionServiceRoleGrantRequest(

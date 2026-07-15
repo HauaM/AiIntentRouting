@@ -83,7 +83,7 @@ export const toAdminUserCreateRequest = (
   email: values.email.trim(),
   display_name: values.display_name.trim(),
   status: 'disabled',
-  global_roles: [],
+  global_roles: ['application_admin'],
 });
 
 export const permissionManagementAdminUserUrl = (adminUserId: string) =>
@@ -97,6 +97,10 @@ export const toAdminUserStatusPatchRequest = (
 
 export const hasSystemAdminRole = (adminUser: API.ManagedAdminUser) =>
   adminUser.global_roles.includes('system_admin');
+
+export const hasIncompleteApplicationAdminAccess = (
+  adminUser: Pick<API.ManagedAdminUser, 'global_roles'>,
+) => !adminUser.global_roles.includes('application_admin');
 
 export const toSystemAdminRolesPatchRequest = (
   adminUser: API.ManagedAdminUser,

@@ -77,6 +77,12 @@ declare namespace API {
     global_roles?: GlobalAdminRole[];
   };
 
+  type SystemAdminTransferRequest = {
+    from_admin_user_id: string;
+    to_admin_user_id: string;
+    reason: string;
+  };
+
   type PermissionDepartmentSummary = {
     id: string;
     dept_number: string;
