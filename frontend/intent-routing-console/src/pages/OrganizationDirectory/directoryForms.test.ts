@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EMPTY_DEPARTMENT_TABLE_FILTERS,
+  EMPTY_ORGANIZATION_USER_TABLE_FILTERS,
   canAccessOrganizationDirectory,
   formatDepartmentNumber,
   formatOrganizationUserNumber,
@@ -14,6 +16,8 @@ import {
   toDepartmentUseYnPatchRequest,
   toOrganizationUserCreateRequest,
   toOrganizationUserUseYnPatchRequest,
+  toDepartmentListParamsFromFilters,
+  toOrganizationUserListParamsFromFilters,
 } from './directoryForms';
 
 describe('directoryForms', () => {
@@ -162,5 +166,39 @@ describe('directoryForms', () => {
     expect(permissionManagementAdminUserUrl(' admin/user 1 ')).toBe(
       '/permission-management?admin_user_id=admin%2Fuser%201',
     );
+  });
+
+  it('normalizes department toolbar filters into list params', () => {
+    expect(toDepartmentListParamsFromFilters(EMPTY_DEPARTMENT_TABLE_FILTERS)).toEqual({
+      limit: 100,
+    });
+    expect(
+      toDepartmentListParamsFromFilters({
+        keyword: ' 0969 IT지원부 ',
+        use_yn: 'Y',
+      }),
+    ).toEqual({
+      query: '0969 IT지원부',
+      use_yn: 'Y',
+      limit: 100,
+    });
+  });
+
+  it('normalizes organization user toolbar filters into list params', () => {
+    expect(
+      toOrganizationUserListParamsFromFilters(EMPTY_ORGANIZATION_USER_TABLE_FILTERS),
+    ).toEqual({ limit: 100 });
+    expect(
+      toOrganizationUserListParamsFromFilters({
+        keyword: ' 홍길동 ',
+        department_id: ' dept-1 ',
+        use_yn: 'N',
+      }),
+    ).toEqual({
+      query: '홍길동',
+      department_id: 'dept-1',
+      use_yn: 'N',
+      limit: 100,
+    });
   });
 });

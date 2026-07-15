@@ -9,6 +9,17 @@ export type OrganizationUserFormValues = {
   department_id: string;
 };
 
+export type DepartmentTableFilters = {
+  keyword?: string;
+  use_yn?: API.UseYn;
+};
+
+export type OrganizationUserTableFilters = {
+  keyword?: string;
+  department_id?: string;
+  use_yn?: API.UseYn;
+};
+
 export type AdminAccessCreateFormValues = {
   email: string;
   display_name: string;
@@ -20,6 +31,8 @@ export type DepartmentOption = {
 };
 
 export const DIRECTORY_DEPARTMENT_OPTION_LIMIT = 100;
+export const EMPTY_DEPARTMENT_TABLE_FILTERS: DepartmentTableFilters = {};
+export const EMPTY_ORGANIZATION_USER_TABLE_FILTERS: OrganizationUserTableFilters = {};
 
 export const canAccessOrganizationDirectory = (globalRoles: string[]) =>
   globalRoles.includes('system_admin');
@@ -73,6 +86,34 @@ export const toOrganizationUserUseYnPatchRequest = (
   useYn: API.UseYn,
 ): API.OrganizationUserPatchRequest => ({
   use_yn: useYn,
+});
+
+const optionalTrimmedString = (value: string | undefined) => {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+};
+
+export const toDepartmentListParamsFromFilters = (
+  filters: DepartmentTableFilters,
+) => ({
+  ...(optionalTrimmedString(filters.keyword)
+    ? { query: optionalTrimmedString(filters.keyword) }
+    : {}),
+  ...(filters.use_yn ? { use_yn: filters.use_yn } : {}),
+  limit: 100,
+});
+
+export const toOrganizationUserListParamsFromFilters = (
+  filters: OrganizationUserTableFilters,
+) => ({
+  ...(optionalTrimmedString(filters.keyword)
+    ? { query: optionalTrimmedString(filters.keyword) }
+    : {}),
+  ...(optionalTrimmedString(filters.department_id)
+    ? { department_id: optionalTrimmedString(filters.department_id) }
+    : {}),
+  ...(filters.use_yn ? { use_yn: filters.use_yn } : {}),
+  limit: 100,
 });
 
 export const toAdminUserCreateRequest = (
