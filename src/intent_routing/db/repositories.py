@@ -41,7 +41,9 @@ MASKED_RUNTIME_LOG_FIELD_NAMES = (
 )
 
 ADMIN_USER_STATUSES = frozenset({"active", "disabled"})
-GLOBAL_ADMIN_ROLES = frozenset({"system_admin"})
+ADMIN_ACCESS_REQUEST_STATUSES = frozenset({"pending", "approved", "rejected"})
+GLOBAL_ADMIN_ROLES = frozenset({"system_admin", "application_admin"})
+ADMIN_LOGIN_ROLES = frozenset({"system_admin", "application_admin"})
 SERVICE_ADMIN_ROLES = frozenset(
     {"service_owner", "service_developer", "service_operator", "auditor"}
 )
@@ -74,6 +76,10 @@ PERMISSION_ADMIN_USER_AUDIT_EVENT_TYPES = (
     "admin_user.disabled",
     "admin_user.global_role_granted",
     "admin_user.global_role_revoked",
+    "admin_user.system_admin_transferred",
+    "admin_access_request.created",
+    "admin_access_request.approved",
+    "admin_access_request.rejected",
 )
 PERMISSION_SERVICE_MEMBERSHIP_AUDIT_EVENT_TYPES = (
     "service_membership.role_granted",
@@ -368,6 +374,118 @@ class IntentRoutingRepository:
             allowed=ADMIN_USER_STATUSES,
         )
         return self._add_and_flush(models.AdminUser(**values))
+
+    def create_admin_access_request(self, **values: Any) -> models.AdminAccessRequest:
+        values = dict(values)
+        email = _require_nonblank_string(values.get("email"), field_name="email")
+        values["email"] = email.strip()
+        values["email_normalized"] = normalize_admin_email(email)
+        values["status"] = _require_allowed_value(
+            values.get("status", "pending"),
+            field_name="admin access request status",
+            allowed=ADMIN_ACCESS_REQUEST_STATUSES,
+        )
+        values.setdefault("decided_at", None)
+        values.setdefault("decided_by", None)
+        values.setdefault("decision_reason", None)
+        values.setdefault("created_user_id", None)
+        values.setdefault("created_admin_user_id", None)
+        return self._add_and_flush(models.AdminAccessRequest(**values))
+
+    def list_admin_access_requests(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> list[models.AdminAccessRequest]:
+        statement = select(models.AdminAccessRequest)
+        if status is not None:
+            status = _require_allowed_value(
+                status,
+                field_name="admin access request status",
+                allowed=ADMIN_ACCESS_REQUEST_STATUSES,
+            )
+            statement = statement.where(models.AdminAccessRequest.status == status)
+        return list(
+            self.session.scalars(
+                statement.order_by(
+                    models.AdminAccessRequest.requested_at.desc(),
+                    models.AdminAccessRequest.request_id.desc(),
+                ).limit(max(1, min(limit, 200)))
+            )
+        )
+
+    def get_admin_access_request(
+        self,
+        request_id: UUID,
+    ) -> models.AdminAccessRequest | None:
+        return self.session.get(models.AdminAccessRequest, request_id)
+
+    def _get_admin_access_request_for_update(
+        self,
+        request_id: UUID,
+    ) -> models.AdminAccessRequest | None:
+        return self.session.scalar(
+            select(models.AdminAccessRequest)
+            .where(models.AdminAccessRequest.request_id == request_id)
+            .with_for_update()
+        )
+
+    def _require_pending_admin_access_request(
+        self,
+        request: models.AdminAccessRequest,
+    ) -> None:
+        if request.status != "pending":
+            raise ValueError("admin access request must be pending")
+
+    def approve_admin_access_request(
+        self,
+        request_id: UUID,
+        *,
+        decided_by: str,
+        decided_at: datetime,
+        decision_reason: str | None = None,
+    ) -> models.AdminAccessRequest | None:
+        request = self._get_admin_access_request_for_update(request_id)
+        if request is None:
+            return None
+        self._require_pending_admin_access_request(request)
+        request.status = "approved"
+        request.decided_by = _require_nonblank_string(
+            decided_by,
+            field_name="admin access request decision actor",
+        )
+        request.decided_at = decided_at
+        request.decision_reason = decision_reason
+        request.password_hash = None
+        self.session.flush()
+        return request
+
+    def reject_admin_access_request(
+        self,
+        request_id: UUID,
+        *,
+        decided_by: str,
+        decided_at: datetime,
+        decision_reason: str,
+    ) -> models.AdminAccessRequest | None:
+        request = self._get_admin_access_request_for_update(request_id)
+        if request is None:
+            return None
+        self._require_pending_admin_access_request(request)
+        request.status = "rejected"
+        request.decided_by = _require_nonblank_string(
+            decided_by,
+            field_name="admin access request decision actor",
+        )
+        request.decided_at = decided_at
+        request.decision_reason = _require_nonblank_string(
+            decision_reason,
+            field_name="admin access request rejection reason",
+        )
+        request.password_hash = None
+        self.session.flush()
+        return request
 
     def get_admin_user(self, user_id: str) -> models.AdminUser | None:
         return self.session.get(models.AdminUser, user_id)
@@ -954,6 +1072,15 @@ class IntentRoutingRepository:
         self.session.flush()
         return user
 
+    def assert_can_assign_system_admin(self, *, user_id: str) -> None:
+        existing = self.session.scalar(
+            select(models.AdminUserRole.user_id)
+            .where(models.AdminUserRole.role == "system_admin")
+            .limit(1)
+        )
+        if existing is not None and existing != user_id:
+            raise ValueError("system_admin already exists")
+
     def assign_admin_user_role(self, **values: Any) -> models.AdminUserRole:
         values = dict(values)
         values["role"] = _require_allowed_value(
@@ -961,6 +1088,12 @@ class IntentRoutingRepository:
             field_name="admin user role",
             allowed=GLOBAL_ADMIN_ROLES,
         )
+        if values["role"] == "system_admin":
+            user_id = _require_nonblank_string(
+                values.get("user_id"),
+                field_name="admin user role user_id",
+            )
+            self.assert_can_assign_system_admin(user_id=user_id)
         return self._add_and_flush(models.AdminUserRole(**values))
 
     def ensure_admin_user_role(self, **values: Any) -> models.AdminUserRole:
@@ -1079,17 +1212,19 @@ class IntentRoutingRepository:
         if admin_session is None:
             return None
 
+        global_roles = frozenset(
+            role.role for role in self.list_admin_user_roles(admin_session.user_id)
+        )
+        if not global_roles.intersection(ADMIN_LOGIN_ROLES):
+            return None
+
         admin_session.last_seen_at = now
         self.session.flush()
         return AdminSessionContextRecord(
             user=admin_session.user,
             admin_session=admin_session,
-            global_roles=frozenset(
-                role.role for role in self.list_admin_user_roles(admin_session.user_id)
-            ),
-            service_roles=tuple(
-                self.list_service_roles_for_user(admin_session.user_id)
-            ),
+            global_roles=global_roles,
+            service_roles=tuple(self.list_service_roles_for_user(admin_session.user_id)),
         )
 
     def revoke_admin_session(

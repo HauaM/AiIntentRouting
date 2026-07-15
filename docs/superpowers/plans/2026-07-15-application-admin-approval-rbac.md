@@ -693,7 +693,7 @@ Expected: PASS.
   - `reject_admin_access_request(...)`
   - `assert_can_assign_system_admin(...)`
 
-- [ ] **Step 1: Write failing repository tests**
+- [x] **Step 1: Write failing repository tests**
 
 Add tests proving:
 
@@ -759,7 +759,7 @@ def test_repository_rejects_second_system_admin_role(db_session: Session) -> Non
         )
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -769,7 +769,7 @@ uv run pytest tests/unit/test_permission_management_repository.py::test_reposito
 
 Expected: FAIL because role validation and single-system-admin checks are not updated.
 
-- [ ] **Step 3: Implement role constants and validation**
+- [x] **Step 3: Implement role constants and validation**
 
 In `src/intent_routing/db/repositories.py`, update:
 
@@ -791,7 +791,7 @@ if values["role"] == "system_admin":
         raise ValueError("system_admin already exists")
 ```
 
-- [ ] **Step 4: Add request repository helpers**
+- [x] **Step 4: Add request repository helpers**
 
 Add focused methods:
 
@@ -834,7 +834,7 @@ def get_admin_access_request(
     return self.session.get(models.AdminAccessRequest, request_id)
 ```
 
-- [ ] **Step 5: Run repository tests**
+- [x] **Step 5: Run repository tests**
 
 Run:
 
