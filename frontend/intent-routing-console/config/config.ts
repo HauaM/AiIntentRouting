@@ -13,6 +13,7 @@ export default defineConfig({
   routes: [
     { path: '/', redirect: '/dashboard' },
     { path: '/login', component: './Login' },
+    { path: '/admin-access-request', component: './AdminAccessRequest' },
     { path: '/dashboard', component: './Dashboard' },
     { path: '/services', component: './Services' },
     { path: '/organization-directory', component: './OrganizationDirectory' },

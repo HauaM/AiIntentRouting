@@ -5,6 +5,7 @@ import {
   listAccessibleServices,
   loginAdmin,
   logoutAdmin,
+  submitAdminAccessRequest,
 } from './authServices';
 
 vi.mock('@umijs/max', () => ({
@@ -59,5 +60,29 @@ describe('auth service cookie session requests', () => {
       method: 'GET',
       withCredentials: true,
     });
+  });
+
+  it('submits a public admin access request without auth headers', async () => {
+    const payload: API.AdminAccessRequestCreateRequest = {
+      user_number: '21P0031',
+      name: '홍길동',
+      department_id: 'dept-1',
+      email: 'admin.user@example.com',
+      password: 'correct-horse-battery-staple',
+      access_reason: 'Need Admin UI access for onboarding',
+    };
+
+    await submitAdminAccessRequest(payload);
+
+    expect(requestMock).toHaveBeenCalledWith('/admin-access-requests', {
+      method: 'POST',
+      data: payload,
+    });
+    const [, options] = requestMock.mock.calls[0] as unknown as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(options).not.toHaveProperty('headers');
+    expect(options).not.toHaveProperty('withCredentials');
   });
 });

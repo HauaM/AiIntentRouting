@@ -1506,6 +1506,65 @@ cd frontend/intent-routing-console && pnpm run typecheck
 
 Expected: PASS.
 
+## Task 9b: Public Admin Access Request UI
+
+**Files:**
+- Modify: `frontend/intent-routing-console/config/config.ts`
+- Modify: `frontend/intent-routing-console/src/pages/Login/index.tsx`
+- Modify: `frontend/intent-routing-console/src/services/authServices.ts`
+- Modify: `frontend/intent-routing-console/src/services/authServices.test.ts`
+- Modify: `frontend/intent-routing-console/src/types/api.d.ts`
+- Create: `frontend/intent-routing-console/src/pages/AdminAccessRequest/index.tsx`
+- Create if helpful: `frontend/intent-routing-console/src/pages/AdminAccessRequest/requestForm.ts`
+- Create if helpful: `frontend/intent-routing-console/src/pages/AdminAccessRequest/requestForm.test.ts`
+
+**Interfaces:**
+- Consumes: public `POST /admin/v1/admin-access-requests`.
+- Produces: unauthenticated browser request UI for applicants.
+
+- [x] **Step 1: Add request payload type and service wrapper**
+
+Add a public Umi `request` wrapper for `POST /admin-access-requests` and an
+`AdminAccessRequestCreateRequest` type with:
+
+- user_number
+- name
+- department_id
+- email
+- password
+- access_reason
+
+- [x] **Step 2: Add public route and login link**
+
+Add `/admin-access-request` and link to it from the Login page.
+
+- [x] **Step 3: Add request form page**
+
+The page must not use `AdminShell` or require an authenticated Admin session.
+The form must submit user number, name, department ID, email, password, and
+access reason. On success, show the returned request status and a route back to
+login.
+
+Current limitation: active department listing is `system_admin` only, so this
+task uses a direct `department_id` input and does not invent fake department
+search.
+
+- [x] **Step 4: Add tests**
+
+Add tests for the public request wrapper and form payload normalization.
+
+- [x] **Step 5: Run frontend checks**
+
+Run:
+
+```bash
+cd frontend/intent-routing-console && pnpm vitest run src/services/authServices.test.ts src/pages/AdminAccessRequest/requestForm.test.ts
+cd frontend/intent-routing-console && pnpm run typecheck
+git diff --check
+```
+
+Expected: PASS.
+
 ## Task 10: End-To-End Verification And Guardrails
 
 **Files:**

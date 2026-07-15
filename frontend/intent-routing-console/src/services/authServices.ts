@@ -8,6 +8,15 @@ export async function loginAdmin(payload: API.AdminLoginRequest) {
   });
 }
 
+export async function submitAdminAccessRequest(
+  payload: API.AdminAccessRequestCreateRequest,
+) {
+  return request<API.AdminAccessRequest>('/admin-access-requests', {
+    method: 'POST',
+    data: payload,
+  });
+}
+
 export async function logoutAdmin() {
   return request<API.AdminLogoutResponse>('/auth/logout', {
     method: 'POST',

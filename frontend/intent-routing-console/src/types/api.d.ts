@@ -48,6 +48,15 @@ declare namespace API {
     created_admin_user_id: string | null;
   };
 
+  type AdminAccessRequestCreateRequest = {
+    user_number: string;
+    name: string;
+    department_id: string;
+    email: string;
+    password: string;
+    access_reason: string;
+  };
+
   type ManagedAdminUser = {
     user_id: string;
     email: string;
