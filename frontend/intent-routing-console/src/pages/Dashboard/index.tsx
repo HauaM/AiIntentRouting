@@ -71,6 +71,13 @@ export default function DashboardPage() {
   return (
     <AdminShell title="Dashboard">
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <Alert
+          type="info"
+          showIcon
+          className="admin-compact-page-notice"
+          message="Admin UI Phase 1"
+          description="현재 화면은 서비스 범위 운영, 런타임 증거, 감사 증거를 중심으로 합니다. 승인형 Phase 2 흐름은 연결된 화면에서 안내됩니다."
+        />
         {viewState === 'session-required' ? <AdminSessionRequired /> : null}
         {viewState === 'session-required' ? null : (
           <div className="toolbar-line">

@@ -2,7 +2,7 @@ import type { PropsWithChildren, ReactNode } from 'react';
 import { useEffect } from 'react';
 import { history, useLocation, useModel } from '@umijs/max';
 import { PageContainer, ProLayout } from '@ant-design/pro-components';
-import { Alert, ConfigProvider, Skeleton, theme as antdTheme } from 'antd';
+import { ConfigProvider, Skeleton, theme as antdTheme } from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import {
   AuditOutlined,
@@ -144,13 +144,6 @@ export function AdminShell({ title, children }: AdminShellProps) {
                 serviceOptions={serviceOptions}
                 onServiceChange={setServiceId}
                 onLogout={logout}
-              />
-              <Alert
-                type="info"
-                showIcon
-                message="Sprint 11 Admin UI Phase 1"
-                description="Authenticated console for service-scoped catalog work, test runs, releases, API keys, runtime logs, and audit evidence. Phase 2 governed approval workflows remain informational."
-                style={{ marginTop: 12, marginBottom: 12 }}
               />
               <main className="admin-page-content">{children}</main>
             </>

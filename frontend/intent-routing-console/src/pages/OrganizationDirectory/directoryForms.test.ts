@@ -200,6 +200,16 @@ describe('directoryForms', () => {
     expect(source).not.toContain('system_admin 해제');
   });
 
+  it('uses stable modal scroll settings and current Ant Design hidden props', () => {
+    const source = pageSource();
+
+    expect(source).toContain('destroyOnHidden');
+    expect(source).not.toContain('destroyOnClose');
+    expect(source).not.toContain('destroyInactiveTabPane');
+    expect(source).toContain("body: { maxHeight: 'calc(100vh - 220px)', overflow: 'auto' }");
+    expect(source).toContain("footer: { marginTop: 0 }");
+  });
+
   it('normalizes department toolbar filters into list params', () => {
     expect(toDepartmentListParamsFromFilters(EMPTY_DEPARTMENT_TABLE_FILTERS)).toEqual({
       limit: 100,

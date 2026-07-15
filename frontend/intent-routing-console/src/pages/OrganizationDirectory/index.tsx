@@ -871,7 +871,7 @@ export default function OrganizationDirectoryPage() {
         ) : (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <Tabs
-              destroyInactiveTabPane
+              destroyOnHidden
               items={[
                 {
                   key: 'departments',
@@ -922,7 +922,14 @@ export default function OrganizationDirectoryPage() {
               ]}
             />
             <Modal
-              destroyOnClose
+              destroyOnHidden
+              centered
+              width={640}
+              style={{ maxWidth: 'calc(100vw - 32px)' }}
+              styles={{
+                body: { maxHeight: 'calc(100vh - 220px)', overflow: 'auto' },
+                footer: { marginTop: 0 },
+              }}
               open={departmentModalOpen}
               title={departmentFormMode === 'create' ? '부서 추가' : '부서 편집'}
               okText={departmentFormMode === 'create' ? '추가' : '저장'}
@@ -1000,7 +1007,14 @@ export default function OrganizationDirectoryPage() {
               </Form>
             </Modal>
             <Modal
-              destroyOnClose
+              destroyOnHidden
+              centered
+              width={640}
+              style={{ maxWidth: 'calc(100vw - 32px)' }}
+              styles={{
+                body: { maxHeight: 'calc(100vh - 220px)', overflow: 'auto' },
+                footer: { marginTop: 0 },
+              }}
               open={userModalOpen}
               title={userFormMode === 'create' ? '조직 사용자 추가' : '조직 사용자 편집'}
               okText={userFormMode === 'create' ? '추가' : '저장'}
