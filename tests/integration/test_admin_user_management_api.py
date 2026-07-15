@@ -323,6 +323,9 @@ def test_current_user_cannot_disable_or_revoke_own_last_system_admin(
                 assigned_at=now,
             )
             db_session.commit()
+        original_roles = [
+            role.role for role in repository.list_admin_user_roles(actor_id)
+        ]
 
         list_response = client.get("/admin/v1/admin-users", params={"query": actor_id})
         disable_response = client.patch(
@@ -343,7 +346,7 @@ def test_current_user_cannot_disable_or_revoke_own_last_system_admin(
         assert db_session.get(models.AdminUser, actor_id).status == "active"  # type: ignore[union-attr]
         assert [
             role.role for role in repository.list_admin_user_roles(actor_id)
-        ] == ["system_admin"]
+        ] == original_roles
     finally:
         if created_actor:
             _purge_rows(db_session, admin_user_ids=[actor_id], emails=[f"{actor_id}@example.com"])
@@ -410,8 +413,9 @@ def test_system_admin_transfer_replaces_single_owner_atomically(
         user_numbers=[target_user_number],
     )
     try:
+        repository = IntentRoutingRepository(db_session)
         before_source_roles = [
-            role.role for role in IntentRoutingRepository(db_session).list_admin_user_roles(source.user_id)
+            role.role for role in repository.list_admin_user_roles(source.user_id)
         ]
         target = _create_admin_user(
             db_session,
@@ -452,25 +456,22 @@ def test_system_admin_transfer_replaces_single_owner_atomically(
     finally:
         repository = IntentRoutingRepository(db_session)
         target_user = repository.get_admin_user(target_user_id)
+        restore_now = datetime.now(UTC)
         if target_user is not None:
-            current_target_roles = {
-                role.role for role in repository.list_admin_user_roles(target_user.user_id)
-            }
-            if "system_admin" in current_target_roles:
-                repository.delete_admin_user_role_by_key(target_user.user_id, "system_admin")
-            if "application_admin" in current_target_roles:
-                repository.delete_admin_user_role_by_key(
-                    target_user.user_id,
-                    "application_admin",
-                )
-            if "system_admin" not in before_source_roles:
-                repository.ensure_admin_user_role(
-                    user_id=source.user_id,
-                    role="system_admin",
-                    assigned_by="integration-test-restore",
-                    assigned_at=datetime.now(UTC),
-                )
+            _restore_admin_user_roles(
+                db_session,
+                user_id=target_user.user_id,
+                desired_roles=[],
+                assigned_at=restore_now,
+            )
             db_session.commit()
+        _restore_admin_user_roles(
+            db_session,
+            user_id=source.user_id,
+            desired_roles=before_source_roles,
+            assigned_at=restore_now,
+        )
+        db_session.commit()
         _purge_rows(
             db_session,
             admin_user_ids=[target_user_id],
@@ -502,6 +503,15 @@ def test_admin_user_management_routes_require_system_admin(
             "patch",
             f"/admin/v1/admin-users/{missing_user_id}",
             {"status": "disabled"},
+        ),
+        (
+            "post",
+            "/admin/v1/system-admin-transfer",
+            {
+                "from_admin_user_id": "source-admin",
+                "to_admin_user_id": "target-admin",
+                "reason": "Denied non-system-admin transfer.",
+            },
         ),
     ]
 
@@ -803,6 +813,45 @@ def _existing_or_created_system_admin(
     )
     db_session.commit()
     return admin_user
+
+
+def _restore_admin_user_roles(
+    db_session: Session,
+    *,
+    user_id: str,
+    desired_roles: list[str],
+    assigned_at: datetime,
+) -> None:
+    repository = IntentRoutingRepository(db_session)
+    desired = frozenset(desired_roles)
+    current = frozenset(
+        role.role for role in repository.list_admin_user_roles(user_id)
+    )
+
+    # `system_admin` must be assigned before other roles are restored, and removed last.
+    if "system_admin" in desired and "system_admin" not in current:
+        repository.ensure_admin_user_role(
+            user_id=user_id,
+            role="system_admin",
+            assigned_by="integration-test-restore",
+            assigned_at=assigned_at,
+        )
+        current = frozenset(
+            role.role for role in repository.list_admin_user_roles(user_id)
+        )
+
+    for role in sorted(desired - current):
+        repository.ensure_admin_user_role(
+            user_id=user_id,
+            role=role,
+            assigned_by="integration-test-restore",
+            assigned_at=assigned_at,
+        )
+
+    for role in sorted(current - desired):
+        if role == "system_admin" and "system_admin" in desired:
+            continue
+        repository.delete_admin_user_role_by_key(user_id, role)
 
 
 def _purge_rows(

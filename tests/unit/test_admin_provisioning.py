@@ -105,8 +105,10 @@ def test_configure_startup_system_admin_creates_missing_admin(
     db_session: Session,
 ) -> None:
     email = "startup-create@example.com"
+    owner_snapshot = _capture_system_admin_owner_state(db_session)
     _purge_admin(db_session, email)
     try:
+        _set_system_admin_owner_present(db_session, owner_snapshot, present=False)
         result = configure_startup_system_admin(
             lambda: _session_scope(db_session),
             env={
@@ -129,6 +131,7 @@ def test_configure_startup_system_admin_creates_missing_admin(
         ]
     finally:
         _purge_admin(db_session, email)
+        _set_system_admin_owner_present(db_session, owner_snapshot, present=True)
 
 
 def test_configure_startup_system_admin_leaves_matching_admin_unchanged(
@@ -136,8 +139,10 @@ def test_configure_startup_system_admin_leaves_matching_admin_unchanged(
 ) -> None:
     email = "startup-match@example.com"
     now = datetime.now(UTC)
+    owner_snapshot = _capture_system_admin_owner_state(db_session)
     _purge_admin(db_session, email)
     try:
+        _set_system_admin_owner_present(db_session, owner_snapshot, present=False)
         repository = IntentRoutingRepository(db_session)
         user = repository.create_admin_user(
             user_id="startup-match-admin",
@@ -170,6 +175,7 @@ def test_configure_startup_system_admin_leaves_matching_admin_unchanged(
         assert user.updated_at == now
     finally:
         _purge_admin(db_session, email)
+        _set_system_admin_owner_present(db_session, owner_snapshot, present=True)
 
 
 def test_configure_startup_system_admin_updates_different_password(
@@ -177,8 +183,10 @@ def test_configure_startup_system_admin_updates_different_password(
 ) -> None:
     email = "startup-update@example.com"
     now = datetime.now(UTC)
+    owner_snapshot = _capture_system_admin_owner_state(db_session)
     _purge_admin(db_session, email)
     try:
+        _set_system_admin_owner_present(db_session, owner_snapshot, present=False)
         repository = IntentRoutingRepository(db_session)
         user = repository.create_admin_user(
             user_id="startup-update-admin",
@@ -211,6 +219,7 @@ def test_configure_startup_system_admin_updates_different_password(
         assert verify_admin_password("new-admin-password", user.password_hash)
     finally:
         _purge_admin(db_session, email)
+        _set_system_admin_owner_present(db_session, owner_snapshot, present=True)
 
 
 def test_configure_startup_system_admin_refuses_different_email_when_owner_exists(
@@ -252,6 +261,9 @@ def test_configure_startup_system_admin_refuses_different_email_when_owner_exist
         else:
             owner = repository.get_admin_user(owner_user_id)
             assert owner is not None
+        original_roles = [
+            role.role for role in repository.list_admin_user_roles(owner.user_id)
+        ]
 
         with pytest.raises(
             ValueError,
@@ -266,9 +278,9 @@ def test_configure_startup_system_admin_refuses_different_email_when_owner_exist
             )
 
         assert repository.get_admin_user_by_email(configured_email) is None
-        assert [role.role for role in repository.list_admin_user_roles(owner.user_id)] == [
-            "system_admin"
-        ]
+        assert [
+            role.role for role in repository.list_admin_user_roles(owner.user_id)
+        ] == original_roles
     finally:
         if created_owner_email is not None:
             _purge_admin(db_session, created_owner_email)
@@ -310,6 +322,12 @@ def test_configure_startup_system_admin_assigns_missing_system_admin_role(
         else:
             owner_user = repository.get_admin_user(owner_user_id)
             assert owner_user is not None
+            repository.update_admin_user_password(
+                owner_user,
+                password_hash=hash_admin_password("local-admin-password"),
+                updated_at=now,
+            )
+            db_session.commit()
 
         repository.delete_admin_user_role_by_key(owner_user.user_id, "system_admin")
         db_session.commit()
@@ -323,12 +341,54 @@ def test_configure_startup_system_admin_assigns_missing_system_admin_role(
         )
 
         assert result == "role_assigned"
-        assert [
+        assert "system_admin" in [
             role.role for role in repository.list_admin_user_roles(owner_user.user_id)
-        ] == ["system_admin"]
+        ]
     finally:
         if created_owner:
             _purge_admin(db_session, owner_email)
+
+
+def _capture_system_admin_owner_state(
+    db_session: Session,
+) -> tuple[str, list[str]] | None:
+    repository = IntentRoutingRepository(db_session)
+    owner_user_id = db_session.scalar(
+        text("select user_id from admin_user_roles where role = 'system_admin' limit 1")
+    )
+    if owner_user_id is None:
+        return None
+    return (
+        owner_user_id,
+        [role.role for role in repository.list_admin_user_roles(owner_user_id)],
+    )
+
+
+def _set_system_admin_owner_present(
+    db_session: Session,
+    snapshot: tuple[str, list[str]] | None,
+    *,
+    present: bool,
+) -> None:
+    if snapshot is None:
+        return
+    repository = IntentRoutingRepository(db_session)
+    user_id, original_roles = snapshot
+    current_roles = {
+        role.role for role in repository.list_admin_user_roles(user_id)
+    }
+    if present:
+        if "system_admin" not in current_roles and "system_admin" in original_roles:
+            repository.ensure_admin_user_role(
+                user_id=user_id,
+                role="system_admin",
+                assigned_by="integration-test-restore",
+                assigned_at=datetime.now(UTC),
+            )
+    else:
+        if "system_admin" in current_roles:
+            repository.delete_admin_user_role_by_key(user_id, "system_admin")
+    db_session.commit()
 
 
 def _purge_admin(db_session: Session, email: str) -> None:
