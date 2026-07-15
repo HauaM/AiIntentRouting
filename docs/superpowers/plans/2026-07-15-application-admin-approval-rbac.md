@@ -981,7 +981,7 @@ Expected: PASS.
   - `POST /admin/v1/admin-access-requests/{request_id}/approve`
   - `POST /admin/v1/admin-access-requests/{request_id}/reject`
 
-- [ ] **Step 1: Write failing API tests**
+- [x] **Step 1: Write failing API tests**
 
 Add integration tests:
 
@@ -1044,7 +1044,7 @@ def test_non_system_admin_cannot_approve_admin_access_request(
     assert response.status_code == 403
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -1054,7 +1054,7 @@ uv run pytest tests/integration/test_admin_user_management_api.py::test_admin_ac
 
 Expected: FAIL because endpoints do not exist.
 
-- [ ] **Step 3: Add Pydantic schemas**
+- [x] **Step 3: Add Pydantic schemas**
 
 In `src/intent_routing/api/admin.py`, add:
 
@@ -1092,7 +1092,7 @@ class AdminAccessRequestResponse(BaseModel):
     created_admin_user_id: str | None
 ```
 
-- [ ] **Step 4: Add public request creation endpoint**
+- [x] **Step 4: Add public request creation endpoint**
 
 `POST /admin/v1/admin-access-requests` does not require an Admin session. It must:
 
@@ -1103,7 +1103,7 @@ class AdminAccessRequestResponse(BaseModel):
 - hash password immediately
 - store only password hash
 
-- [ ] **Step 5: Add system-admin list/approve/reject endpoints**
+- [x] **Step 5: Add system-admin list/approve/reject endpoints**
 
 Approval must run in one transaction:
 
@@ -1137,7 +1137,7 @@ request_record.decided_by = context.actor_id
 request_record.decision_reason = decision_reason
 ```
 
-- [ ] **Step 6: Insert audit events**
+- [x] **Step 6: Insert audit events**
 
 Write these event types:
 
@@ -1146,7 +1146,7 @@ Write these event types:
 - `admin_access_request.rejected`
 - `admin_user.global_role_granted` for `application_admin`
 
-- [ ] **Step 7: Run API tests**
+- [x] **Step 7: Run API tests**
 
 Run:
 
