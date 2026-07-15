@@ -490,7 +490,7 @@ Create `alembic/versions/0008_application_admin_approval_rbac.py`:
 ```python
 """Add application admin approval RBAC.
 
-Revision ID: 0008_application_admin_approval_rbac
+Revision ID: 0008_app_admin_rbac
 Revises: 0007_organization_directory
 Create Date: 2026-07-15
 """
@@ -502,7 +502,7 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision: str = "0008_application_admin_approval_rbac"
+revision: str = "0008_app_admin_rbac"
 down_revision: str | None = "0007_organization_directory"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -1555,7 +1555,7 @@ Before applying migration to shared DB, run:
 select user_id, role from admin_user_roles where role = 'system_admin';
 ```
 
-Expected: exactly one row. If more than one row exists, choose the canonical `system_admin`, remove or transfer the others before applying migration `0008_application_admin_approval_rbac`.
+Expected: exactly one row. If more than one row exists, choose the canonical `system_admin`, remove or transfer the others before applying migration `0008_app_admin_rbac`.
 
 - [ ] **Step 5: Run changed-file forbidden pattern search**
 

@@ -1,6 +1,6 @@
 """Add application admin approval RBAC.
 
-Revision ID: 0008_application_admin_approval_rbac
+Revision ID: 0008_app_admin_rbac
 Revises: 0007_organization_directory
 Create Date: 2026-07-15
 """
@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision: str = "0008_application_admin_approval_rbac"
+revision: str = "0008_app_admin_rbac"
 down_revision: str | None = "0007_organization_directory"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -21,7 +21,6 @@ TIMESTAMPTZ = sa.DateTime(timezone=True)
 
 
 def upgrade() -> None:
-    op.alter_column("alembic_version", "version_num", type_=sa.Text())
     bind = op.get_bind()
     system_admin_count = bind.execute(
         sa.text("select count(*) from admin_user_roles where role = 'system_admin'")

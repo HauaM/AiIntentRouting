@@ -86,6 +86,28 @@ def test_account_auth_migration_uses_real_service_membership_not_wildcard() -> N
     assert '"*"' not in migration
 
 
+def test_alembic_revision_ids_fit_default_version_table_and_0008_leaves_it_alone() -> None:
+    migration_dir = Path("alembic/versions")
+    revision_files = sorted(migration_dir.glob("*.py"))
+    revisions: dict[str, str] = {}
+
+    for path in revision_files:
+        migration = path.read_text()
+        revision_line = next(
+            line for line in migration.splitlines() if line.startswith("revision: str = ")
+        )
+        revision = revision_line.split(" = ", maxsplit=1)[1].strip().strip('"')
+        revisions[path.name] = revision
+
+    assert all(len(revision) <= 32 for revision in revisions.values())
+    assert len(revisions["0008_application_admin_approval_rbac.py"]) <= 32
+
+    migration_0008 = Path(
+        "alembic/versions/0008_application_admin_approval_rbac.py"
+    ).read_text()
+    assert 'op.alter_column("alembic_version", "version_num", type_=sa.Text())' not in migration_0008
+
+
 def test_repository_exposes_account_auth_helpers() -> None:
     assert {
         "create_admin_user",
@@ -321,6 +343,9 @@ def test_repository_updates_admin_password_and_ensures_role(
     repository = IntentRoutingRepository(db_session)
 
     db_session.execute(
+        text("delete from admin_user_roles where role = 'system_admin'"),
+    )
+    db_session.execute(
         text("delete from admin_user_roles where user_id = :user_id"),
         {"user_id": user_id},
     )
@@ -368,6 +393,9 @@ def test_repository_updates_admin_password_and_ensures_role(
             "system_admin"
         ]
     finally:
+        db_session.execute(
+            text("delete from admin_user_roles where role = 'system_admin'"),
+        )
         db_session.execute(
             text("delete from admin_user_roles where user_id = :user_id"),
             {"user_id": user_id},
