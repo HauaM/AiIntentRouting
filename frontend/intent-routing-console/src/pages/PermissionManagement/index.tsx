@@ -34,7 +34,6 @@ import {
 import {
   buildSystemAdminTransferRequest,
   canAccessPermissionManagement,
-  countActiveLoginEligibleSystemAdmins,
   filterSystemAdminRows,
   isLastActiveSystemAdminProtected,
   permissionAdminUserRowKey,
@@ -132,7 +131,6 @@ export default function PermissionManagementPage() {
   const riskActionRef = useRef<ActionType>();
   const [activeTab, setActiveTab] =
     useState<PermissionManagementTabKey>('admin-users');
-  const [activeSystemAdminCount, setActiveSystemAdminCount] = useState<number>();
   const [mutatingAdminUserId, setMutatingAdminUserId] = useState<string>();
   const [mutatingAccessRequestId, setMutatingAccessRequestId] = useState<string>();
   const [grantServiceId, setGrantServiceId] = useState('');
@@ -931,16 +929,7 @@ export default function PermissionManagementPage() {
                   key: tab.key,
                   label: tab.label,
                   children: (
-                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                      {activeSystemAdminCount === 1 ? (
-                        <Alert
-                          type="warning"
-                          showIcon
-                          message="active login-eligible system_admin이 1명뿐입니다."
-                          description="마지막 system_admin 보호 상태인 계정은 비활성화와 권한 해제가 비활성화됩니다."
-                        />
-                      ) : null}
-                      <ProTable<API.PermissionAdminUserSummary>
+                    <ProTable<API.PermissionAdminUserSummary>
                         rowKey={permissionAdminUserRowKey}
                         actionRef={globalRoleActionRef}
                         columns={globalRoleColumns}
@@ -950,9 +939,6 @@ export default function PermissionManagementPage() {
                             limit: 100,
                           });
                           const systemAdminRows = filterSystemAdminRows(rows);
-                          setActiveSystemAdminCount(
-                            countActiveLoginEligibleSystemAdmins(systemAdminRows),
-                          );
                           return {
                             data: systemAdminRows,
                             total: systemAdminRows.length,
@@ -963,7 +949,6 @@ export default function PermissionManagementPage() {
                         search={false}
                         options={{ density: true, fullScreen: false, reload: true, setting: true }}
                       />
-                    </Space>
                   ),
                 };
               }

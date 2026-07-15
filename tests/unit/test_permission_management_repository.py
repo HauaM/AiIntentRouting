@@ -593,7 +593,7 @@ def test_repository_lists_permission_service_role_summaries_with_metadata_and_fi
         )
 
 
-def test_permission_summary_flags_single_active_system_admin_count_without_db() -> None:
+def test_permission_summary_keeps_last_active_system_admin_protection_without_risk_flag() -> None:
     repository = IntentRoutingRepository.__new__(IntentRoutingRepository)
     now = datetime.now(UTC)
     user = models.AdminUser(
@@ -624,7 +624,7 @@ def test_permission_summary_flags_single_active_system_admin_count_without_db() 
     )
 
     assert single_summary.is_last_active_system_admin is True
-    assert "single_active_system_admin" in single_summary.risk_flags
+    assert "single_active_system_admin" not in single_summary.risk_flags
     assert multiple_summary.is_last_active_system_admin is False
     assert "single_active_system_admin" not in multiple_summary.risk_flags
 

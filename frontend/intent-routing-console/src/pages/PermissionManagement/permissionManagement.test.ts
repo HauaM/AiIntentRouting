@@ -280,6 +280,8 @@ describe('Permission Management helpers', () => {
     expect(source).toContain('application_admin 해제');
     expect(source).toContain('system_admin 이관');
     expect(source).not.toContain('system_admin 부여');
+    expect(source).not.toContain('active login-eligible system_admin이 1명뿐입니다.');
+    expect(source).not.toContain('로그인 가능한 system_admin 계정을 2개 이상');
   });
 
   it('requires confirm flows for approval and decision-reason rejection', () => {

@@ -627,6 +627,91 @@ def test_non_system_admin_cannot_approve_admin_access_request(
     assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
 
 
+def test_system_admin_list_admin_access_requests_applies_status_filter_and_limit(
+    db_session: Session,
+) -> None:
+    client = _client(db_session)
+    suffix = uuid4().hex[:8]
+    pending_user_numbers = [f"pending-user-{suffix}-1", f"pending-user-{suffix}-2"]
+    pending_emails = [f"{user_number}@example.com" for user_number in pending_user_numbers]
+    approved_user_number = f"approved-user-{suffix}"
+    approved_email = f"{approved_user_number}@example.com"
+    department = _create_department(db_session, dept_number=f"list-dept-{suffix}")
+
+    _purge_rows(
+        db_session,
+        emails=[*pending_emails, approved_email],
+        user_numbers=[*pending_user_numbers, approved_user_number],
+    )
+    try:
+        for index, (user_number, email) in enumerate(
+            zip(pending_user_numbers, pending_emails, strict=True),
+            start=1,
+        ):
+            create_response = client.post(
+                "/admin/v1/admin-access-requests",
+                json={
+                    "user_number": user_number,
+                    "name": f"Pending User {index}",
+                    "department_id": str(department.id),
+                    "email": email,
+                    "password": "pending-password",
+                    "access_reason": f"Pending access request {index}.",
+                },
+            )
+            assert create_response.status_code == 201
+
+        approved_create_response = client.post(
+            "/admin/v1/admin-access-requests",
+            json={
+                "user_number": approved_user_number,
+                "name": "Approved User",
+                "department_id": str(department.id),
+                "email": approved_email,
+                "password": "approved-password",
+                "access_reason": "Approved access request.",
+            },
+        )
+        assert approved_create_response.status_code == 201
+        approved_request_id = approved_create_response.json()["request_id"]
+
+        approve_response = client.post(
+            f"/admin/v1/admin-access-requests/{approved_request_id}/approve",
+            json={"decision_reason": "Approved for admin onboarding."},
+        )
+        assert approve_response.status_code == 200
+
+        response = client.get(
+            "/admin/v1/admin-access-requests",
+            params={"status": "pending", "limit": 1},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["status"] == "pending"
+        assert body[0]["user_number"] in pending_user_numbers
+    finally:
+        _purge_rows(
+            db_session,
+            emails=[*pending_emails, approved_email],
+            user_numbers=[*pending_user_numbers, approved_user_number],
+        )
+
+
+def test_list_admin_access_requests_rejects_invalid_status_query(
+    db_session: Session,
+) -> None:
+    client = _client(db_session)
+
+    response = client.get(
+        "/admin/v1/admin-access-requests",
+        params={"status": "not-a-real-status"},
+    )
+
+    assert response.status_code == 422
+
+
 def test_admin_access_request_rejection_clears_pending_password_hash(
     db_session: Session,
 ) -> None:

@@ -774,13 +774,6 @@ def test_permission_management_risk_findings_returns_baseline_findings(
         ) in by_key
         assert ("active_admin_without_roles", unlinked_admin_id, None) in by_key
         assert ("unlinked_admin_user", unlinked_admin_id, None) in by_key
-        assert ("single_active_system_admin", single_admin_id, None) in by_key
-        assert (
-            by_key[
-                ("single_active_system_admin", single_admin_id, None)
-            ]["finding_id"]
-            == f"single_active_system_admin:{single_admin_id}"
-        )
         assert (
             by_key[
                 (
@@ -796,6 +789,7 @@ def test_permission_management_risk_findings_returns_baseline_findings(
             assert finding["title"]
             assert finding["recommended_action"]
             assert isinstance(finding["evidence"], dict)
+            assert finding["category"] != "single_active_system_admin"
         response_text = response.text
         for forbidden_fragment in (
             "password_hash",

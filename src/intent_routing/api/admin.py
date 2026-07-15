@@ -3009,14 +3009,21 @@ def list_admin_access_requests(
         Depends(require_admin_session_context),
     ],
     session: Annotated[Session, Depends(get_admin_session)],
-    status: Annotated[str | None, Query()] = None,
+    status: Annotated[
+        Literal["pending", "approved", "rejected"] | None,
+        Query(),
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ) -> list[AdminAccessRequestResponse]:
     context = admin_context_from_session_record(session_context)
     _require_system_admin(context)
     repository = IntentRoutingRepository(session)
     return [
         _admin_access_request_response(request_row)
-        for request_row in repository.list_admin_access_requests(status=status)
+        for request_row in repository.list_admin_access_requests(
+            status=status,
+            limit=limit,
+        )
     ]
 
 

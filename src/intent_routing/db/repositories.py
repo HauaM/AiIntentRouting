@@ -970,27 +970,6 @@ class IntentRoutingRepository:
                 )
             )
 
-        if "single_active_system_admin" in summary.risk_flags:
-            findings.append(
-                _permission_risk_finding(
-                    category="single_active_system_admin",
-                    severity="high",
-                    title="단일 활성 system_admin 계정",
-                    admin_user_id=user.user_id,
-                    service_id=None,
-                    evidence={
-                        "admin_user_status": user.status,
-                        "global_roles": list(summary.global_roles),
-                        "is_last_active_system_admin": (
-                            summary.is_last_active_system_admin
-                        ),
-                    },
-                    recommended_action=(
-                        "비상 접근을 위해 로그인 가능한 system_admin 계정을 2개 이상 유지하세요."
-                    ),
-                )
-            )
-
         return findings
 
     def _permission_admin_user_summary_record(
@@ -1023,9 +1002,6 @@ class IntentRoutingRepository:
             risk_flags.append("active_admin_without_roles")
         if user.organization_user_id is None:
             risk_flags.append("unlinked_admin_user")
-        if is_last_active_system_admin:
-            risk_flags.append("single_active_system_admin")
-
         return PermissionAdminUserSummaryRecord(
             user=user,
             global_roles=global_roles,
