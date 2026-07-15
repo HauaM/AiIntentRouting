@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TableProps } from 'antd';
-import { Alert, Button, Card, Select, Space, Table, Tag, Typography, message } from 'antd';
+import { Alert, Card, Select, Space, Table, Tag, Tooltip, Typography, message } from 'antd';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
+import { StatusTag } from '@/components/StatusTag';
 import {
   grantServiceRole,
   listServiceMembers,
@@ -172,7 +173,6 @@ export function ServiceMembershipPanel({
     try {
       await grantServiceRole(expectedServiceId, grantRequest.userId, grantRequest.payload);
       if (!isCurrentRequest()) return;
-      message.success('Service role granted.');
       setSelectedUserId(undefined);
       setSelectedRole(undefined);
       await loadMembers(expectedServiceId);
@@ -200,46 +200,89 @@ export function ServiceMembershipPanel({
     [loadMembers, onMembershipChanged],
   );
 
+  const selectedUser = userOptions.find((option) => option.value === selectedUserId)?.user;
+
   const columns = useMemo<TableProps<ServiceMemberTableRow>['columns']>(
     () => [
       {
         title: 'User',
         dataIndex: 'display_name',
+        width: 180,
+        className: 'admin-nowrap-cell',
         render: (_, row) => (
-          <Space direction="vertical" size={0}>
-            <Typography.Text>{row.display_name}</Typography.Text>
-            <Typography.Text type="secondary">{row.user_id}</Typography.Text>
-          </Space>
+          <Tooltip title={row.display_name}>
+            <Typography.Text ellipsis style={{ maxWidth: 180 }}>
+              {row.display_name}
+            </Typography.Text>
+          </Tooltip>
+        ),
+      },
+      {
+        title: 'User ID',
+        dataIndex: 'user_id',
+        width: 180,
+        className: 'admin-nowrap-cell',
+        render: (_, row) => (
+          <Typography.Text code copyable ellipsis className="admin-ellipsis-cell">
+            {row.user_id}
+          </Typography.Text>
         ),
       },
       {
         title: 'Email',
         dataIndex: 'email',
+        width: 220,
+        className: 'admin-nowrap-cell',
+        render: (_, row) => (
+          <Tooltip title={row.email}>
+            <Typography.Text ellipsis style={{ maxWidth: 200 }}>
+              {row.email}
+            </Typography.Text>
+          </Tooltip>
+        ),
       },
       {
         title: 'Status',
         dataIndex: 'status',
         width: 112,
-        render: (_, row) => (
-          <Tag color={row.status === 'active' ? 'green' : 'default'}>{row.status}</Tag>
-        ),
+        className: 'admin-nowrap-cell',
+        render: (_, row) => <StatusTag status={row.status} />,
       },
       {
         title: 'Role',
         dataIndex: 'role',
+        width: 160,
+        className: 'admin-nowrap-cell',
         render: (_, row) => <Tag>{row.role}</Tag>,
       },
       {
         title: 'Assigned by',
         dataIndex: 'assigned_by',
+        width: 180,
+        className: 'admin-nowrap-cell',
+        render: (_, row) => (
+          <Tooltip title={row.assigned_by}>
+            <Typography.Text ellipsis style={{ maxWidth: 160 }}>
+              {row.assigned_by}
+            </Typography.Text>
+          </Tooltip>
+        ),
       },
       {
         title: 'Assigned at',
         dataIndex: 'assigned_at',
+        width: 180,
+        className: 'admin-nowrap-cell',
+        render: (_, row) => (
+          <Typography.Text ellipsis style={{ maxWidth: 160 }}>
+            {row.assigned_at}
+          </Typography.Text>
+        ),
       },
       {
         title: 'Action',
         width: 112,
+        className: 'admin-nowrap-cell',
         render: (_, row) => (
           <ConfirmActionButton
             danger
@@ -272,7 +315,7 @@ export function ServiceMembershipPanel({
         ) : null}
         {membershipError ? <Alert type="warning" showIcon message={membershipError} /> : null}
         <Space wrap align="end" size={12}>
-          <Space direction="vertical" size={4}>
+          <div style={{ display: 'grid', gap: 4 }}>
             <Typography.Text>User</Typography.Text>
             <Select<string, UserSelectOption>
               showSearch
@@ -287,16 +330,16 @@ export function ServiceMembershipPanel({
               onSearch={handleUserSearch}
               onChange={setSelectedUserId}
               optionRender={({ data }) => (
-                <Space direction="vertical" size={0}>
+                <div style={{ display: 'grid', gap: 2 }}>
                   <Typography.Text>{data.user.email}</Typography.Text>
                   <Typography.Text type="secondary">
                     {data.user.display_name} / {data.user.status}
                   </Typography.Text>
-                </Space>
+                </div>
               )}
             />
-          </Space>
-          <Space direction="vertical" size={4}>
+          </div>
+          <div style={{ display: 'grid', gap: 4 }}>
             <Typography.Text>Role</Typography.Text>
             <Select
               allowClear
@@ -307,23 +350,37 @@ export function ServiceMembershipPanel({
               style={{ width: 220 }}
               onChange={setSelectedRole}
             />
-          </Space>
-          <Button
+          </div>
+          <ConfirmActionButton
             type="primary"
-            disabled={!canManage || !selectedUserId || !selectedRole}
-            loading={granting}
-            onClick={handleGrant}
+            title="Grant service role?"
+            okText="Grant role"
+            disabled={!canManage || !selectedUserId || !selectedRole || granting}
+            onConfirm={handleGrant}
+            content={
+              <Space direction="vertical" size={4}>
+                <Typography.Text>
+                  {selectedServiceId} 서비스에 {selectedRole ?? '-'} 권한을 부여합니다.
+                </Typography.Text>
+                <Typography.Text type="secondary">
+                  대상: {selectedUser?.email ?? selectedUserId ?? '-'}
+                </Typography.Text>
+              </Space>
+            }
           >
             Grant role
-          </Button>
+          </ConfirmActionButton>
         </Space>
         <Table<ServiceMemberTableRow>
+          className="admin-scroll-table"
           rowKey="rowKey"
           size="small"
           loading={loadingMembers}
           pagination={false}
           columns={columns}
           dataSource={members}
+          scroll={{ x: 760, y: 320 }}
+          tableLayout="fixed"
         />
       </Space>
     </Card>
