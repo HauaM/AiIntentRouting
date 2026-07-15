@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from 'react';
+import type { PropsWithChildren, ReactNode } from 'react';
 import { useEffect } from 'react';
 import { history, useLocation, useModel } from '@umijs/max';
 import { PageContainer, ProLayout } from '@ant-design/pro-components';
@@ -16,6 +16,10 @@ import {
   SafetyOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
+import {
+  getAdminShellRouteSpecs,
+  type AdminShellRouteIcon,
+} from './adminShellNavigation';
 import { ServiceScopeBar } from './ServiceScopeBar';
 
 const adminUiTheme = {
@@ -68,6 +72,19 @@ type AdminShellProps = PropsWithChildren<{
   title: string;
 }>;
 
+const routeIcons: Record<AdminShellRouteIcon, ReactNode> = {
+  dashboard: <DashboardOutlined />,
+  services: <ClusterOutlined />,
+  organizationDirectory: <TeamOutlined />,
+  permissionManagement: <SafetyOutlined />,
+  intentCatalog: <ProfileOutlined />,
+  releases: <RocketOutlined />,
+  testRuns: <ExperimentOutlined />,
+  apiKeys: <KeyOutlined />,
+  runtimeLogs: <FileSearchOutlined />,
+  auditLogs: <AuditOutlined />,
+};
+
 export function AdminShell({ title, children }: AdminShellProps) {
   const location = useLocation();
   const {
@@ -98,26 +115,11 @@ export function AdminShell({ title, children }: AdminShellProps) {
         siderWidth={188}
         location={{ pathname: location.pathname }}
         route={{
-          routes: [
-            { path: '/dashboard', name: 'Dashboard', icon: <DashboardOutlined /> },
-            { path: '/services', name: 'Services', icon: <ClusterOutlined /> },
-            {
-              path: '/organization-directory',
-              name: 'Users & Departments',
-              icon: <TeamOutlined />,
-            },
-            {
-              path: '/permission-management',
-              name: '권한관리',
-              icon: <SafetyOutlined />,
-            },
-            { path: '/intents', name: 'Intent Catalog', icon: <ProfileOutlined /> },
-            { path: '/releases', name: 'Releases', icon: <RocketOutlined /> },
-            { path: '/test-runs', name: 'Test Runs', icon: <ExperimentOutlined /> },
-            { path: '/api-keys', name: 'API Keys', icon: <KeyOutlined /> },
-            { path: '/runtime-logs', name: 'Runtime Logs', icon: <FileSearchOutlined /> },
-            { path: '/audit-logs', name: 'Audit Logs', icon: <AuditOutlined /> },
-          ],
+          routes: getAdminShellRouteSpecs(session.globalRoles).map((route) => ({
+            path: route.path,
+            name: route.name,
+            icon: routeIcons[route.icon],
+          })),
         }}
         menuItemRender={(item, dom) => (
           <a
