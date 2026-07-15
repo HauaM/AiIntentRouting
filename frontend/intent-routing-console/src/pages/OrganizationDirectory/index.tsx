@@ -543,7 +543,7 @@ export default function OrganizationDirectoryPage() {
                     }
                     style={{ boxShadow: 'none' }}
                     type="primary"
-                    title="Activate Admin account?"
+                    title="Admin 계정을 활성화할까요?"
                     okText="활성화"
                     content={`${managedAdminUser.email} Admin 계정을 활성화합니다.`}
                     onConfirm={() => handleManagedAdminStatusChange(managedAdminUser, 'active')}
@@ -558,7 +558,7 @@ export default function OrganizationDirectoryPage() {
                       isSelfLastSystemAdmin
                     }
                     style={{ boxShadow: 'none' }}
-                    title="Disable Admin account?"
+                    title="Admin 계정을 비활성화할까요?"
                     okText="비활성화"
                     content={`${managedAdminUser.email} Admin 계정을 비활성화합니다.`}
                     onConfirm={() => handleManagedAdminStatusChange(managedAdminUser, 'disabled')}
@@ -970,7 +970,7 @@ export default function OrganizationDirectoryPage() {
                   name="dept_number"
                   label="부서번호"
                   rules={[
-                    { required: true, whitespace: true, message: '부서번호 is required.' },
+                    { required: true, whitespace: true, message: '부서번호를 입력하세요.' },
                   ]}
                 >
                   <Input placeholder="0969" />
@@ -978,7 +978,7 @@ export default function OrganizationDirectoryPage() {
                 <Form.Item
                   name="name"
                   label="이름"
-                  rules={[{ required: true, whitespace: true, message: '이름 is required.' }]}
+                  rules={[{ required: true, whitespace: true, message: '이름을 입력하세요.' }]}
                 >
                   <Input placeholder="IT지원부" />
                 </Form.Item>
@@ -999,8 +999,8 @@ export default function OrganizationDirectoryPage() {
                           disabled={departmentSaving || editingDepartment.use_yn === 'Y'}
                           style={{ boxShadow: 'none' }}
                           type="primary"
-                          title="Activate department?"
-                          okText="Activate"
+                          title="부서를 활성화할까요?"
+                          okText="활성화"
                           content={`${editingDepartment.dept_number} ${editingDepartment.name} 부서를 활성화합니다.`}
                           onConfirm={() => handleDepartmentUseYnChange('Y')}
                         >
@@ -1010,8 +1010,8 @@ export default function OrganizationDirectoryPage() {
                           danger
                           disabled={departmentSaving || editingDepartment.use_yn === 'N'}
                           style={{ boxShadow: 'none' }}
-                          title="Deactivate department?"
-                          okText="Deactivate"
+                          title="부서를 비활성화할까요?"
+                          okText="비활성화"
                           content={`${editingDepartment.dept_number} ${editingDepartment.name} 부서를 비활성화합니다.`}
                           onConfirm={() => handleDepartmentUseYnChange('N')}
                         >
@@ -1048,7 +1048,7 @@ export default function OrganizationDirectoryPage() {
                   name="user_number"
                   label="사번"
                   rules={[
-                    { required: true, whitespace: true, message: '사번 is required.' },
+                    { required: true, whitespace: true, message: '사번을 입력하세요.' },
                   ]}
                 >
                   <Input placeholder="21P0031" />
@@ -1056,14 +1056,14 @@ export default function OrganizationDirectoryPage() {
                 <Form.Item
                   name="name"
                   label="이름"
-                  rules={[{ required: true, whitespace: true, message: '이름 is required.' }]}
+                  rules={[{ required: true, whitespace: true, message: '이름을 입력하세요.' }]}
                 >
                   <Input placeholder="홍길동" />
                 </Form.Item>
                 <Form.Item
                   name="department_id"
                   label="부서"
-                  rules={[{ required: true, message: '부서 is required.' }]}
+                  rules={[{ required: true, message: '부서를 선택하세요.' }]}
                 >
                   <Select
                     loading={loadingDepartmentSelectOptions}
@@ -1093,8 +1093,8 @@ export default function OrganizationDirectoryPage() {
                           disabled={userSaving || editingUser.use_yn === 'Y'}
                           style={{ boxShadow: 'none' }}
                           type="primary"
-                          title="Activate user?"
-                          okText="Activate"
+                          title="조직 사용자를 활성화할까요?"
+                          okText="활성화"
                           content={`${editingUser.user_number} ${editingUser.name} 사용자를 활성화합니다.`}
                           onConfirm={() => handleOrganizationUserUseYnChange('Y')}
                         >
@@ -1104,8 +1104,8 @@ export default function OrganizationDirectoryPage() {
                           danger
                           disabled={userSaving || editingUser.use_yn === 'N'}
                           style={{ boxShadow: 'none' }}
-                          title="Deactivate user?"
-                          okText="Deactivate"
+                          title="조직 사용자를 비활성화할까요?"
+                          okText="비활성화"
                           content={`${editingUser.user_number} ${editingUser.name} 사용자를 비활성화합니다.`}
                           onConfirm={() => handleOrganizationUserUseYnChange('N')}
                         >
