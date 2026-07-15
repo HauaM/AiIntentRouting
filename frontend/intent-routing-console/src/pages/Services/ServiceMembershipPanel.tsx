@@ -173,6 +173,7 @@ export function ServiceMembershipPanel({
     try {
       await grantServiceRole(expectedServiceId, grantRequest.userId, grantRequest.payload);
       if (!isCurrentRequest()) return;
+      message.success('Service role granted.');
       setSelectedUserId(undefined);
       setSelectedRole(undefined);
       await loadMembers(expectedServiceId);

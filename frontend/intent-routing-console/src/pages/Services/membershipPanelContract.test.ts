@@ -40,6 +40,9 @@ describe('Services membership panel contract', () => {
   it('reloads members and refreshes session scope after grant and revoke', () => {
     const source = readSource('ServiceMembershipPanel.tsx');
     const grantIndex = source.indexOf('await grantServiceRole(');
+    const grantCurrentCheckIndex = source.indexOf('if (!isCurrentRequest()) return;', grantIndex);
+    const grantSuccessIndex = source.indexOf("message.success('Service role granted.');", grantCurrentCheckIndex);
+    const grantClearIndex = source.indexOf('setSelectedUserId(undefined);', grantSuccessIndex);
     const grantReloadIndex = source.indexOf('await loadMembers(expectedServiceId);', grantIndex);
     const grantRefreshIndex = source.indexOf('await onMembershipChanged();', grantReloadIndex);
     const revokeIndex = source.indexOf('await revokeServiceRole(');
@@ -48,6 +51,9 @@ describe('Services membership panel contract', () => {
 
     expect(source).toContain('searchAdminUsers({ query, limit: 25 })');
     expect(source).toContain('listServiceMembers(expectedServiceId)');
+    expect(grantSuccessIndex).toBeGreaterThan(grantCurrentCheckIndex);
+    expect(grantClearIndex).toBeGreaterThan(grantSuccessIndex);
+    expect(grantReloadIndex).toBeGreaterThan(grantSuccessIndex);
     expect(grantReloadIndex).toBeGreaterThan(grantIndex);
     expect(grantRefreshIndex).toBeGreaterThan(grantReloadIndex);
     expect(revokeReloadIndex).toBeGreaterThan(revokeIndex);
