@@ -2,6 +2,8 @@ import type { RequestConfig, RequestError } from '@umijs/max';
 import { history } from '@umijs/max';
 import { message } from 'antd';
 
+const PUBLIC_AUTH_PATHS = new Set(['/login', '/admin-access-request']);
+
 const errorMessage = (error: any) => {
   const payload = error?.response?.data ?? error?.data;
   const detail = payload?.detail;
@@ -23,7 +25,7 @@ export const request: RequestConfig = {
     errorHandler: (error: RequestError) => {
       const requestError = error as any;
       if (requestError?.response?.status === 401) {
-        if (history.location.pathname !== '/login') {
+        if (!PUBLIC_AUTH_PATHS.has(history.location.pathname)) {
           history.replace(
             `/login?redirect=${encodeURIComponent(
               `${history.location.pathname}${history.location.search}`,
