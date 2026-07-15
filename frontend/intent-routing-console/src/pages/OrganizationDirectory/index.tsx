@@ -21,6 +21,7 @@ import {
 import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
+import { StatusTag } from '@/components/StatusTag';
 import {
   createManagedAdminUser,
   createDepartment,
@@ -68,7 +69,10 @@ const useYnValueEnum = {
 } as const;
 
 const UseYnTag = ({ value }: { value: API.UseYn }) => (
-  <Tag color={value === 'Y' ? 'green' : 'default'}>{value}</Tag>
+  <StatusTag
+    status={value === 'Y' ? 'active' : 'disabled'}
+    label={value === 'Y' ? '사용' : '미사용'}
+  />
 );
 
 export default function OrganizationDirectoryPage() {
@@ -473,9 +477,10 @@ export default function OrganizationDirectoryPage() {
                       key: 'status',
                       label: '상태',
                       children: (
-                        <Tag color={managedAdminUser.status === 'active' ? 'green' : 'default'}>
-                          {managedAdminUser.status === 'active' ? '활성' : '비활성'}
-                        </Tag>
+                        <StatusTag
+                          status={managedAdminUser.status}
+                          label={managedAdminUser.status === 'active' ? '활성' : '비활성'}
+                        />
                       ),
                     },
                     {
@@ -871,7 +876,7 @@ export default function OrganizationDirectoryPage() {
         ) : (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <Tabs
-              destroyInactiveTabPane
+              destroyOnHidden
               items={[
                 {
                   key: 'departments',
@@ -922,7 +927,14 @@ export default function OrganizationDirectoryPage() {
               ]}
             />
             <Modal
-              destroyOnClose
+              destroyOnHidden
+              centered
+              width={640}
+              style={{ maxWidth: 'calc(100vw - 32px)' }}
+              styles={{
+                body: { maxHeight: 'calc(100vh - 220px)', overflow: 'auto' },
+                footer: { marginTop: 0 },
+              }}
               open={departmentModalOpen}
               title={departmentFormMode === 'create' ? '부서 추가' : '부서 편집'}
               okText={departmentFormMode === 'create' ? '추가' : '저장'}
@@ -1000,7 +1012,14 @@ export default function OrganizationDirectoryPage() {
               </Form>
             </Modal>
             <Modal
-              destroyOnClose
+              destroyOnHidden
+              centered
+              width={640}
+              style={{ maxWidth: 'calc(100vw - 32px)' }}
+              styles={{
+                body: { maxHeight: 'calc(100vh - 220px)', overflow: 'auto' },
+                footer: { marginTop: 0 },
+              }}
               open={userModalOpen}
               title={userFormMode === 'create' ? '조직 사용자 추가' : '조직 사용자 편집'}
               okText={userFormMode === 'create' ? '추가' : '저장'}

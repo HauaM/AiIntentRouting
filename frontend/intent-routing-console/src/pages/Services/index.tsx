@@ -14,12 +14,14 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
 import { FieldHelpLabel } from '@/components/FieldHelpLabel';
+import { StatusTag } from '@/components/StatusTag';
 import {
   canCreateServices,
   canManageServiceMembers,
@@ -82,32 +84,37 @@ export default function ServicesPage() {
       {
         title: 'Service',
         dataIndex: 'service_id',
+        width: 260,
+        className: 'admin-nowrap-cell',
         render: (_, row) => (
-          <Space direction="vertical" size={0}>
-            <Typography.Text code>{row.service_id}</Typography.Text>
-            <Typography.Text type="secondary">{row.display_name}</Typography.Text>
-          </Space>
+          <Tooltip title={row.display_name || row.service_id}>
+            <Typography.Text code copyable ellipsis style={{ maxWidth: 220 }}>
+              {row.service_id}
+            </Typography.Text>
+          </Tooltip>
         ),
       },
       {
         title: 'Environment',
         dataIndex: 'environment',
         width: 128,
+        className: 'admin-nowrap-cell',
         render: (_, row) => <Tag color="blue">{row.environment}</Tag>,
       },
       {
         title: 'Status',
         dataIndex: 'status',
         width: 112,
-        render: (_, row) => (
-          <Tag color={row.status === 'active' ? 'green' : 'default'}>{row.status}</Tag>
-        ),
+        className: 'admin-nowrap-cell',
+        render: (_, row) => <StatusTag status={row.status} />,
       },
       {
         title: 'Roles',
         dataIndex: 'roles',
+        width: 240,
+        className: 'admin-nowrap-cell',
         render: (_, row) => (
-          <Space wrap size={4}>
+          <Space size={4} className="admin-nowrap-cell">
             {row.roles.map((role) => (
               <Tag key={`${row.service_id}:${role}`}>{role}</Tag>
             ))}
@@ -116,7 +123,8 @@ export default function ServicesPage() {
       },
       {
         title: '',
-        width: 112,
+        width: 96,
+        className: 'admin-nowrap-cell',
         render: (_, row) => (
           <Button
             type="link"
@@ -180,9 +188,7 @@ export default function ServicesPage() {
                       <Tag color="blue">{selectedService.environment}</Tag>
                     </Descriptions.Item>
                     <Descriptions.Item label="Status">
-                      <Tag color={selectedService.status === 'active' ? 'green' : 'default'}>
-                        {selectedService.status}
-                      </Tag>
+                      <StatusTag status={selectedService.status} />
                     </Descriptions.Item>
                     <Descriptions.Item label="Roles">
                       <Space wrap size={4}>
@@ -293,11 +299,14 @@ export default function ServicesPage() {
             ) : null}
             <Card title="Accessible Services">
               <Table<API.AccessibleService>
+                className="admin-scroll-table"
                 rowKey="service_id"
                 size="small"
                 pagination={false}
                 dataSource={session.services}
                 columns={columns}
+                scroll={{ x: 760, y: 420 }}
+                tableLayout="fixed"
                 locale={{
                   emptyText: (
                     <Empty

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   runtimeSetupBodyTemplateText,
@@ -5,6 +8,12 @@ import {
   runtimeSetupHeaderRows,
   runtimeSetupSelectedKeyLabel,
 } from './runtimeSetup';
+
+const apiKeysPageSource = () =>
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.tsx'), 'utf8');
+
+const globalStyleSource = () =>
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../global.less'), 'utf8');
 
 const guidance: API.RuntimeSetupGuidance = {
   service_id: 'svc-a',
@@ -63,5 +72,41 @@ describe('runtime setup guidance helpers', () => {
     expect(runtimeSetupSelectedKeyLabel(guidance)).toBe('key_live_1');
     expect(runtimeSetupBodyTemplateText(guidance)).toContain('"query": "{{user_query}}"');
     expect(runtimeSetupContainsRawSecret(guidance, 'irt_secret_once')).toBe(false);
+  });
+
+  it('renders the one-time API key secret in a close-to-clear modal, not a page alert', () => {
+    const source = apiKeysPageSource();
+
+    expect(source).toContain('<Modal');
+    expect(source).toContain('open={Boolean(createdKey)}');
+    expect(source).toContain('onCancel={clearCreatedKey}');
+    expect(source).toContain('setCreatedKey(undefined)');
+    expect(source).toContain('이 secret은 이 모달을 닫으면 다시 볼 수 없습니다.');
+    expect(source).not.toContain('message="새 API key secret"');
+  });
+
+  it('uses bounded API key inventory table scroll without fake pagination', () => {
+    const source = apiKeysPageSource();
+
+    expect(source).toContain('scroll={{');
+    expect(source).toContain('pagination={false}');
+  });
+
+  it('keeps API key form controls responsive on mobile', () => {
+    const source = apiKeysPageSource();
+
+    expect(source).toContain('className="api-key-scope-fields"');
+    expect(source).toContain('column={{ xs: 1, md: 2 }}');
+    expect(source).toContain("style={{ width: '100%', maxWidth: 320 }}");
+    expect(source).toContain('layout="vertical"');
+  });
+
+  it('wraps runtime setup checklist items inside a bounded container', () => {
+    const source = apiKeysPageSource();
+    const styles = globalStyleSource();
+
+    expect(source).toContain('className="api-key-checklist"');
+    expect(styles).toContain('.api-key-checklist');
+    expect(styles).toContain('overflow-wrap: anywhere');
   });
 });

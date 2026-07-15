@@ -1,19 +1,15 @@
 import { useState } from 'react';
 import { ProTable, type ProColumns } from '@ant-design/pro-components';
 import { Drawer, Empty, Space, Tag, Typography } from 'antd';
+import { StatusTag } from '@/components/StatusTag';
 import { fetchRuntimeLog, listRuntimeLogs } from '@/services/adminServices';
-
-const decisionColor: Record<string, string> = {
-  confident: 'green',
-  clarify: 'orange',
-  fallback: 'default',
-  off_topic: 'default',
-  risk: 'red',
-};
 
 type RuntimeLogsTableProps = {
   serviceId: string;
 };
+
+const runtimeDecisionStatus = (decision?: string | null) =>
+  decision === 'risk' ? 'risk' : decision ?? 'none';
 
 export function RuntimeLogsTable({ serviceId }: RuntimeLogsTableProps) {
   const [selected, setSelected] = useState<API.RuntimeLog>();
@@ -64,7 +60,7 @@ export function RuntimeLogsTable({ serviceId }: RuntimeLogsTableProps) {
         risk: { text: 'risk' },
       },
       render: (_, row) => (
-        <Tag color={decisionColor[row.decision ?? ''] ?? 'default'}>{row.decision ?? 'none'}</Tag>
+        <StatusTag status={runtimeDecisionStatus(row.decision)} />
       ),
     },
     {
@@ -88,7 +84,6 @@ export function RuntimeLogsTable({ serviceId }: RuntimeLogsTableProps) {
         }}
         search={{ labelWidth: 96 }}
         options={{ density: true, fullScreen: false, reload: true, setting: true }}
-        rowClassName={(row) => (row.decision === 'risk' ? 'row-risk' : '')}
         onRow={(row) => ({ onClick: () => openTrace(row.trace_id) })}
       />
       <Drawer title={selected?.trace_id} open={open} width={560} onClose={() => setOpen(false)}>
@@ -96,9 +91,7 @@ export function RuntimeLogsTable({ serviceId }: RuntimeLogsTableProps) {
           <Space direction="vertical" size={10}>
             <Typography.Text>
               Decision{' '}
-              <Tag color={decisionColor[selected.decision ?? ''] ?? 'default'}>
-                {selected.decision ?? 'none'}
-              </Tag>
+              <StatusTag status={runtimeDecisionStatus(selected.decision)} />
             </Typography.Text>
             <Typography.Text>Route {selected.route_key ?? 'none'}</Typography.Text>
             <Typography.Text>Masked query {selected.query_masked ?? 'none'}</Typography.Text>

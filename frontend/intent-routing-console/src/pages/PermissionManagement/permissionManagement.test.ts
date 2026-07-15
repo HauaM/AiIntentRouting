@@ -30,6 +30,22 @@ const pageSource = () =>
     'utf8',
   );
 
+const globalStyleSource = () =>
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../../global.less'),
+    'utf8',
+  );
+
+const proTableSourceContaining = (source: string, marker: string) => {
+  const markerIndex = source.indexOf(marker);
+  expect(markerIndex).toBeGreaterThan(-1);
+  const tableStart = source.lastIndexOf('<ProTable', markerIndex);
+  const tableEnd = source.indexOf('/>', markerIndex);
+  expect(tableStart).toBeGreaterThan(-1);
+  expect(tableEnd).toBeGreaterThan(tableStart);
+  return source.slice(tableStart, tableEnd);
+};
+
 const validAdminCurrentUser = {
   user: {
     user_id: 'admin-1',
@@ -306,5 +322,63 @@ describe('Permission Management helpers', () => {
     expect(source).not.toContain(
       '`Transfer system_admin ownership to ${row.user_id} from Permission Management.`',
     );
+  });
+
+  it('keeps admin user row actions compact and moves overflow actions into a dropdown', () => {
+    const source = pageSource();
+    const adminUserColumnsSource = source.match(
+      /const adminUserColumns[\s\S]*?const globalRoleColumns/,
+    )?.[0];
+
+    expect(source).toContain('Dropdown');
+    expect(source).toContain('MoreOutlined');
+    expect(source).toContain('adminUserMoreMenuItems');
+    expect(source).toContain('scroll={{');
+    expect(adminUserColumnsSource).toContain('width: 180');
+    expect(adminUserColumnsSource).not.toContain('width: 240');
+  });
+
+  it('keeps service role grant controls bounded while compacting admin actions', () => {
+    const source = pageSource();
+    const grantCardSource = source.match(
+      /<Card title="Service role grant">[\s\S]*?<\/Card>/,
+    )?.[0];
+
+    expect(grantCardSource).toContain('className="permission-service-role-grant"');
+    expect(grantCardSource).toContain("style={{ width: '100%', maxWidth: 240 }}");
+    expect(grantCardSource).toContain("style={{ width: '100%', maxWidth: 340 }}");
+  });
+
+  it('adds a scrollable tabs class for mobile Permission Management tabs', () => {
+    const source = pageSource();
+
+    expect(source).toContain('className="permission-management-tabs"');
+  });
+
+  it('bounds every Permission Management tab table with internal scroll', () => {
+    const source = pageSource();
+    const tableMarkers = [
+      'actionRef={adminActionRef}',
+      'rowKey="request_id"',
+      'actionRef={globalRoleActionRef}',
+      'actionRef={serviceRoleActionRef}',
+      'actionRef={auditActionRef}',
+      'actionRef={riskActionRef}',
+    ];
+
+    tableMarkers.forEach((marker) => {
+      const tableSource = proTableSourceContaining(source, marker);
+
+      expect(tableSource).toContain('className="admin-scroll-table"');
+      expect(tableSource).toContain('scroll={{');
+    });
+  });
+
+  it('clips the Permission Management tab rail inside the viewport on mobile', () => {
+    const source = globalStyleSource();
+
+    expect(source).toContain('.permission-management-tabs .ant-tabs-nav-wrap');
+    expect(source).toContain('overflow-x: auto');
+    expect(source).toContain('min-width: 0');
   });
 });

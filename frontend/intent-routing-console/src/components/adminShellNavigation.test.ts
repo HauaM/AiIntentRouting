@@ -1,5 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { getAdminShellRouteSpecs } from './adminShellNavigation';
+
+const adminShellSource = () =>
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'AdminShell.tsx'), 'utf8');
 
 const paths = (roles: readonly string[]) =>
   getAdminShellRouteSpecs(roles).map((route) => route.path);
@@ -21,5 +27,9 @@ describe('adminShellNavigation', () => {
   it('uses directory-specific Korean copy for the organization directory route', () => {
     expect(names(['system_admin'])).toContain('조직 디렉터리');
     expect(names(['system_admin'])).toContain('권한관리');
+  });
+
+  it('does not render the Sprint phase notice globally in AdminShell', () => {
+    expect(adminShellSource()).not.toContain('Sprint 11 Admin UI Phase 1');
   });
 });

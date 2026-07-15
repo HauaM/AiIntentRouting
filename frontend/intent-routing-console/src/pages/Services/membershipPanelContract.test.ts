@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest';
 const readSource = (relativePath: string) =>
   readFileSync(resolve(process.cwd(), 'src/pages/Services', relativePath), 'utf8');
 
+const servicesIndexSource = () =>
+  readFileSync(resolve(process.cwd(), 'src/pages/Services/index.tsx'), 'utf8');
+
 describe('Services membership panel contract', () => {
   it('replaces the C-2 future notice with the real selected-Service panel', () => {
     const source = readSource('index.tsx');
@@ -37,6 +40,9 @@ describe('Services membership panel contract', () => {
   it('reloads members and refreshes session scope after grant and revoke', () => {
     const source = readSource('ServiceMembershipPanel.tsx');
     const grantIndex = source.indexOf('await grantServiceRole(');
+    const grantCurrentCheckIndex = source.indexOf('if (!isCurrentRequest()) return;', grantIndex);
+    const grantSuccessIndex = source.indexOf("message.success('Service role granted.');", grantCurrentCheckIndex);
+    const grantClearIndex = source.indexOf('setSelectedUserId(undefined);', grantSuccessIndex);
     const grantReloadIndex = source.indexOf('await loadMembers(expectedServiceId);', grantIndex);
     const grantRefreshIndex = source.indexOf('await onMembershipChanged();', grantReloadIndex);
     const revokeIndex = source.indexOf('await revokeServiceRole(');
@@ -45,9 +51,38 @@ describe('Services membership panel contract', () => {
 
     expect(source).toContain('searchAdminUsers({ query, limit: 25 })');
     expect(source).toContain('listServiceMembers(expectedServiceId)');
+    expect(grantSuccessIndex).toBeGreaterThan(grantCurrentCheckIndex);
+    expect(grantClearIndex).toBeGreaterThan(grantSuccessIndex);
+    expect(grantReloadIndex).toBeGreaterThan(grantSuccessIndex);
     expect(grantReloadIndex).toBeGreaterThan(grantIndex);
     expect(grantRefreshIndex).toBeGreaterThan(grantReloadIndex);
     expect(revokeReloadIndex).toBeGreaterThan(revokeIndex);
     expect(revokeRefreshIndex).toBeGreaterThan(revokeReloadIndex);
+  });
+
+  it('requires confirmation before granting a selected-Service role', () => {
+    const source = readSource('ServiceMembershipPanel.tsx');
+    const grantArea = source.match(/<Space wrap align="end"[\s\S]*?<\/Space>/)?.[0];
+
+    expect(grantArea).toContain('<ConfirmActionButton');
+    expect(grantArea).toContain('title="Grant service role?"');
+    expect(grantArea).toContain('onConfirm={handleGrant}');
+    expect(grantArea).not.toContain('onClick={handleGrant}');
+  });
+
+  it('bounds membership table overflow without fake pagination', () => {
+    const source = readSource('ServiceMembershipPanel.tsx');
+
+    expect(source).toContain('scroll={{');
+    expect(source).toContain('tableLayout="fixed"');
+    expect(source).toContain('pagination={false}');
+  });
+
+  it('bounds the accessible services table without server pagination', () => {
+    const source = servicesIndexSource();
+
+    expect(source).toContain('scroll={{');
+    expect(source).toContain('pagination={false}');
+    expect(source).toContain('tableLayout="fixed"');
   });
 });
