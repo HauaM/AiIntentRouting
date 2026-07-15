@@ -57,6 +57,12 @@ declare namespace API {
     access_reason: string;
   };
 
+  type PublicDepartment = {
+    id: string;
+    dept_number: string;
+    name: string;
+  };
+
   type ManagedAdminUser = {
     user_id: string;
     email: string;

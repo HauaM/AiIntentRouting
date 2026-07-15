@@ -476,31 +476,118 @@ def test_service_scoped_key_creation_requires_active_release_candidates(
         _purge_session_fixture(db_session, session_fixture)
 
 
-def test_application_admin_service_developer_cannot_create_service_api_key(
+def test_application_admin_service_developer_can_manage_assigned_service_api_keys(
     db_session: Session,
 ) -> None:
     system_admin_client, system_admin_session_fixture = _system_admin_client(db_session)
-    service_id = f"svc-runtime-app-admin-{uuid4().hex}"
+    service_a = f"svc-runtime-app-admin-a-{uuid4().hex}"
+    service_b = f"svc-runtime-app-admin-b-{uuid4().hex}"
     application_admin_session_fixture: _SessionFixture | None = None
 
     try:
-        _create_service(system_admin_client, service_id)
-        _seed_active_release(db_session, service_id)
+        _create_service(system_admin_client, service_a)
+        _create_service(system_admin_client, service_b)
+        _seed_active_release(db_session, service_a)
+        _seed_active_release(db_session, service_b)
+        other_service_key = system_admin_client.post(
+            f"/admin/v1/services/{service_b}/api-keys",
+            json=_api_key_payload(app_id="dify-service-b"),
+        )
+        assert other_service_key.status_code == 201
+
         client, application_admin_session_fixture = _application_admin_client(
             db_session,
-            service_roles=((service_id, "service_developer"),),
+            service_roles=((service_a, "service_developer"),),
         )
-        response = client.post(
-            f"/admin/v1/services/{service_id}/api-keys",
+        created = client.post(
+            f"/admin/v1/services/{service_a}/api-keys",
             json=_api_key_payload(),
         )
 
-        assert response.status_code == 403
-        assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+        assert created.status_code == 201
+        created_body = created.json()
+        key_id = created_body["key_id"]
+        assert created_body["service_id"] == service_a
+
+        inventory = client.get(
+            f"/admin/v1/services/{service_a}/api-keys",
+            params={"environment": "dev", "status": "active"},
+        )
+        guidance = client.get(
+            f"/admin/v1/services/{service_a}/runtime-setup",
+            params={"environment": "dev", "app_id": "dify-helpdesk", "key_id": key_id},
+        )
+        revoked = client.post(
+            f"/admin/v1/services/{service_a}/api-keys/{key_id}:revoke",
+        )
+        denied_other_create = client.post(
+            f"/admin/v1/services/{service_b}/api-keys",
+            json=_api_key_payload(app_id="dify-other"),
+        )
+        denied_other_list = client.get(f"/admin/v1/services/{service_b}/api-keys")
+        denied_other_guidance = client.get(
+            f"/admin/v1/services/{service_b}/runtime-setup",
+            params={"environment": "dev"},
+        )
+        denied_other_revoke = client.post(
+            (
+                f"/admin/v1/services/{service_b}/api-keys/"
+                f"{other_service_key.json()['key_id']}:revoke"
+            ),
+        )
+
+        assert inventory.status_code == 200
+        assert any(row["key_id"] == key_id for row in inventory.json())
+        assert guidance.status_code == 200
+        assert guidance.json()["selected_key"]["key_id"] == key_id
+        assert revoked.status_code == 200
+        assert revoked.json()["status"] == "revoked"
+        for denied in (
+            denied_other_create,
+            denied_other_list,
+            denied_other_guidance,
+            denied_other_revoke,
+        ):
+            assert denied.status_code == 403
+            assert denied.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+
+        persisted_other_key = db_session.get(models.ApiKey, other_service_key.json()["key_id"])
+        assert persisted_other_key is not None
+        assert persisted_other_key.status == "active"
     finally:
-        _purge_rows(db_session, service_ids=[service_id])
+        _purge_rows(db_session, service_ids=[service_a, service_b])
         if application_admin_session_fixture is not None:
             _purge_session_fixture(db_session, application_admin_session_fixture)
+        _purge_session_fixture(db_session, system_admin_session_fixture)
+
+
+def test_application_admin_read_only_service_roles_cannot_manage_service_api_keys(
+    db_session: Session,
+) -> None:
+    system_admin_client, system_admin_session_fixture = _system_admin_client(db_session)
+    service_id = f"svc-runtime-app-admin-readonly-{uuid4().hex}"
+    fixtures: list[_SessionFixture] = []
+    try:
+        _create_service(system_admin_client, service_id)
+        _seed_active_release(db_session, service_id)
+
+        for role in ("service_operator", "auditor"):
+            client, fixture = _application_admin_client(
+                db_session,
+                service_roles=((service_id, role),),
+            )
+            fixtures.append(fixture)
+            response = client.post(
+                f"/admin/v1/services/{service_id}/api-keys",
+                json=_api_key_payload(app_id=f"dify-{role}"),
+            )
+
+            assert response.status_code == 403, role
+            assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+    finally:
+        _purge_rows(db_session, service_ids=[service_id])
+        for fixture in fixtures:
+            _purge_session_fixture(db_session, fixture)
         _purge_session_fixture(db_session, system_admin_session_fixture)
 
 

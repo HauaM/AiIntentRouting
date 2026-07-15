@@ -1347,9 +1347,22 @@ uv run pytest tests/integration/test_admin_service_rbac_flow.py tests/integratio
 
 Expected: PASS after code keeps service access tied to `user_service_roles`.
 
-- [x] **Step 3: Review API key creation permission**
+- [x] **Step 3: Review API key and release management permission**
 
-Keep API key creation `system_admin` only for this plan. Add a test proving `application_admin` receives `403` for API key creation unless a later ADR changes it.
+Superseded by the final implementation review on 2026-07-15. API key creation
+and direct release create/activate/rollback are service-scoped operations:
+
+- `system_admin` can manage API keys and releases for every Service.
+- `application_admin` can manage API keys and releases only for Services where
+  `user_service_roles` grants `service_owner` or `service_developer`.
+- `service_operator` and `auditor` remain read-only for these write operations.
+- `application_admin` without a matching Service role remains denied.
+
+Reasoning: `application_admin` is still only the global Admin UI access role; the
+actual authorization decision is the selected Service membership. Keeping API key
+and release operations `system_admin`-only would contradict the final service
+operator workflow requirement that approved application admins can operate their
+assigned Services.
 
 ## Task 8: Frontend Types, Services, And Helpers
 
@@ -1640,6 +1653,7 @@ Expected: no whitespace errors.
 
 - [ ] Batch-created `users` row without `admin_users` cannot log in to Admin Console.
 - [ ] Public registration request requires access reason and password.
+- [ ] Public registration request uses the active Department selector instead of a raw Department ID.
 - [ ] `system_admin` can see pending requests.
 - [ ] `application_admin` cannot see Permission Management.
 - [ ] Approving a request creates `users`, `admin_users`, and `application_admin` role.
@@ -1648,9 +1662,22 @@ Expected: no whitespace errors.
 - [ ] `system_admin` can create a Service.
 - [ ] `system_admin` can grant a Service role to an `application_admin`.
 - [ ] `application_admin` can manage only the assigned Service.
+- [ ] `application_admin` with `service_owner` or `service_developer` can create/revoke API keys for the assigned Service.
+- [ ] `application_admin` with `service_owner` or `service_developer` can create, activate, and roll back releases for the assigned Service.
+- [ ] `application_admin` with a Service role can read assigned Service runtime logs and audit logs.
 - [ ] `application_admin` cannot create Services or manage Service membership.
 - [ ] A second `system_admin` cannot be granted through generic role patch.
 - [ ] `system_admin` transfer changes the only platform owner atomically.
+
+## 2026-07-15 Supplemental Review Log
+
+- [x] Compared the review points against the ADR, implementation, tests, and final requirements.
+- [x] Adopted the review finding that API key, runtime setup, release, runtime log, and audit log routes must use Service-scoped authorization instead of `system_admin`-only gates.
+- [x] Kept Permission Management, Service creation, Admin user management, Service membership management, request approval/rejection, and system_admin transfer as `system_admin` only.
+- [x] Kept direct release activate/rollback rather than forcing publish-request flow because the final requirement explicitly allows release create/activate/rollback for assigned Services.
+- [x] Added a public active Department summary endpoint for the registration UI while keeping managed `/departments` `system_admin` only.
+- [ ] Re-run full backend integration tests with `TEST_DATABASE_URL`; the current local run skipped DB-mutating tests because that env var was not set.
+- [ ] Complete browser manual QA after installing the local Playwright/Chrome browser runtime.
 
 ## Plan Self-Review
 

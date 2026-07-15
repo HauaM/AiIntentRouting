@@ -102,7 +102,7 @@ export default function ReleasesPage() {
         test_run_id: values.test_run_id.trim(),
         rollback_target: values.rollback_target?.trim() || null,
       });
-      message.success('Release created.');
+      message.success('Release가 생성되었습니다.');
       form.resetFields();
       form.setFieldsValue({ environment: selectedEnvironment });
       setCandidates((current) =>
@@ -128,13 +128,13 @@ export default function ReleasesPage() {
 
   const handleActivate = async (serviceId: string, releaseVersion: string) => {
     await activateRelease(serviceId, releaseVersion);
-    message.success('Release activated.');
+    message.success('Release가 활성화되었습니다.');
     reload();
   };
 
   const handleRollback = async (serviceId: string, releaseVersion: string) => {
     await rollbackRelease(serviceId, releaseVersion);
-    message.success('Rollback started.');
+    message.success('Rollback이 실행되었습니다.');
     reload();
   };
 
@@ -356,8 +356,8 @@ export default function ReleasesPage() {
               <Alert
                 type="info"
                 showIcon
-                message="Release actions require system_admin"
-                description="You can inspect releases for the selected service, but create, activate, and rollback are hidden unless the session has the system_admin role."
+                message="선택한 Service에 대한 Release 관리 권한이 없습니다."
+                description="system_admin 또는 선택한 Service의 service_owner/service_developer만 생성, 활성화, 롤백할 수 있습니다."
               />
             )}
             <ProTable<API.Release>

@@ -162,7 +162,11 @@ C-2 verification must additionally prove:
 - A user without Service membership receives `403 Forbidden` for Service
   inspect and mutate paths.
 - `service_developer` can manage Intents, examples, policy versions, catalog
-  versions, and test runs only inside assigned Services.
+  versions, test runs, releases, API keys, runtime setup guidance, masked
+  runtime logs, and service audit logs only inside assigned Services.
+- `service_owner` has the same assigned-Service operational scope as
+  `service_developer`, plus owner-specific approval paths defined by later
+  governed workflow ADRs.
 - `service_operator` and `auditor` have only their approved read paths.
 - Membership grant and revoke operations write append-only audit events.
 - Normal browser Admin UI requests use the `irt_admin_session` cookie and do

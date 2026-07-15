@@ -134,7 +134,7 @@ export default function ApiKeysPage() {
       });
       if (serviceIdRef.current !== serviceId) return;
       setCreatedKey(response);
-      message.success('API key created. Copy the secret before leaving this page.');
+      message.success('API key가 생성되었습니다. 페이지를 떠나기 전에 secret을 복사해 주세요.');
       createForm.resetFields(['app_id', 'allowed_intents', 'allowed_route_keys']);
       await loadApiKeyPageData({ key_id: response.key_id, app_id: response.app_id });
     } finally {
@@ -147,7 +147,7 @@ export default function ApiKeysPage() {
     setRevoking(true);
     try {
       await revokeServiceApiKey(serviceId, keyId);
-      message.success('API key revoked.');
+      message.success('API key가 폐기되었습니다.');
       if (createdKey?.key_id === keyId) setCreatedKey(undefined);
       revokeForm.resetFields();
       await loadApiKeyPageData();
@@ -301,15 +301,14 @@ export default function ApiKeysPage() {
                   <Alert
                     type="warning"
                     showIcon
-                    message="New API key secret"
+                    message="새 API key secret"
                     description={
                       <Space direction="vertical" size={8} style={{ width: '100%' }}>
                         <Typography.Text>
-                          This secret is kept only in the current page state and will not be shown again
-                          after refresh or navigation.
+                          이 secret은 현재 화면에만 표시되며 새로고침 또는 이동 후 다시 볼 수 없습니다.
                         </Typography.Text>
                         <Typography.Text>
-                          Revoke uses the key_id below, not the secret value.
+                          폐기는 secret 값이 아니라 아래 key_id로 수행합니다.
                         </Typography.Text>
                         <Typography.Paragraph copyable code style={{ marginBottom: 0 }}>
                           {createdKey.api_key}
@@ -402,7 +401,7 @@ export default function ApiKeysPage() {
                     <Alert
                       type="info"
                       showIcon
-                      message="Runtime setup guidance loads after selecting a Service."
+                      message="Service를 선택하면 Runtime setup 안내가 표시됩니다."
                     />
                   )}
                 </Card>
@@ -453,8 +452,8 @@ export default function ApiKeysPage() {
               <Alert
                 type="info"
                 showIcon
-                message="API key actions require system_admin"
-                description="Create and revoke controls are hidden unless the session has the system_admin role."
+                message="선택한 Service에 대한 API key 관리 권한이 없습니다."
+                description="system_admin 또는 선택한 Service의 service_owner/service_developer만 생성, 조회, 폐기할 수 있습니다."
               />
             )}
           </>

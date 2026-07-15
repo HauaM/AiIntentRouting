@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { history } from '@umijs/max';
 import {
   Alert,
@@ -7,13 +7,14 @@ import {
   ConfigProvider,
   Form,
   Input,
+  Select,
   Space,
   Tag,
   Typography,
   theme as antdTheme,
 } from 'antd';
 import koKR from 'antd/locale/ko_KR';
-import { submitAdminAccessRequest } from '@/services/authServices';
+import { listPublicDepartments, submitAdminAccessRequest } from '@/services/authServices';
 import {
   toAdminAccessRequestCreateRequest,
   type AdminAccessRequestFormValues,
@@ -36,13 +37,47 @@ const errorMessage = (error: any) => {
   if (typeof detail === 'string') return detail;
   if (detail?.error?.message) return detail.error.message;
   if (payload?.error?.message) return payload.error.message;
-  return error?.message ?? 'Request submission failed.';
+  return error?.message ?? '신청을 제출하지 못했습니다.';
 };
 
 export default function AdminAccessRequestPage() {
   const [loading, setLoading] = useState(false);
+  const [departmentsLoading, setDepartmentsLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const [departmentError, setDepartmentError] = useState<string>();
+  const [departments, setDepartments] = useState<API.PublicDepartment[]>([]);
   const [submittedRequest, setSubmittedRequest] = useState<API.AdminAccessRequest | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setDepartmentsLoading(true);
+    setDepartmentError(undefined);
+    listPublicDepartments()
+      .then((rows) => {
+        if (!mounted) return;
+        setDepartments(rows);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setDepartmentError('부서 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setDepartmentsLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((department) => ({
+        value: department.id,
+        label: `${department.dept_number} - ${department.name}`,
+      })),
+    [departments],
+  );
 
   const submit = async (values: AdminAccessRequestFormValues) => {
     setLoading(true);
@@ -66,33 +101,33 @@ export default function AdminAccessRequestPage() {
           {submittedRequest ? (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               <div>
-                <Typography.Title level={2}>Request submitted</Typography.Title>
+                <Typography.Title level={2}>신청이 접수되었습니다</Typography.Title>
                 <Typography.Paragraph type="secondary">
-                  Your Admin Console access request has been recorded and is waiting for review.
+                  Admin Console 접근 신청이 기록되었고 system_admin 검토를 기다리고 있습니다.
                 </Typography.Paragraph>
               </div>
               <div>
-                <Typography.Text type="secondary">Request status</Typography.Text>
+                <Typography.Text type="secondary">신청 상태</Typography.Text>
                 <div style={{ marginTop: 8 }}>
                   <Tag color="processing">{submittedRequest.status}</Tag>
                 </div>
               </div>
               <div>
-                <Typography.Text type="secondary">Request ID</Typography.Text>
+                <Typography.Text type="secondary">신청 ID</Typography.Text>
                 <div style={{ marginTop: 8 }}>
                   <Typography.Text code>{submittedRequest.request_id}</Typography.Text>
                 </div>
               </div>
               <Button type="primary" onClick={() => history.push('/login')} block>
-                Back to sign in
+                로그인으로 돌아가기
               </Button>
             </Space>
           ) : (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               <div>
-                <Typography.Title level={2}>Admin access request</Typography.Title>
+                <Typography.Title level={2}>Admin Console 접근 신청</Typography.Title>
                 <Typography.Paragraph type="secondary">
-                  Submit your organization profile and reason for Admin Console access.
+                  조직 사용자 정보와 접근 사유를 입력하면 system_admin이 승인 여부를 검토합니다.
                 </Typography.Paragraph>
               </div>
               <Form<AdminAccessRequestFormValues>
@@ -110,61 +145,75 @@ export default function AdminAccessRequestPage() {
                     style={{ marginBottom: 16 }}
                   />
                 ) : null}
+                {departmentError ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message={departmentError}
+                    style={{ marginBottom: 16 }}
+                  />
+                ) : null}
                 <Form.Item
-                  label="User number"
+                  label="사번"
                   name="user_number"
-                  rules={[{ required: true, message: 'User number is required.' }]}
+                  rules={[{ required: true, message: '사번을 입력해 주세요.' }]}
                 >
                   <Input autoComplete="off" />
                 </Form.Item>
                 <Form.Item
-                  label="Name"
+                  label="이름"
                   name="name"
-                  rules={[{ required: true, message: 'Name is required.' }]}
+                  rules={[{ required: true, message: '이름을 입력해 주세요.' }]}
                 >
                   <Input autoComplete="name" />
                 </Form.Item>
                 <Form.Item
-                  label="Department ID"
+                  label="부서"
                   name="department_id"
-                  extra="Use the department ID assigned by your organization administrator."
-                  rules={[{ required: true, message: 'Department ID is required.' }]}
+                  rules={[{ required: true, message: '부서를 선택해 주세요.' }]}
                 >
-                  <Input autoComplete="off" />
+                  <Select
+                    showSearch
+                    loading={departmentsLoading}
+                    placeholder="부서 선택"
+                    optionFilterProp="label"
+                    options={departmentOptions}
+                    notFoundContent={departmentsLoading ? '불러오는 중' : '선택 가능한 부서가 없습니다'}
+                  />
                 </Form.Item>
                 <Form.Item
-                  label="Email"
+                  label="이메일"
                   name="email"
                   rules={[
-                    { required: true, message: 'Email is required.' },
-                    { type: 'email', message: 'Enter a valid email address.' },
+                    { required: true, message: '이메일을 입력해 주세요.' },
+                    { type: 'email', message: '올바른 이메일 주소를 입력해 주세요.' },
                   ]}
                 >
                   <Input autoComplete="email" inputMode="email" />
                 </Form.Item>
                 <Form.Item
-                  label="Password"
+                  label="비밀번호"
                   name="password"
                   rules={[
-                    { required: true, message: 'Password is required.' },
-                    { min: 8, message: 'Password must be at least 8 characters.' },
+                    { required: true, message: '비밀번호를 입력해 주세요.' },
+                    { min: 8, message: '비밀번호는 8자 이상이어야 합니다.' },
                   ]}
                 >
                   <Input.Password autoComplete="new-password" />
                 </Form.Item>
                 <Form.Item
-                  label="Access reason"
+                  label="접근 사유"
                   name="access_reason"
-                  rules={[{ required: true, message: 'Access reason is required.' }]}
+                  rules={[{ required: true, message: '접근 사유를 입력해 주세요.' }]}
                 >
                   <Input.TextArea rows={4} showCount maxLength={500} />
                 </Form.Item>
                 <Space direction="vertical" size={12} style={{ width: '100%' }}>
                   <Button type="primary" htmlType="submit" loading={loading} block>
-                    Submit request
+                    신청 제출
                   </Button>
                   <Button onClick={() => history.push('/login')} block>
-                    Back to sign in
+                    로그인으로 돌아가기
                   </Button>
                 </Space>
               </Form>

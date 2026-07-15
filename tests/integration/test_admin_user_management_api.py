@@ -764,6 +764,47 @@ def test_admin_access_request_rejection_clears_pending_password_hash(
         )
 
 
+def test_public_departments_returns_active_minimal_registration_choices(
+    db_session: Session,
+) -> None:
+    suffix = uuid4().hex[:8]
+    active_dept_number = f"public-active-{suffix}"
+    inactive_dept_number = f"public-inactive-{suffix}"
+    client = _client(db_session)
+
+    _purge_rows(db_session, dept_numbers=[active_dept_number, inactive_dept_number])
+    try:
+        active_department = _create_department(
+            db_session,
+            dept_number=active_dept_number,
+        )
+        inactive_department = _create_department(
+            db_session,
+            dept_number=inactive_dept_number,
+        )
+        inactive_department.use_yn = "N"
+        db_session.commit()
+
+        response = client.get(
+            "/admin/v1/public/departments",
+            params={"query": suffix},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body == [
+            {
+                "id": str(active_department.id),
+                "dept_number": active_dept_number,
+                "name": active_department.name,
+            }
+        ]
+        assert "use_yn" not in response.text
+        assert "created_by" not in response.text
+    finally:
+        _purge_rows(db_session, dept_numbers=[active_dept_number, inactive_dept_number])
+
+
 def _create_department(
     db_session: Session,
     *,

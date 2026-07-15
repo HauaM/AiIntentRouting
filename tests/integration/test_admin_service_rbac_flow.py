@@ -170,6 +170,77 @@ def test_application_admin_with_service_developer_can_manage_assigned_service(
         _purge_rows(db_session, user_ids=[user_id], service_ids=[service_id])
 
 
+def test_application_admin_service_roles_can_read_assigned_service_logs(
+    db_session: Session,
+) -> None:
+    service_id = f"svc-app-admin-logs-{uuid4().hex}"
+    user_by_role = {
+        "service_owner": f"owner-logs-{uuid4().hex}",
+        "service_developer": f"developer-logs-{uuid4().hex}",
+        "service_operator": f"operator-logs-{uuid4().hex}",
+        "auditor": f"auditor-logs-{uuid4().hex}",
+    }
+    no_service_role_user = f"app-admin-no-logs-{uuid4().hex}"
+    now = datetime.now(UTC)
+    all_user_ids = [*user_by_role.values(), no_service_role_user]
+
+    _purge_rows(db_session, user_ids=all_user_ids, service_ids=[service_id])
+    try:
+        repository = IntentRoutingRepository(db_session)
+        _create_service(repository, service_id, now=now)
+        tokens_by_role = {
+            role: _create_login_eligible_user_session(
+                repository,
+                user_id,
+                now=now,
+                service_roles=[(service_id, role)],
+                grant_application_admin_access=True,
+            )
+            for role, user_id in user_by_role.items()
+        }
+        no_service_role_token = _create_login_eligible_user_session(
+            repository,
+            no_service_role_user,
+            now=now,
+            global_roles=["application_admin"],
+            grant_application_admin_access=False,
+        )
+        db_session.commit()
+
+        client = _client(db_session)
+
+        for role, token in tokens_by_role.items():
+            runtime_logs = client.get(
+                f"/admin/v1/services/{service_id}/runtime-logs",
+                cookies={ADMIN_SESSION_COOKIE_NAME: token},
+            )
+            audit_logs = client.get(
+                f"/admin/v1/services/{service_id}/audit-logs",
+                cookies={ADMIN_SESSION_COOKIE_NAME: token},
+            )
+
+            assert runtime_logs.status_code == 200, role
+            assert runtime_logs.json() == []
+            assert audit_logs.status_code == 200, role
+            assert audit_logs.json() == []
+
+        denied_runtime_logs = client.get(
+            f"/admin/v1/services/{service_id}/runtime-logs",
+            cookies={ADMIN_SESSION_COOKIE_NAME: no_service_role_token},
+        )
+        denied_audit_logs = client.get(
+            f"/admin/v1/services/{service_id}/audit-logs",
+            cookies={ADMIN_SESSION_COOKIE_NAME: no_service_role_token},
+        )
+
+        assert denied_runtime_logs.status_code == 403
+        assert denied_runtime_logs.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+        assert denied_audit_logs.status_code == 403
+        assert denied_audit_logs.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+    finally:
+        _purge_rows(db_session, user_ids=all_user_ids, service_ids=[service_id])
+
+
 def test_me_services_returns_session_accessible_services(
     db_session: Session,
 ) -> None:
