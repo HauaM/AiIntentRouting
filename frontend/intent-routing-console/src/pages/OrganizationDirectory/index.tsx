@@ -983,7 +983,7 @@ export default function OrganizationDirectoryPage() {
                   <Input placeholder="IT지원부" />
                 </Form.Item>
                 {departmentFormMode === 'edit' && editingDepartment ? (
-                  <Form.Item label="Use">
+                  <Form.Item label="사용 여부">
                     <Space direction="vertical" size={10}>
                       <UseYnTag value={editingDepartment.use_yn} />
                       <div
