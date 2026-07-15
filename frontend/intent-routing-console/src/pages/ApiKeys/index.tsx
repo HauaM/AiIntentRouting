@@ -9,6 +9,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Modal,
   Space,
   Tag,
   Typography,
@@ -70,6 +71,7 @@ export default function ApiKeysPage() {
   const serviceIdRef = useRef(session.serviceId);
   const ready = isAdminSessionReady(session);
   const canManage = canManageRuntimeSetup(session);
+  const manualRevokeKeyId = Form.useWatch('key_id', revokeForm)?.trim();
   const selectedService = session.services.find(
     (service) => service.service_id === session.serviceId,
   );
@@ -161,36 +163,45 @@ export default function ApiKeysPage() {
     await handleRevokeById(values.key_id.trim());
   };
 
+  const clearCreatedKey = () => {
+    setCreatedKey(undefined);
+  };
+
   const columns: ProColumns<API.ApiKey>[] = [
     {
       title: 'Key ID',
       dataIndex: 'key_id',
+      width: 220,
       copyable: true,
       render: (_, row) => <Typography.Text code>{row.key_id}</Typography.Text>,
     },
     {
       title: 'App',
       dataIndex: 'app_id',
+      width: 180,
+      ellipsis: true,
     },
     {
       title: 'Fingerprint',
       dataIndex: 'key_fingerprint',
+      width: 220,
       copyable: true,
       ellipsis: true,
     },
     {
       title: 'Scopes',
+      width: 160,
       search: false,
       render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <span className="muted-small">intents {row.allowed_intents.length}</span>
-          <span className="muted-small">routes {row.allowed_route_keys.length}</span>
-        </Space>
+        <Typography.Text className="admin-nowrap-cell">
+          intents {row.allowed_intents.length} · routes {row.allowed_route_keys.length}
+        </Typography.Text>
       ),
     },
     {
       title: 'Status',
       dataIndex: 'status',
+      width: 112,
       render: (_, row) => (
         <Tag color={row.status === 'active' ? 'green' : 'default'}>{row.status}</Tag>
       ),
@@ -200,21 +211,26 @@ export default function ApiKeysPage() {
       dataIndex: 'expires_at',
       valueType: 'dateTime',
       search: false,
+      width: 180,
     },
     {
       title: '',
       valueType: 'option',
+      width: 120,
       render: (_, row) =>
         row.status === 'active'
           ? [
               <ConfirmActionButton
                 key="revoke"
                 danger
+                riskLevel="high"
+                requireTypedConfirmation
+                confirmText={row.key_id}
                 type="link"
                 size="small"
                 title="Revoke API key?"
                 okText="Revoke"
-                content={`Revoke ${row.key_id}.`}
+                content={`Revoke ${row.key_id}. Requests using this key will be rejected immediately after revoke.`}
                 onConfirm={() => handleRevokeById(row.key_id)}
                 disabled={revoking}
               >
@@ -270,7 +286,7 @@ export default function ApiKeysPage() {
                       style={{ marginBottom: 12 }}
                       message="선택하지 않으면 selected Service 안에서 intent/route 제한 목록을 만들지 않습니다."
                     />
-                    <Space wrap align="start" size={12}>
+                    <div className="api-key-scope-fields">
                       <Form.Item
                         name="allowed_intents"
                         label={helpLabel('Allowed intents', apiKeyHelp.allowedIntents)}
@@ -291,39 +307,50 @@ export default function ApiKeysPage() {
                           placeholder="허용할 route key 선택"
                         />
                       </Form.Item>
-                    </Space>
+                    </div>
                     <Button type="primary" htmlType="submit" loading={creating}>
                       API key 생성
                     </Button>
                   </Form>
                 </Card>
-                {createdKey ? (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    message="새 API key secret"
-                    description={
-                      <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                        <Typography.Text>
-                          이 secret은 현재 화면에만 표시되며 새로고침 또는 이동 후 다시 볼 수 없습니다.
+                <Modal
+                  open={Boolean(createdKey)}
+                  title="새 API key secret"
+                  onCancel={clearCreatedKey}
+                  footer={[
+                    <Button key="close" type="primary" onClick={clearCreatedKey}>
+                      복사 완료
+                    </Button>,
+                  ]}
+                  destroyOnHidden
+                  centered
+                  width={640}
+                  style={{ maxWidth: 'calc(100vw - 32px)' }}
+                  styles={{
+                    body: { maxHeight: 'calc(100vh - 220px)', overflow: 'auto' },
+                  }}
+                >
+                  {createdKey ? (
+                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message="이 secret은 이 모달을 닫으면 다시 볼 수 없습니다."
+                        description="폐기는 secret 값이 아니라 key_id로 수행합니다. 페이지 이동, 새로고침, 모달 닫기 후에는 raw secret을 다시 표시하지 않습니다."
+                      />
+                      <Typography.Paragraph copyable code style={{ marginBottom: 0 }}>
+                        {createdKey.api_key}
+                      </Typography.Paragraph>
+                      <Space wrap>
+                        <Typography.Text copyable code>
+                          key_id {createdKey.key_id}
                         </Typography.Text>
-                        <Typography.Text>
-                          폐기는 secret 값이 아니라 아래 key_id로 수행합니다.
-                        </Typography.Text>
-                        <Typography.Paragraph copyable code style={{ marginBottom: 0 }}>
-                          {createdKey.api_key}
-                        </Typography.Paragraph>
-                        <Space wrap>
-                          <Typography.Text copyable code>
-                            key_id {createdKey.key_id}
-                          </Typography.Text>
-                          <Tag>fingerprint {createdKey.key_fingerprint}</Tag>
-                          <Tag>{createdKey.status}</Tag>
-                        </Space>
+                        <Tag>fingerprint {createdKey.key_fingerprint}</Tag>
+                        <Tag>{createdKey.status}</Tag>
                       </Space>
-                    }
-                  />
-                ) : null}
+                    </Space>
+                  ) : null}
+                </Modal>
                 <Card title="Runtime setup guidance">
                   {runtimeSetup ? (
                     <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -334,7 +361,7 @@ export default function ApiKeysPage() {
                           message={runtimeSetup.warnings.join(' ')}
                         />
                       ) : null}
-                      <Descriptions size="small" column={2}>
+                      <Descriptions size="small" column={{ xs: 1, md: 2 }}>
                         <Descriptions.Item label="Runtime endpoint">
                           <Typography.Text copyable code>
                             {runtimeSetup.runtime_endpoint}
@@ -406,11 +433,13 @@ export default function ApiKeysPage() {
                   )}
                 </Card>
                 <ProTable<API.ApiKey>
+                  className="admin-scroll-table"
                   rowKey="key_id"
                   loading={loadingKeys}
                   dataSource={keys}
                   search={false}
                   pagination={false}
+                  scroll={{ x: 960 }}
                   columns={columns}
                   toolbar={{
                     title: 'API key inventory',
@@ -427,16 +456,19 @@ export default function ApiKeysPage() {
                   options={{ density: true, fullScreen: false, reload: false, setting: true }}
                 />
                 <Card title="Manual revoke">
-                  <Form form={revokeForm} layout="inline">
+                  <Form form={revokeForm} layout="vertical">
                     <Form.Item
                       name="key_id"
                       label={helpLabel('Key ID', apiKeyHelp.revokeKeyId)}
                       rules={[{ required: true, whitespace: true, message: 'Key id is required.' }]}
                     >
-                      <Input placeholder="key_id" style={{ width: 320 }} />
+                      <Input placeholder="key_id" style={{ width: '100%', maxWidth: 320 }} />
                     </Form.Item>
                     <ConfirmActionButton
                       danger
+                      riskLevel="high"
+                      requireTypedConfirmation={Boolean(manualRevokeKeyId)}
+                      confirmText={manualRevokeKeyId}
                       title="Revoke API key?"
                       okText="Revoke"
                       content="This immediately revokes the key id you entered."

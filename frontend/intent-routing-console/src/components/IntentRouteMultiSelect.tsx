@@ -24,7 +24,7 @@ export function IntentRouteMultiSelect({
       onChange={onChange}
       placeholder={placeholder}
       optionFilterProp="label"
-      style={{ minWidth: 360, width: '100%' }}
+      style={{ width: '100%', maxWidth: '100%' }}
       options={candidates.map((candidate) => ({
         value: mode === 'intent' ? candidate.intent_id : candidate.route_key,
         label: mode === 'intent' ? candidate.intent_id : candidate.route_key,
