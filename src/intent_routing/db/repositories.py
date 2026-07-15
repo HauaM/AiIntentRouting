@@ -505,15 +505,21 @@ class IntentRoutingRepository:
         email_normalized = normalize_admin_email(email)
         return self.session.scalar(
             select(models.AdminUser)
+            .join(
+                models.AdminUserRole,
+                models.AdminUserRole.user_id == models.AdminUser.user_id,
+            )
             .outerjoin(models.OrganizationUser)
             .where(models.AdminUser.email_normalized == email_normalized)
             .where(models.AdminUser.status == "active")
+            .where(models.AdminUserRole.role.in_(ADMIN_LOGIN_ROLES))
             .where(
                 or_(
                     models.AdminUser.organization_user_id.is_(None),
                     models.OrganizationUser.use_yn == "Y",
                 )
             )
+            .distinct()
         )
 
     def list_admin_users(

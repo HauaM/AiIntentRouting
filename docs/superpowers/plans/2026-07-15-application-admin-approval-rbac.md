@@ -855,7 +855,7 @@ Expected: PASS.
 - Consumes: `ADMIN_LOGIN_ROLES`.
 - Produces: login/session eligibility that requires active Admin account plus `system_admin` or `application_admin`.
 
-- [ ] **Step 1: Write failing auth tests**
+- [x] **Step 1: Write failing auth tests**
 
 Add tests:
 
@@ -921,7 +921,7 @@ def test_admin_user_without_access_role_cannot_login(db_session: Session) -> Non
     assert response.status_code == 401
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -931,7 +931,7 @@ uv run pytest tests/integration/test_admin_account_auth_api.py::test_application
 
 Expected: FAIL because login does not require or return `application_admin` yet.
 
-- [ ] **Step 3: Update login-eligible query**
+- [x] **Step 3: Update login-eligible query**
 
 In `get_login_eligible_admin_user_by_email`, join `AdminUserRole` and require one login role:
 
@@ -952,11 +952,11 @@ Keep existing checks:
 )
 ```
 
-- [ ] **Step 4: Ensure `/auth/me` returns `application_admin`**
+- [x] **Step 4: Ensure `/auth/me` returns `application_admin`**
 
 No special casing is needed if `list_admin_user_roles` returns both roles. Verify `_current_user_response` serializes sorted roles.
 
-- [ ] **Step 5: Run auth tests**
+- [x] **Step 5: Run auth tests**
 
 Run:
 

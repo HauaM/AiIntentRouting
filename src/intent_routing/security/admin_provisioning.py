@@ -73,6 +73,7 @@ def configure_startup_system_admin(
                 display_name=config.display_name,
                 password_hash=hash_admin_password(config.password),
                 status="active",
+                admin_access_reason="startup system admin provisioning",
                 created_at=now,
                 updated_at=now,
             )
