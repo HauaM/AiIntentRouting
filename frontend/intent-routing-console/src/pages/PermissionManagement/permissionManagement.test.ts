@@ -307,4 +307,20 @@ describe('Permission Management helpers', () => {
       '`Transfer system_admin ownership to ${row.user_id} from Permission Management.`',
     );
   });
+
+  it('keeps admin user row actions compact and moves overflow actions into a dropdown', () => {
+    const source = pageSource();
+
+    expect(source).toContain('Dropdown');
+    expect(source).toContain('MoreOutlined');
+    expect(source).toContain('adminUserMoreMenuItems');
+    expect(source).toContain('scroll={{');
+    expect(source).not.toContain('width: 240');
+  });
+
+  it('adds a scrollable tabs class for mobile Permission Management tabs', () => {
+    const source = pageSource();
+
+    expect(source).toContain('className="permission-management-tabs"');
+  });
 });

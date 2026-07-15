@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { MoreOutlined } from '@ant-design/icons';
 import { ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { history, useLocation, useModel } from '@umijs/max';
 import {
   Alert,
   Button,
   Card,
+  Dropdown,
   Form,
   Input,
   Modal,
@@ -12,11 +14,14 @@ import {
   Space,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   message,
+  type MenuProps,
 } from 'antd';
 import { AdminShell } from '@/components/AdminShell';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
+import { StatusTag } from '@/components/StatusTag';
 import {
   approveAdminAccessRequest,
   grantServiceRole,
@@ -93,7 +98,7 @@ const auditEventGroupValueEnum = {
 } as const;
 
 const statusTag = (status: API.ManagedAdminUserStatus | string) => (
-  <Tag color={status === 'active' ? 'green' : 'default'}>{status}</Tag>
+  <StatusTag status={status} />
 );
 
 const useYnTag = (value?: API.UseYn) =>
@@ -111,6 +116,32 @@ const roleTags = (roles: readonly string[]) =>
   ) : (
     <Typography.Text type="secondary">없음</Typography.Text>
   );
+
+const compactCodeText = (value?: string | null, maxWidth = 180) => (
+  <Tooltip title={value || '-'}>
+    <Typography.Text
+      code
+      copyable
+      ellipsis
+      className="admin-ellipsis-cell"
+      style={{ maxWidth }}
+    >
+      {value || '-'}
+    </Typography.Text>
+  </Tooltip>
+);
+
+const compactText = (value?: string | null, maxWidth = 180) => (
+  <Tooltip title={value || '-'}>
+    <Typography.Text
+      ellipsis
+      className="admin-ellipsis-cell"
+      style={{ maxWidth }}
+    >
+      {value || '-'}
+    </Typography.Text>
+  </Tooltip>
+);
 
 const toUserOption = (user: API.AdminUserLookup): UserSelectOption => ({
   label: `${user.email} / ${user.display_name} / ${user.status}`,
@@ -201,6 +232,22 @@ export default function PermissionManagementPage() {
     }
   };
 
+  const openApplicationAdminRoleConfirm = (
+    row: API.PermissionAdminUserSummary,
+    grant: boolean,
+  ) => {
+    Modal.confirm({
+      title: grant ? 'Grant application_admin?' : 'Revoke application_admin?',
+      content: grant
+        ? `${row.email} 계정에 application_admin 전역 권한을 부여합니다.`
+        : `${row.email} 계정의 application_admin 전역 권한을 해제합니다.`,
+      okText: grant ? 'application_admin 부여' : 'application_admin 해제',
+      cancelText: '취소',
+      okButtonProps: { danger: !grant },
+      onOk: () => handleApplicationAdminRoleChange(row, grant),
+    });
+  };
+
   const handleSystemAdminTransfer = async (
     row: API.PermissionAdminUserSummary,
     reason: string,
@@ -258,6 +305,43 @@ export default function PermissionManagementPage() {
         await handleSystemAdminTransfer(row, values.reason);
       },
     });
+  };
+
+  const adminUserMoreMenuItems = (
+    row: API.PermissionAdminUserSummary,
+  ): MenuProps['items'] => {
+    const hasSystemAdmin = row.global_roles.includes('system_admin');
+    const hasApplicationAdmin = row.global_roles.includes('application_admin');
+    const inactiveOrgUser = row.organization_user?.use_yn === 'N';
+    const mutating = mutatingAdminUserId === row.user_id;
+
+    return [
+      {
+        key: 'grant-application-admin',
+        label: 'application_admin 부여',
+        disabled: mutating || hasApplicationAdmin,
+        onClick: () => openApplicationAdminRoleConfirm(row, true),
+      },
+      {
+        key: 'revoke-application-admin',
+        label: 'application_admin 해제',
+        disabled: mutating || !hasApplicationAdmin || hasSystemAdmin,
+        onClick: () => openApplicationAdminRoleConfirm(row, false),
+      },
+      {
+        key: 'transfer-system-admin',
+        label: 'system_admin 이관',
+        disabled:
+          mutating ||
+          !session.user ||
+          row.user_id === session.user.user_id ||
+          hasSystemAdmin ||
+          !hasApplicationAdmin ||
+          row.status !== 'active' ||
+          inactiveOrgUser,
+        onClick: () => openSystemAdminTransferModal(row),
+      },
+    ];
   };
 
   const handleApproveAccessRequest = async (applicant: API.AdminAccessRequest) => {
@@ -392,24 +476,24 @@ export default function PermissionManagementPage() {
       title: 'Admin user',
       dataIndex: 'user_id',
       search: false,
+      width: 360,
       render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text code copyable>
-            {row.user_id}
-          </Typography.Text>
-          <Typography.Text type="secondary">{row.email}</Typography.Text>
-          <Typography.Text>{row.display_name}</Typography.Text>
+        <Space size={8} align="center" className="admin-nowrap-cell">
+          {compactCodeText(row.user_id, 120)}
+          {compactText(row.email, 160)}
+          {compactText(row.display_name, 64)}
         </Space>
       ),
     },
     {
       title: 'Organization user',
       search: false,
+      width: 220,
       render: (_, row) =>
         row.organization_user ? (
-          <Space direction="vertical" size={0}>
-            <Typography.Text code>{row.organization_user.user_number}</Typography.Text>
-            <Typography.Text>{row.organization_user.name}</Typography.Text>
+          <Space size={8} align="center" className="admin-nowrap-cell">
+            {compactCodeText(row.organization_user.user_number, 108)}
+            {compactText(row.organization_user.name, 88)}
           </Space>
         ) : (
           <Typography.Text type="secondary">unlinked</Typography.Text>
@@ -418,7 +502,8 @@ export default function PermissionManagementPage() {
     {
       title: 'Department',
       search: false,
-      render: (_, row) => row.organization_user?.department?.name ?? '-',
+      width: 160,
+      render: (_, row) => compactText(row.organization_user?.department?.name, 144),
     },
     {
       title: 'Org use',
@@ -448,84 +533,46 @@ export default function PermissionManagementPage() {
     {
       title: '',
       valueType: 'option',
-      width: 240,
+      width: 180,
       render: (_, row) => {
         const protectedLastAdmin = isLastActiveSystemAdminProtected(row);
         const inactiveOrgUser = row.organization_user?.use_yn === 'N';
-        const hasSystemAdmin = row.global_roles.includes('system_admin');
-        const hasApplicationAdmin = row.global_roles.includes('application_admin');
         const mutating = mutatingAdminUserId === row.user_id;
 
-        return [
-          <ConfirmActionButton
-            key="activate"
-            type="link"
-            size="small"
-            title="Activate Admin account?"
-            okText="활성화"
-            content={`${row.email} Admin 계정을 활성화합니다.`}
-            disabled={mutating || inactiveOrgUser || row.status === 'active'}
-            onConfirm={() => handleAdminStatusChange(row, 'active')}
-          >
-            활성화
-          </ConfirmActionButton>,
-          <ConfirmActionButton
-            key="disable"
-            danger
-            type="link"
-            size="small"
-            title="Disable Admin account?"
-            okText="비활성화"
-            content={`${row.email} Admin 계정을 비활성화합니다.`}
-            disabled={mutating || row.status === 'disabled' || protectedLastAdmin}
-            onConfirm={() => handleAdminStatusChange(row, 'disabled')}
-          >
-            비활성화
-          </ConfirmActionButton>,
-          <ConfirmActionButton
-            key="grant-application-admin"
-            type="link"
-            size="small"
-            title="Grant application_admin?"
-            okText="application_admin 부여"
-            content={`${row.email} 계정에 application_admin 전역 권한을 부여합니다.`}
-            disabled={mutating || hasApplicationAdmin}
-            onConfirm={() => handleApplicationAdminRoleChange(row, true)}
-          >
-            application_admin 부여
-          </ConfirmActionButton>,
-          <ConfirmActionButton
-            key="revoke-application-admin"
-            danger
-            type="link"
-            size="small"
-            title="Revoke application_admin?"
-            okText="application_admin 해제"
-            content={`${row.email} 계정의 application_admin 전역 권한을 해제합니다.`}
-            disabled={mutating || !hasApplicationAdmin || hasSystemAdmin}
-            onConfirm={() => handleApplicationAdminRoleChange(row, false)}
-          >
-            application_admin 해제
-          </ConfirmActionButton>,
-          <Button
-            key="transfer-system-admin"
-            danger
-            type="link"
-            size="small"
-            disabled={
-              mutating ||
-              !session.user ||
-              row.user_id === session.user.user_id ||
-              hasSystemAdmin ||
-              !hasApplicationAdmin ||
-              row.status !== 'active' ||
-              inactiveOrgUser
-            }
-            onClick={() => openSystemAdminTransferModal(row)}
-          >
-            system_admin 이관
-          </Button>,
-        ];
+        return (
+          <Space size={8} align="center" className="admin-nowrap-cell">
+            <ConfirmActionButton
+              key="activate"
+              type="link"
+              size="small"
+              title="Activate Admin account?"
+              okText="활성화"
+              content={`${row.email} Admin 계정을 활성화합니다.`}
+              disabled={mutating || inactiveOrgUser || row.status === 'active'}
+              onConfirm={() => handleAdminStatusChange(row, 'active')}
+            >
+              활성화
+            </ConfirmActionButton>
+            <ConfirmActionButton
+              key="disable"
+              danger
+              type="link"
+              size="small"
+              title="Disable Admin account?"
+              okText="비활성화"
+              content={`${row.email} Admin 계정을 비활성화합니다.`}
+              disabled={mutating || row.status === 'disabled' || protectedLastAdmin}
+              onConfirm={() => handleAdminStatusChange(row, 'disabled')}
+            >
+              비활성화
+            </ConfirmActionButton>
+            <Dropdown menu={{ items: adminUserMoreMenuItems(row) }} trigger={['click']}>
+              <Button type="link" size="small" icon={<MoreOutlined />}>
+                더보기
+              </Button>
+            </Dropdown>
+          </Space>
+        );
       },
     },
   ];
@@ -877,6 +924,7 @@ export default function PermissionManagementPage() {
             />
           ) : null}
           <Tabs
+            className="permission-management-tabs"
             activeKey={activeTab}
             onChange={(key) => setActiveTab(key as PermissionManagementTabKey)}
             items={permissionTabs.map((tab) => {
@@ -886,6 +934,7 @@ export default function PermissionManagementPage() {
                   label: tab.label,
                   children: (
                     <ProTable<API.PermissionAdminUserSummary>
+                      className="admin-scroll-table"
                       rowKey={permissionAdminUserRowKey}
                       actionRef={adminActionRef}
                       columns={adminUserColumns}
@@ -896,6 +945,7 @@ export default function PermissionManagementPage() {
                         return { data: rows, total: rows.length, success: true };
                       }}
                       pagination={false}
+                      scroll={{ x: 1120 }}
                       search={{ labelWidth: 104 }}
                       options={{ density: true, fullScreen: false, reload: true, setting: true }}
                     />
@@ -967,7 +1017,7 @@ export default function PermissionManagementPage() {
                               placeholder="service-id"
                               value={grantServiceId}
                               onChange={(event) => setGrantServiceId(event.target.value)}
-                              style={{ width: 240 }}
+                              style={{ width: '240px' }}
                             />
                           </Space>
                           <Space direction="vertical" size={4}>
