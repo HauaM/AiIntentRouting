@@ -77,12 +77,13 @@ describe('auth service cookie session requests', () => {
     expect(requestMock).toHaveBeenCalledWith('/admin-access-requests', {
       method: 'POST',
       data: payload,
+      withCredentials: false,
     });
     const [, options] = requestMock.mock.calls[0] as unknown as [
       string,
       Record<string, unknown>,
     ];
     expect(options).not.toHaveProperty('headers');
-    expect(options).not.toHaveProperty('withCredentials');
+    expect(options).toHaveProperty('withCredentials', false);
   });
 });

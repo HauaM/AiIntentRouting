@@ -42,3 +42,29 @@
 ## Remaining concerns
 
 - Public applicants must enter `department_id` manually because `GET /departments` is `system_admin`-only. This is an intentional Task 9b UX limitation and should be revisited once a safe public department lookup contract exists.
+
+## Task 9b review fix
+
+### Changed files
+
+- `frontend/intent-routing-console/src/services/authServices.ts`
+- `frontend/intent-routing-console/src/services/authServices.test.ts`
+- `frontend/intent-routing-console/src/pages/AdminAccessRequest/index.tsx`
+- `frontend/intent-routing-console/src/pages/AdminAccessRequest/requestForm.test.ts`
+
+### Tests and results
+
+1. `cd frontend/intent-routing-console && pnpm vitest run src/services/authServices.test.ts src/pages/AdminAccessRequest/requestForm.test.ts`
+   - PASS (`2` files, `8` tests)
+2. `cd frontend/intent-routing-console && pnpm run typecheck`
+   - PASS
+3. `git diff --check`
+   - PASS
+4. `rg -n "React Query|@tanstack|useQuery|useMutation|queryClient|invalidateQueries|axios|Authorization: Bearer|X-Admin-Token|X-Actor-Id|X-Actor-Roles|X-Service-Scope|server pagination|live polling" <changed-files>`
+   - PASS
+
+### Self-review
+
+- Confirmed `submitAdminAccessRequest()` now explicitly sets `withCredentials: false`, overriding the app-level request default so public applicant requests do not carry `irt_admin_session`.
+- Confirmed the auth service test now asserts `withCredentials: false` directly.
+- Confirmed backend submission failures render through a form-level `Alert` instead of field-level validation chrome on `access_reason`.

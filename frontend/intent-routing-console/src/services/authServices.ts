@@ -14,6 +14,7 @@ export async function submitAdminAccessRequest(
   return request<API.AdminAccessRequest>('/admin-access-requests', {
     method: 'POST',
     data: payload,
+    withCredentials: false,
   });
 }
 

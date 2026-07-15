@@ -1,6 +1,17 @@
 import { useState } from 'react';
 import { history } from '@umijs/max';
-import { Button, Card, ConfigProvider, Form, Input, Space, Tag, Typography, theme as antdTheme } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  ConfigProvider,
+  Form,
+  Input,
+  Space,
+  Tag,
+  Typography,
+  theme as antdTheme,
+} from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import { submitAdminAccessRequest } from '@/services/authServices';
 import {
@@ -91,6 +102,14 @@ export default function AdminAccessRequestPage() {
                 validateTrigger="onBlur"
                 disabled={loading}
               >
+                {error ? (
+                  <Alert
+                    type="error"
+                    showIcon
+                    message={error}
+                    style={{ marginBottom: 16 }}
+                  />
+                ) : null}
                 <Form.Item
                   label="User number"
                   name="user_number"
@@ -136,8 +155,6 @@ export default function AdminAccessRequestPage() {
                 <Form.Item
                   label="Access reason"
                   name="access_reason"
-                  validateStatus={error ? 'error' : undefined}
-                  help={error}
                   rules={[{ required: true, message: 'Access reason is required.' }]}
                 >
                   <Input.TextArea rows={4} showCount maxLength={500} />

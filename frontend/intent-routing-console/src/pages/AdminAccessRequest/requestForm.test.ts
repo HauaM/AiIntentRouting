@@ -48,4 +48,12 @@ describe('admin access request form helpers', () => {
     expect(loginPageSource()).toContain('/admin-access-request');
     expect(requestPageSource()).toContain('Back to sign in');
   });
+
+  it('renders backend submission errors as a form-level alert', () => {
+    const source = requestPageSource();
+
+    expect(source).toContain('Alert');
+    expect(source).not.toContain("validateStatus={error ? 'error' : undefined}");
+    expect(source).not.toContain('help={error}');
+  });
 });
