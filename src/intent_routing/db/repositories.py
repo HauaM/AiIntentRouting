@@ -368,6 +368,13 @@ class IntentRoutingRepository:
             raise ValueError("admin user email must be provided")
         values["email"] = email.strip()
         values["email_normalized"] = normalize_admin_email(email)
+        values["admin_access_reason"] = _require_nonblank_string(
+            values.get(
+                "admin_access_reason",
+                "Created outside the admin access request workflow.",
+            ),
+            field_name="admin_access_reason",
+        ).strip()
         values["status"] = _require_allowed_value(
             values.get("status", "active"),
             field_name="admin user status",
@@ -421,7 +428,7 @@ class IntentRoutingRepository:
     ) -> models.AdminAccessRequest | None:
         return self.session.get(models.AdminAccessRequest, request_id)
 
-    def _get_admin_access_request_for_update(
+    def get_admin_access_request_for_update(
         self,
         request_id: UUID,
     ) -> models.AdminAccessRequest | None:
@@ -440,15 +447,14 @@ class IntentRoutingRepository:
 
     def approve_admin_access_request(
         self,
-        request_id: UUID,
+        request: models.AdminAccessRequest,
         *,
         decided_by: str,
         decided_at: datetime,
         decision_reason: str | None = None,
-    ) -> models.AdminAccessRequest | None:
-        request = self._get_admin_access_request_for_update(request_id)
-        if request is None:
-            return None
+        created_user_id: UUID,
+        created_admin_user_id: str,
+    ) -> models.AdminAccessRequest:
         self._require_pending_admin_access_request(request)
         request.status = "approved"
         request.decided_by = _require_nonblank_string(
@@ -457,21 +463,20 @@ class IntentRoutingRepository:
         )
         request.decided_at = decided_at
         request.decision_reason = decision_reason
+        request.created_user_id = created_user_id
+        request.created_admin_user_id = created_admin_user_id
         request.password_hash = None
         self.session.flush()
         return request
 
     def reject_admin_access_request(
         self,
-        request_id: UUID,
+        request: models.AdminAccessRequest,
         *,
         decided_by: str,
         decided_at: datetime,
         decision_reason: str,
-    ) -> models.AdminAccessRequest | None:
-        request = self._get_admin_access_request_for_update(request_id)
-        if request is None:
-            return None
+    ) -> models.AdminAccessRequest:
         self._require_pending_admin_access_request(request)
         request.status = "rejected"
         request.decided_by = _require_nonblank_string(
@@ -495,6 +500,20 @@ class IntentRoutingRepository:
         return self.session.scalar(
             select(models.AdminUser).where(
                 models.AdminUser.email_normalized == email_normalized
+            )
+        )
+
+    def get_organization_user_by_user_number(
+        self,
+        user_number: str,
+    ) -> models.OrganizationUser | None:
+        return self.session.scalar(
+            select(models.OrganizationUser).where(
+                models.OrganizationUser.user_number
+                == _require_nonblank_string(
+                    user_number,
+                    field_name="organization user user_number",
+                ).strip()
             )
         )
 

@@ -93,10 +93,10 @@ def test_system_admin_manages_linked_admin_user_access(
 
         grant_response = client.patch(
             f"/admin/v1/admin-users/{admin_user_id}",
-            json={"global_roles": ["system_admin"]},
+            json={"global_roles": ["application_admin"]},
         )
         assert grant_response.status_code == 200
-        assert grant_response.json()["global_roles"] == ["system_admin"]
+        assert grant_response.json()["global_roles"] == ["application_admin"]
 
         activate_response = client.patch(
             f"/admin/v1/admin-users/{admin_user_id}",
@@ -293,29 +293,36 @@ def test_current_user_cannot_disable_or_revoke_own_last_system_admin(
     db_session: Session,
 ) -> None:
     suffix = uuid4().hex[:8]
-    actor_id = f"last-system-admin-{suffix}"
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(db_session)
+    existing_actor_id = db_session.scalar(
+        select(models.AdminUserRole.user_id).where(
+            models.AdminUserRole.role == "system_admin"
+        )
+    )
+    actor_id = existing_actor_id or f"last-system-admin-{suffix}"
     client = _client(db_session, actor_id=actor_id)
-
-    _purge_rows(db_session, admin_user_ids=[actor_id], emails=[f"{actor_id}@example.com"])
+    created_actor = existing_actor_id is None
+    if created_actor:
+        _purge_rows(db_session, admin_user_ids=[actor_id], emails=[f"{actor_id}@example.com"])
     try:
-        repository.create_admin_user(
-            user_id=actor_id,
-            email=f"{actor_id}@example.com",
-            display_name="Last System Admin",
-            password_hash="password-hash",
-            status="active",
-            created_at=now,
-            updated_at=now,
-        )
-        repository.assign_admin_user_role(
-            user_id=actor_id,
-            role="system_admin",
-            assigned_by="integration-test",
-            assigned_at=now,
-        )
-        db_session.commit()
+        if created_actor:
+            repository.create_admin_user(
+                user_id=actor_id,
+                email=f"{actor_id}@example.com",
+                display_name="Last System Admin",
+                password_hash="password-hash",
+                status="active",
+                created_at=now,
+                updated_at=now,
+            )
+            repository.assign_admin_user_role(
+                user_id=actor_id,
+                role="system_admin",
+                assigned_by="integration-test",
+                assigned_at=now,
+            )
+            db_session.commit()
 
         list_response = client.get("/admin/v1/admin-users", params={"query": actor_id})
         disable_response = client.patch(
@@ -338,7 +345,8 @@ def test_current_user_cannot_disable_or_revoke_own_last_system_admin(
             role.role for role in repository.list_admin_user_roles(actor_id)
         ] == ["system_admin"]
     finally:
-        _purge_rows(db_session, admin_user_ids=[actor_id], emails=[f"{actor_id}@example.com"])
+        if created_actor:
+            _purge_rows(db_session, admin_user_ids=[actor_id], emails=[f"{actor_id}@example.com"])
 
 
 def test_admin_user_management_routes_require_system_admin(
@@ -373,6 +381,185 @@ def test_admin_user_management_routes_require_system_admin(
             response = getattr(client, method)(path, json=payload)
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+
+
+def test_admin_access_request_approval_creates_user_admin_user_and_application_admin(
+    db_session: Session,
+) -> None:
+    client = _client(db_session)
+    suffix = uuid4().hex[:8]
+    user_number = f"req-user-{suffix}"
+    email = f"req-user-{suffix}@example.com"
+    password = "request-password"
+    department = _create_department(db_session, dept_number=f"req-dept-{suffix}")
+
+    _purge_rows(
+        db_session,
+        emails=[email],
+        user_numbers=[user_number],
+    )
+    try:
+        request_response = client.post(
+            "/admin/v1/admin-access-requests",
+            json={
+                "user_number": user_number,
+                "name": "Request User",
+                "department_id": str(department.id),
+                "email": email,
+                "password": password,
+                "access_reason": "Need to manage routing intents for service alpha.",
+            },
+        )
+        assert request_response.status_code == 201
+        request_id = request_response.json()["request_id"]
+
+        approve_response = client.post(
+            f"/admin/v1/admin-access-requests/{request_id}/approve",
+            json={"decision_reason": "Approved for service onboarding."},
+        )
+
+        assert approve_response.status_code == 200
+        body = approve_response.json()
+        assert body["status"] == "approved"
+        assert body["created_user_id"] is not None
+        assert body["created_admin_user_id"] is not None
+        assert body["department"]["id"] == str(department.id)
+        assert body["department"]["dept_number"] == department.dept_number
+
+        request_record = db_session.get(models.AdminAccessRequest, request_id)
+        assert request_record is not None
+        assert request_record.password_hash is None
+
+        organization_user = db_session.get(models.OrganizationUser, body["created_user_id"])
+        assert organization_user is not None
+        assert organization_user.user_number == user_number
+
+        admin_user = db_session.get(models.AdminUser, body["created_admin_user_id"])
+        assert admin_user is not None
+        assert admin_user.status == "active"
+        assert (
+            admin_user.admin_access_reason
+            == "Need to manage routing intents for service alpha."
+        )
+
+        roles = [
+            role.role
+            for role in IntentRoutingRepository(db_session).list_admin_user_roles(
+                admin_user.user_id
+            )
+        ]
+        assert roles == ["application_admin"]
+
+        audit_events = list(
+            db_session.scalars(
+                select(models.AuditLog.event_type)
+                .where(
+                    models.AuditLog.target_type.in_(
+                        ["admin_access_request", "admin_user"]
+                    )
+                )
+                .where(
+                    models.AuditLog.target_id.in_(
+                        [str(request_id), admin_user.user_id]
+                    )
+                )
+                .order_by(models.AuditLog.created_at, models.AuditLog.event_type)
+            )
+        )
+        assert "admin_access_request.created" in audit_events
+        assert "admin_access_request.approved" in audit_events
+        assert "admin_user.global_role_granted" in audit_events
+    finally:
+        _purge_rows(
+            db_session,
+            emails=[email],
+            user_numbers=[user_number],
+        )
+
+
+def test_non_system_admin_cannot_approve_admin_access_request(
+    db_session: Session,
+) -> None:
+    client = _client(db_session, global_roles=frozenset({"application_admin"}))
+    response = client.get("/admin/v1/admin-access-requests")
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+
+
+def test_admin_access_request_rejection_clears_pending_password_hash(
+    db_session: Session,
+) -> None:
+    client = _client(db_session)
+    suffix = uuid4().hex[:8]
+    user_number = f"reject-user-{suffix}"
+    email = f"reject-user-{suffix}@example.com"
+    department = _create_department(db_session, dept_number=f"reject-dept-{suffix}")
+
+    _purge_rows(
+        db_session,
+        emails=[email],
+        user_numbers=[user_number],
+    )
+    try:
+        create_response = client.post(
+            "/admin/v1/admin-access-requests",
+            json={
+                "user_number": user_number,
+                "name": "Reject User",
+                "department_id": str(department.id),
+                "email": email,
+                "password": "reject-password",
+                "access_reason": "Need temporary admin review capabilities.",
+            },
+        )
+        assert create_response.status_code == 201
+        request_id = create_response.json()["request_id"]
+
+        reject_response = client.post(
+            f"/admin/v1/admin-access-requests/{request_id}/reject",
+            json={"decision_reason": "Insufficient business justification."},
+        )
+
+        assert reject_response.status_code == 200
+        body = reject_response.json()
+        assert body["status"] == "rejected"
+        assert body["created_user_id"] is None
+        assert body["created_admin_user_id"] is None
+
+        request_record = db_session.get(models.AdminAccessRequest, request_id)
+        assert request_record is not None
+        assert request_record.password_hash is None
+        assert request_record.decision_reason == "Insufficient business justification."
+    finally:
+        _purge_rows(
+            db_session,
+            emails=[email],
+            user_numbers=[user_number],
+        )
+
+
+def _create_department(
+    db_session: Session,
+    *,
+    dept_number: str,
+) -> models.Department:
+    repository = IntentRoutingRepository(db_session)
+    now = datetime.now(UTC)
+    department = db_session.scalar(
+        select(models.Department).where(models.Department.dept_number == dept_number)
+    )
+    if department is None:
+        department = repository.create_department(
+            dept_number=dept_number,
+            name=f"Dept {dept_number}",
+            use_yn="Y",
+            created_by="integration-test",
+            updated_by="integration-test",
+            created_at=now,
+            updated_at=now,
+        )
+        db_session.commit()
+    return department
 
 
 def _create_organization_user(
@@ -415,11 +602,14 @@ def _purge_rows(
     db_session: Session,
     *,
     admin_user_ids: list[str] | None = None,
+    admin_access_request_ids: list[str] | None = None,
     emails: list[str] | None = None,
     dept_numbers: list[str] | None = None,
     user_numbers: list[str] | None = None,
 ) -> None:
+    db_session.rollback()
     admin_user_ids = admin_user_ids or []
+    admin_access_request_ids = admin_access_request_ids or []
     emails = emails or []
     dept_numbers = dept_numbers or []
     user_numbers = user_numbers or []
@@ -435,6 +625,43 @@ def _purge_rows(
             )
         )
         admin_user_ids = [*admin_user_ids, *existing_ids]
+        existing_request_ids = list(
+            db_session.scalars(
+                select(models.AdminAccessRequest.request_id).where(
+                    models.AdminAccessRequest.email_normalized.in_(
+                        [email.strip().lower() for email in emails]
+                    )
+                )
+            )
+        )
+        admin_access_request_ids = [
+            *admin_access_request_ids,
+            *[str(request_id) for request_id in existing_request_ids],
+        ]
+    if user_numbers:
+        existing_request_ids = list(
+            db_session.scalars(
+                select(models.AdminAccessRequest.request_id).where(
+                    models.AdminAccessRequest.user_number.in_(user_numbers)
+                )
+            )
+        )
+        admin_access_request_ids = [
+            *admin_access_request_ids,
+            *[str(request_id) for request_id in existing_request_ids],
+        ]
+    if admin_access_request_ids:
+        db_session.execute(
+            text(
+                "delete from audit_logs "
+                "where target_type = 'admin_access_request' and target_id = any(:request_ids)"
+            ),
+            {"request_ids": admin_access_request_ids},
+        )
+        db_session.execute(
+            text("delete from admin_access_requests where request_id::text = any(:request_ids)"),
+            {"request_ids": admin_access_request_ids},
+        )
     if admin_user_ids:
         db_session.execute(
             text("delete from admin_sessions where user_id = any(:user_ids)"),
