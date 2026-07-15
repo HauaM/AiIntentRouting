@@ -51,15 +51,17 @@ def test_repository_rejects_second_system_admin_role(db_session: Session) -> Non
     now = datetime.now(UTC)
     first_id = f"system-admin-a-{uuid4().hex}"
     second_id = f"system-admin-b-{uuid4().hex}"
+    system_admin_role_rows: list[dict[str, object]] = []
 
-    _purge_rows(
-        db_session,
-        admin_user_ids=[first_id, second_id],
-        service_ids=[],
-        dept_numbers=[],
-        user_numbers=[],
-    )
     try:
+        system_admin_role_rows = _backup_and_delete_system_admin_roles(db_session)
+        _purge_rows(
+            db_session,
+            admin_user_ids=[first_id, second_id],
+            service_ids=[],
+            dept_numbers=[],
+            user_numbers=[],
+        )
         for user_id in (first_id, second_id):
             repository.create_admin_user(
                 user_id=user_id,
@@ -87,13 +89,54 @@ def test_repository_rejects_second_system_admin_role(db_session: Session) -> Non
                 assigned_at=now,
             )
     finally:
-        _purge_rows(
-            db_session,
-            admin_user_ids=[first_id, second_id],
-            service_ids=[],
-            dept_numbers=[],
-            user_numbers=[],
+        try:
+            _purge_rows(
+                db_session,
+                admin_user_ids=[first_id, second_id],
+                service_ids=[],
+                dept_numbers=[],
+                user_numbers=[],
+            )
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)
+
+
+def _backup_and_delete_system_admin_roles(
+    db_session: Session,
+) -> list[dict[str, object]]:
+    rows = [
+        dict(row)
+        for row in db_session.execute(
+            text(
+                "select user_id, role, assigned_by, assigned_at "
+                "from admin_user_roles where role = 'system_admin'"
+            )
+        ).mappings()
+    ]
+    db_session.execute(text("delete from admin_user_roles where role = 'system_admin'"))
+    db_session.commit()
+    return rows
+
+
+def _restore_system_admin_roles(
+    db_session: Session,
+    rows: list[dict[str, object]],
+) -> None:
+    if rows:
+        db_session.execute(
+            text(
+                "insert into admin_user_roles (user_id, role, assigned_by, assigned_at) "
+                "values (:user_id, :role, :assigned_by, :assigned_at) "
+                "on conflict (user_id, role) do update set "
+                "assigned_by = excluded.assigned_by, "
+                "assigned_at = excluded.assigned_at"
+            ),
+            rows,
         )
+        db_session.commit()
+    else:
+        db_session.commit()
 
 
 def test_repository_creates_admin_access_request_with_normalized_email(
