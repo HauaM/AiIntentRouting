@@ -377,7 +377,12 @@ def test_application_admin_can_login_without_service_roles(db_session: Session) 
         )
 
         assert response.status_code == 200
-        assert response.json()["global_roles"] == ["application_admin"]
+        body = response.json()
+        assert body["global_roles"] == ["application_admin"]
+        assert body["service_roles"] == []
+        assert password not in str(body)
+        assert "password_hash" not in str(body)
+        assert "token_hash" not in str(body)
     finally:
         _purge_account_auth_rows(db_session, user_id=user_id, service_id=service_id)
 
