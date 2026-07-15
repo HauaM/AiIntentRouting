@@ -21,7 +21,7 @@ Add `application_admin` to `admin_user_roles.role`.
 
 Actual application work remains scoped through `user_service_roles`.
 
-Introduce `admin_access_requests` for self-service registration. A pending request contains the requested organization user data, login email, hashed password, and required access reason. Approval by `system_admin` creates the `users` row, the linked `admin_users` row, and the `application_admin` global role in one transaction. Batch imports continue to create only `users`.
+Introduce `admin_access_requests` for self-service registration. Only one pending request may exist per `email_normalized` and per `user_number`. A pending request contains the requested organization user data, login email, hashed password, and required access reason. Approved and rejected requests may retain historical rows with `password_hash = null`. Approval by `system_admin` creates the `users` row, the linked `admin_users` row, and the `application_admin` global role in one transaction. Batch imports continue to create only `users`.
 
 ## Consequences
 

@@ -4,7 +4,7 @@
 
 **Goal:** Add an approval-based Admin Console registration flow where `system_admin` is the single platform operator role, approved application developers receive `application_admin`, and actual service operations remain scoped through `user_service_roles`.
 
-**Architecture:** Keep `users` as the organization directory and keep Admin Console access derived from `admin_users`, `admin_user_roles`, and `user_service_roles`. Add `application_admin` as a global Admin Console access role, but do not let it grant service access by itself. Add an approval request table so self-service registration creates a pending request and `system_admin` approval creates the organization user, Admin account, and `application_admin` grant in one transaction.
+**Architecture:** Keep `users` as the organization directory and keep Admin Console access derived from `admin_users`, `admin_user_roles`, and `user_service_roles`. Add `application_admin` as a global Admin Console access role, but do not let it grant service access by itself. Add an approval request table so self-service registration creates a pending request and `system_admin` approval creates the organization user, Admin account, and `application_admin` grant in one transaction. Pending requests must be unique by `email_normalized` and `user_number`, while approved/rejected rows remain as history with nullable `password_hash`.
 
 **Tech Stack:** FastAPI, Pydantic v2, SQLAlchemy ORM, Alembic, PostgreSQL partial unique index, pytest, React 18, TypeScript, Umi Max 4, Ant Design 5, ProComponents, Vitest, Umi `request`.
 

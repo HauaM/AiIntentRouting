@@ -66,7 +66,7 @@ def upgrade() -> None:
         sa.Column("department_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("email", sa.Text(), nullable=False),
         sa.Column("email_normalized", sa.Text(), nullable=False),
-        sa.Column("password_hash", sa.Text(), nullable=False),
+        sa.Column("password_hash", sa.Text(), nullable=True),
         sa.Column("access_reason", sa.Text(), nullable=False),
         sa.Column(
             "status",
@@ -87,11 +87,25 @@ def upgrade() -> None:
             "status in ('pending', 'approved', 'rejected')",
             name="ck_admin_access_requests_status",
         ),
+        sa.CheckConstraint(
+            "(status = 'pending' and password_hash is not null) or "
+            "(status in ('approved', 'rejected') and password_hash is null)",
+            name="ck_admin_access_requests_password_hash_pending",
+        ),
     )
-    op.create_unique_constraint(
+    op.create_index(
         "uq_admin_access_requests_pending_email",
         "admin_access_requests",
-        ["email_normalized", "status"],
+        ["email_normalized"],
+        unique=True,
+        postgresql_where=sa.text("status = 'pending'"),
+    )
+    op.create_index(
+        "uq_admin_access_requests_pending_user_number",
+        "admin_access_requests",
+        ["user_number"],
+        unique=True,
+        postgresql_where=sa.text("status = 'pending'"),
     )
     op.create_index(
         "ix_admin_access_requests_status_requested_at",
@@ -106,10 +120,13 @@ def downgrade() -> None:
         "ix_admin_access_requests_status_requested_at",
         table_name="admin_access_requests",
     )
-    op.drop_constraint(
+    op.drop_index(
+        "uq_admin_access_requests_pending_user_number",
+        table_name="admin_access_requests",
+    )
+    op.drop_index(
         "uq_admin_access_requests_pending_email",
         "admin_access_requests",
-        type_="unique",
     )
     op.drop_table("admin_access_requests")
     op.drop_column("admin_users", "admin_access_reason")

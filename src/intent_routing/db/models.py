@@ -186,7 +186,7 @@ class AdminAccessRequest(Base):
     department_id: Mapped[UUID] = mapped_column(ForeignKey("departments.id"))
     email: Mapped[str] = mapped_column(Text)
     email_normalized: Mapped[str] = mapped_column(Text)
-    password_hash: Mapped[str] = mapped_column(Text)
+    password_hash: Mapped[str | None] = mapped_column(Text)
     access_reason: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -207,10 +207,22 @@ class AdminAccessRequest(Base):
             "status in ('pending', 'approved', 'rejected')",
             name="ck_admin_access_requests_status",
         ),
-        UniqueConstraint(
+        CheckConstraint(
+            "(status = 'pending' and password_hash is not null) or "
+            "(status in ('approved', 'rejected') and password_hash is null)",
+            name="ck_admin_access_requests_password_hash_pending",
+        ),
+        Index(
+            "uq_admin_access_requests_pending_email",
             "email_normalized",
-            "status",
-            name="uq_admin_access_requests_pending_email",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index(
+            "uq_admin_access_requests_pending_user_number",
+            "user_number",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
         ),
         Index("ix_admin_access_requests_status_requested_at", "status", "requested_at"),
     )

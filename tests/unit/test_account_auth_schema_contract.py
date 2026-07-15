@@ -2,6 +2,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, TypedDict, cast
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import (
@@ -576,6 +577,360 @@ def test_admin_access_requests_schema_exists(db_session: Session) -> None:
     assert "admin_access_reason" in admin_columns
 
 
+def test_admin_access_requests_allow_history_but_reject_duplicate_pending_email(
+    db_session: Session,
+) -> None:
+    department_id = _create_department(db_session, dept_number="TASK2-REQ-EMAIL")
+    email = "task2.pending.email@example.com"
+    normalized_email = "task2.pending.email@example.com"
+    inserted_request_ids: list[str] = []
+
+    try:
+        for status in ("approved", "rejected"):
+            request_id = str(uuid4())
+            inserted_request_ids.append(request_id)
+            db_session.execute(
+                text(
+                    """
+                    insert into admin_access_requests (
+                        request_id,
+                        user_number,
+                        name,
+                        department_id,
+                        email,
+                        email_normalized,
+                        password_hash,
+                        access_reason,
+                        status,
+                        requested_at
+                    ) values (
+                        :request_id,
+                        :user_number,
+                        :name,
+                        :department_id,
+                        :email,
+                        :email_normalized,
+                        :password_hash,
+                        :access_reason,
+                        :status,
+                        :requested_at
+                    )
+                    """
+                ),
+                {
+                    "request_id": request_id,
+                    "user_number": f"TASK2-HISTORY-{status.upper()}",
+                    "name": f"Task 2 History {status.title()}",
+                    "department_id": department_id,
+                    "email": email,
+                    "email_normalized": normalized_email,
+                    "password_hash": None,
+                    "access_reason": "Task 2 history coverage.",
+                    "status": status,
+                    "requested_at": datetime.now(UTC),
+                },
+            )
+
+        pending_request_id = str(uuid4())
+        inserted_request_ids.append(pending_request_id)
+        db_session.execute(
+            text(
+                """
+                insert into admin_access_requests (
+                    request_id,
+                    user_number,
+                    name,
+                    department_id,
+                    email,
+                    email_normalized,
+                    password_hash,
+                    access_reason,
+                    status,
+                    requested_at
+                ) values (
+                    :request_id,
+                    :user_number,
+                    :name,
+                    :department_id,
+                    :email,
+                    :email_normalized,
+                    :password_hash,
+                    :access_reason,
+                    :status,
+                    :requested_at
+                )
+                """
+            ),
+            {
+                "request_id": pending_request_id,
+                "user_number": "TASK2-PENDING-EMAIL-ONE",
+                "name": "Task 2 Pending Email One",
+                "department_id": department_id,
+                "email": email,
+                "email_normalized": normalized_email,
+                "password_hash": "pending-password-hash",
+                "access_reason": "Task 2 pending uniqueness coverage.",
+                "status": "pending",
+                "requested_at": datetime.now(UTC),
+            },
+        )
+        db_session.commit()
+
+        with pytest.raises(IntegrityError):
+            db_session.execute(
+                text(
+                    """
+                    insert into admin_access_requests (
+                        request_id,
+                        user_number,
+                        name,
+                        department_id,
+                        email,
+                        email_normalized,
+                        password_hash,
+                        access_reason,
+                        status,
+                        requested_at
+                    ) values (
+                        :request_id,
+                        :user_number,
+                        :name,
+                        :department_id,
+                        :email,
+                        :email_normalized,
+                        :password_hash,
+                        :access_reason,
+                        :status,
+                        :requested_at
+                    )
+                    """
+                ),
+                {
+                    "request_id": str(uuid4()),
+                    "user_number": "TASK2-PENDING-EMAIL-TWO",
+                    "name": "Task 2 Pending Email Two",
+                    "department_id": department_id,
+                    "email": email,
+                    "email_normalized": normalized_email,
+                    "password_hash": "pending-password-hash-2",
+                    "access_reason": "Task 2 pending uniqueness coverage.",
+                    "status": "pending",
+                    "requested_at": datetime.now(UTC),
+                },
+            )
+            db_session.commit()
+        db_session.rollback()
+    finally:
+        db_session.rollback()
+        _purge_admin_access_requests(db_session, request_ids=inserted_request_ids)
+        _purge_departments(db_session, department_ids=[department_id])
+
+
+def test_admin_access_requests_reject_duplicate_pending_user_number(
+    db_session: Session,
+) -> None:
+    department_id = _create_department(db_session, dept_number="TASK2-REQ-USER-NUM")
+    user_number = "TASK2-PENDING-USER-NUMBER"
+    inserted_request_ids: list[str] = []
+
+    try:
+        first_request_id = str(uuid4())
+        inserted_request_ids.append(first_request_id)
+        db_session.execute(
+            text(
+                """
+                insert into admin_access_requests (
+                    request_id,
+                    user_number,
+                    name,
+                    department_id,
+                    email,
+                    email_normalized,
+                    password_hash,
+                    access_reason,
+                    status,
+                    requested_at
+                ) values (
+                    :request_id,
+                    :user_number,
+                    :name,
+                    :department_id,
+                    :email,
+                    :email_normalized,
+                    :password_hash,
+                    :access_reason,
+                    :status,
+                    :requested_at
+                )
+                """
+            ),
+            {
+                "request_id": first_request_id,
+                "user_number": user_number,
+                "name": "Task 2 Pending User Number One",
+                "department_id": department_id,
+                "email": "task2.pending.user.number.one@example.com",
+                "email_normalized": "task2.pending.user.number.one@example.com",
+                "password_hash": "pending-user-number-hash-one",
+                "access_reason": "Task 2 pending user number coverage.",
+                "status": "pending",
+                "requested_at": datetime.now(UTC),
+            },
+        )
+        db_session.commit()
+
+        with pytest.raises(IntegrityError):
+            db_session.execute(
+                text(
+                    """
+                    insert into admin_access_requests (
+                        request_id,
+                        user_number,
+                        name,
+                        department_id,
+                        email,
+                        email_normalized,
+                        password_hash,
+                        access_reason,
+                        status,
+                        requested_at
+                    ) values (
+                        :request_id,
+                        :user_number,
+                        :name,
+                        :department_id,
+                        :email,
+                        :email_normalized,
+                        :password_hash,
+                        :access_reason,
+                        :status,
+                        :requested_at
+                    )
+                    """
+                ),
+                {
+                    "request_id": str(uuid4()),
+                    "user_number": user_number,
+                    "name": "Task 2 Pending User Number Two",
+                    "department_id": department_id,
+                    "email": "task2.pending.user.number.two@example.com",
+                    "email_normalized": "task2.pending.user.number.two@example.com",
+                    "password_hash": "pending-user-number-hash-two",
+                    "access_reason": "Task 2 pending user number coverage.",
+                    "status": "pending",
+                    "requested_at": datetime.now(UTC),
+                },
+            )
+            db_session.commit()
+        db_session.rollback()
+    finally:
+        db_session.rollback()
+        _purge_admin_access_requests(db_session, request_ids=inserted_request_ids)
+        _purge_departments(db_session, department_ids=[department_id])
+
+
+def test_admin_access_requests_require_password_hash_only_while_pending(
+    db_session: Session,
+) -> None:
+    department_id = _create_department(db_session, dept_number="TASK2-REQ-PASSWORD")
+    inserted_request_ids: list[str] = []
+
+    try:
+        decided_request_id = str(uuid4())
+        inserted_request_ids.append(decided_request_id)
+        db_session.execute(
+            text(
+                """
+                insert into admin_access_requests (
+                    request_id,
+                    user_number,
+                    name,
+                    department_id,
+                    email,
+                    email_normalized,
+                    password_hash,
+                    access_reason,
+                    status,
+                    requested_at
+                ) values (
+                    :request_id,
+                    :user_number,
+                    :name,
+                    :department_id,
+                    :email,
+                    :email_normalized,
+                    :password_hash,
+                    :access_reason,
+                    :status,
+                    :requested_at
+                )
+                """
+            ),
+            {
+                "request_id": decided_request_id,
+                "user_number": "TASK2-DECIDED-PASSWORD-NULL",
+                "name": "Task 2 Decided Password Null",
+                "department_id": department_id,
+                "email": "task2.decided.password.null@example.com",
+                "email_normalized": "task2.decided.password.null@example.com",
+                "password_hash": None,
+                "access_reason": "Task 2 decided password retention coverage.",
+                "status": "approved",
+                "requested_at": datetime.now(UTC),
+            },
+        )
+        db_session.commit()
+
+        with pytest.raises(IntegrityError):
+            db_session.execute(
+                text(
+                    """
+                    insert into admin_access_requests (
+                        request_id,
+                        user_number,
+                        name,
+                        department_id,
+                        email,
+                        email_normalized,
+                        password_hash,
+                        access_reason,
+                        status,
+                        requested_at
+                    ) values (
+                        :request_id,
+                        :user_number,
+                        :name,
+                        :department_id,
+                        :email,
+                        :email_normalized,
+                        :password_hash,
+                        :access_reason,
+                        :status,
+                        :requested_at
+                    )
+                    """
+                ),
+                {
+                    "request_id": str(uuid4()),
+                    "user_number": "TASK2-PENDING-PASSWORD-NULL",
+                    "name": "Task 2 Pending Password Null",
+                    "department_id": department_id,
+                    "email": "task2.pending.password.null@example.com",
+                    "email_normalized": "task2.pending.password.null@example.com",
+                    "password_hash": None,
+                    "access_reason": "Task 2 pending password retention coverage.",
+                    "status": "pending",
+                    "requested_at": datetime.now(UTC),
+                },
+            )
+            db_session.commit()
+        db_session.rollback()
+    finally:
+        db_session.rollback()
+        _purge_admin_access_requests(db_session, request_ids=inserted_request_ids)
+        _purge_departments(db_session, department_ids=[department_id])
+
+
 def _has_unique_constraint(table: Any, column_names: list[str]) -> bool:
     return any(
         isinstance(constraint, UniqueConstraint)
@@ -696,5 +1051,67 @@ def _purge_service_membership_rows(
     db_session.execute(
         text("delete from services where service_id = :service_id"),
         {"service_id": service_id},
+    )
+    db_session.commit()
+
+
+def _create_department(db_session: Session, *, dept_number: str) -> str:
+    department_id = str(uuid4())
+    unique_dept_number = f"{dept_number}-{uuid4()}"
+    now = datetime.now(UTC)
+    db_session.execute(
+        text(
+            """
+            insert into departments (
+                id,
+                dept_number,
+                name,
+                use_yn,
+                created_by,
+                updated_by,
+                created_at,
+                updated_at
+            ) values (
+                :id,
+                :dept_number,
+                :name,
+                'Y',
+                'test',
+                'test',
+                :created_at,
+                :updated_at
+            )
+            """
+        ),
+        {
+            "id": department_id,
+            "dept_number": unique_dept_number,
+            "name": f"{dept_number} Department",
+            "created_at": now,
+            "updated_at": now,
+        },
+    )
+    db_session.commit()
+    return department_id
+
+
+def _purge_admin_access_requests(db_session: Session, *, request_ids: list[str]) -> None:
+    if not request_ids:
+        return
+
+    db_session.execute(
+        text("delete from admin_access_requests where request_id = any(:request_ids)"),
+        {"request_ids": request_ids},
+    )
+    db_session.commit()
+
+
+def _purge_departments(db_session: Session, *, department_ids: list[str]) -> None:
+    if not department_ids:
+        return
+
+    db_session.execute(
+        text("delete from departments where id = any(:department_ids)"),
+        {"department_ids": department_ids},
     )
     db_session.commit()
