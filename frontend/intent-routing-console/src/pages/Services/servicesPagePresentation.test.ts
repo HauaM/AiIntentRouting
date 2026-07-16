@@ -70,4 +70,19 @@ describe('Services page presentation contract', () => {
     expect(source).not.toContain('message="Service 온보딩을 시작했습니다"');
     expect(source).not.toContain("message.success('Service가 등록되었습니다.')");
   });
+
+  it('opens the success notification from an effect after the holder remounts', () => {
+    const source = pageSource();
+    const notificationEffect = source.indexOf('notificationApi.success({');
+    const createHandler = source.indexOf('const handleCreate = async');
+    const createHandlerSource = source.slice(createHandler, source.indexOf('\n  return (', createHandler));
+
+    expect(source).toContain("import { useEffect, useMemo, useState } from 'react';");
+    expect(source).toContain('const [createdServiceNotification, setCreatedServiceNotification]');
+    expect(source).toContain('if (!createdServiceNotification) return;');
+    expect(notificationEffect).toBeGreaterThan(-1);
+    expect(notificationEffect).toBeLessThan(createHandler);
+    expect(createHandlerSource).toContain('setCreatedServiceNotification(created);');
+    expect(createHandlerSource).not.toContain('notificationApi.success({');
+  });
 });
