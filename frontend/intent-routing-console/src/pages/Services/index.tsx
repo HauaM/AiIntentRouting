@@ -17,6 +17,7 @@ import {
   Tooltip,
   Typography,
   message,
+  notification,
 } from 'antd';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
@@ -69,8 +70,8 @@ const presetOptions = [
 export default function ServicesPage() {
   const { session, restoreSession, setServiceId } = useModel('adminSession');
   const [form] = Form.useForm<ServiceFormValues>();
+  const [notificationApi, notificationContextHolder] = notification.useNotification();
   const [creating, setCreating] = useState(false);
-  const [createdService, setCreatedService] = useState<API.Service>();
   const ready = canUseServicesPage(session);
   const canCreate = canCreateServices(session);
   const canManageMembers = canManageServiceMembers(session);
@@ -147,15 +148,22 @@ export default function ServicesPage() {
       const created = await createService(toServiceCreateRequest(values));
       const restoredSession = await restoreSession();
       if (!canSelectServiceFromScope(restoredSession, created.service_id)) {
-        setCreatedService(undefined);
         message.warning(
           'Service는 등록되었지만 아직 접근 가능한 Service scope에 포함되지 않았습니다.',
         );
         return;
       }
       setServiceId(created.service_id);
-      setCreatedService(created);
-      message.success('Service가 등록되었습니다.');
+      notificationApi.success({
+        message: 'Service 등록 완료',
+        description: `${created.display_name} Service가 등록되고 현재 Service scope로 선택되었습니다.`,
+        duration: 6,
+        actions: (
+          <Button type="primary" size="small" onClick={() => history.push('/intents')}>
+            Intent Catalog로 이동
+          </Button>
+        ),
+      });
       form.resetFields();
       form.setFieldsValue(serviceFormInitialValues);
     } finally {
@@ -165,6 +173,7 @@ export default function ServicesPage() {
 
   return (
     <AdminShell title="Services">
+      {notificationContextHolder}
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
         {ready ? (
           <>
@@ -312,23 +321,6 @@ export default function ServicesPage() {
                 description="현재 계정은 접근 가능한 Service를 볼 수 있지만 신규 Service를 등록할 수 없습니다."
               />
             )}
-            {createdService ? (
-              <Alert
-                type="success"
-                showIcon
-                message="Service 온보딩을 시작했습니다"
-                description={
-                  <Space direction="vertical" size={8}>
-                    <Typography.Text>
-                      {createdService.display_name} Service가 등록되었고 현재 Service scope로 선택되었습니다.
-                    </Typography.Text>
-                    <Button type="primary" onClick={() => history.push('/intents')}>
-                      Intent Catalog로 이동
-                    </Button>
-                  </Space>
-                }
-              />
-            ) : null}
             <Card title="접근 가능한 Services">
               <Table<API.AccessibleService>
                 className="admin-scroll-table"

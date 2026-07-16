@@ -56,4 +56,18 @@ describe('Services page presentation contract', () => {
     expect(source).toContain('scroll={{ x: 760 }}');
     expect(source).not.toContain('scroll={{ x: 760, y: 420 }}');
   });
+
+  it('uses a non-blocking success notification with an Intent Catalog action', () => {
+    const source = pageSource();
+
+    expect(source).toContain('notification.useNotification()');
+    expect(source).toContain('notificationApi.success({');
+    expect(source).toContain("message: 'Service 등록 완료'");
+    expect(source).toContain('duration: 6');
+    expect(source).toContain("history.push('/intents')");
+    expect(source).toContain('Intent Catalog로 이동');
+    expect(source).not.toContain('type="success"');
+    expect(source).not.toContain('message="Service 온보딩을 시작했습니다"');
+    expect(source).not.toContain("message.success('Service가 등록되었습니다.')");
+  });
 });
