@@ -56,3 +56,25 @@ def test_macos_script_colors_service_logs_and_honors_no_color() -> None:
     assert 'prefix_logs frontend "${FRONTEND_COLOR}"' in text
     assert '>"${backend_log}" 2>&1 &' in text
     assert '>"${frontend_log}" 2>&1 &' in text
+
+
+def test_macos_script_is_documented_as_primary_workflow() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs/ops/macos-colima-docker-setup.md").read_text(
+        encoding="utf-8"
+    )
+    for text in (readme, runbook):
+        assert "./scripts/run_local_dev_stack_macos.sh" in text
+    assert "[backend]" in readme
+    assert "[frontend]" in readme
+    assert "NO_COLOR=1" in runbook
+
+
+def test_macos_script_avoids_zsh_host_and_json_expansion_traps() -> None:
+    text = script_text()
+    capture_block = text.split("for key in", 1)[1].split("; do", 1)[0]
+
+    assert " HOST " not in capture_block
+    assert 'export HOST="${LOCAL_DEV_HOST:-127.0.0.1}"' in text
+    assert 'RAW_TEXT_LEGACY_KEKS_JSON="{}"' in text
+    assert 'RAW_TEXT_LEGACY_KEKS_JSON:-{}' not in text
