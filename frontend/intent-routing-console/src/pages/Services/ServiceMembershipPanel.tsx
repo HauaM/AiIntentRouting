@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TableProps } from 'antd';
-import { Alert, Card, Select, Space, Table, Tag, Tooltip, Typography, message } from 'antd';
+import {
+  Alert,
+  Card,
+  Empty,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+} from 'antd';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import { StatusTag } from '@/components/StatusTag';
 import {
@@ -97,8 +108,8 @@ export function ServiceMembershipPanel({
       setMembers([]);
       setMembershipError(
         isForbidden(error)
-          ? 'Membership list access requires system_admin.'
-          : 'Failed to load service members.',
+          ? '멤버 목록을 보려면 system_admin 권한이 필요합니다.'
+          : 'Service 멤버 목록을 불러오지 못했습니다.',
       );
     } finally {
       if (isCurrentRequest()) setLoadingMembers(false);
@@ -148,8 +159,8 @@ export function ServiceMembershipPanel({
       setUserOptions([]);
       message.error(
         isForbidden(error)
-          ? 'User search requires system_admin.'
-          : 'Failed to search admin users.',
+          ? '관리자 계정 검색에는 system_admin 권한이 필요합니다.'
+          : '관리자 계정을 검색하지 못했습니다.',
       );
     } finally {
       if (isCurrentRequest()) setSearchingUsers(false);
@@ -173,7 +184,7 @@ export function ServiceMembershipPanel({
     try {
       await grantServiceRole(expectedServiceId, grantRequest.userId, grantRequest.payload);
       if (!isCurrentRequest()) return;
-      message.success('Service role granted.');
+      message.success('Service 역할을 부여했습니다.');
       setSelectedUserId(undefined);
       setSelectedRole(undefined);
       await loadMembers(expectedServiceId);
@@ -186,7 +197,7 @@ export function ServiceMembershipPanel({
   const handleRevoke = useCallback(
     async (row: ServiceMemberTableRow) => {
       if (!isCurrentServiceRow(row.service_id, serviceIdRef.current)) {
-        message.warning('Selected Service changed. Reopen revoke for the current Service.');
+        message.warning('선택한 Service가 변경되었습니다. 현재 Service에서 다시 회수하세요.');
         throw new Error('Selected Service changed before revoke.');
       }
 
@@ -206,7 +217,7 @@ export function ServiceMembershipPanel({
   const columns = useMemo<TableProps<ServiceMemberTableRow>['columns']>(
     () => [
       {
-        title: 'User',
+        title: '사용자',
         dataIndex: 'display_name',
         width: 180,
         className: 'admin-nowrap-cell',
@@ -230,7 +241,7 @@ export function ServiceMembershipPanel({
         ),
       },
       {
-        title: 'Email',
+        title: '이메일',
         dataIndex: 'email',
         width: 220,
         className: 'admin-nowrap-cell',
@@ -243,21 +254,21 @@ export function ServiceMembershipPanel({
         ),
       },
       {
-        title: 'Status',
+        title: '상태',
         dataIndex: 'status',
         width: 112,
         className: 'admin-nowrap-cell',
         render: (_, row) => <StatusTag status={row.status} />,
       },
       {
-        title: 'Role',
+        title: '역할',
         dataIndex: 'role',
         width: 160,
         className: 'admin-nowrap-cell',
         render: (_, row) => <Tag>{row.role}</Tag>,
       },
       {
-        title: 'Assigned by',
+        title: '부여자',
         dataIndex: 'assigned_by',
         width: 180,
         className: 'admin-nowrap-cell',
@@ -270,7 +281,7 @@ export function ServiceMembershipPanel({
         ),
       },
       {
-        title: 'Assigned at',
+        title: '부여 시각',
         dataIndex: 'assigned_at',
         width: 180,
         className: 'admin-nowrap-cell',
@@ -281,7 +292,7 @@ export function ServiceMembershipPanel({
         ),
       },
       {
-        title: 'Action',
+        title: '작업',
         width: 112,
         className: 'admin-nowrap-cell',
         render: (_, row) => (
@@ -289,13 +300,13 @@ export function ServiceMembershipPanel({
             danger
             type="link"
             size="small"
-            title="Revoke service role?"
-            okText="Revoke"
-            content={`Revoke ${row.role} from ${row.email}.`}
+            title="Service 역할을 회수할까요?"
+            okText="회수"
+            content={`${row.email}에서 ${row.role} 역할을 회수합니다.`}
             disabled={!canManage}
             onConfirm={() => handleRevoke(row)}
           >
-            Revoke
+            회수
           </ConfirmActionButton>
         ),
       },
@@ -304,27 +315,27 @@ export function ServiceMembershipPanel({
   );
 
   return (
-    <Card title="Service membership">
+    <Card title="Service 멤버십">
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
         {!canManage ? (
           <Alert
             type="info"
             showIcon
-            message="Membership management requires system_admin"
-            description="You can inspect the selected Service membership when the API allows it, but grant and revoke controls are disabled."
+            message="멤버십 관리는 system_admin 권한이 필요합니다"
+            description="선택한 Service의 멤버십을 조회할 수 있지만 역할 부여와 회수는 사용할 수 없습니다."
           />
         ) : null}
         {membershipError ? <Alert type="warning" showIcon message={membershipError} /> : null}
         <Space wrap align="end" size={12}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <Typography.Text>User</Typography.Text>
+            <Typography.Text>사용자</Typography.Text>
             <Select<string, UserSelectOption>
               showSearch
               allowClear
               disabled={!canManage}
               loading={searchingUsers}
               filterOption={false}
-              placeholder="Search admin users"
+              placeholder="관리자 계정 검색"
               value={selectedUserId}
               options={userOptions}
               style={{ width: 320 }}
@@ -341,11 +352,11 @@ export function ServiceMembershipPanel({
             />
           </div>
           <div style={{ display: 'grid', gap: 4 }}>
-            <Typography.Text>Role</Typography.Text>
+            <Typography.Text>역할</Typography.Text>
             <Select
               allowClear
               disabled={!canManage}
-              placeholder="Select role"
+              placeholder="역할 선택"
               value={selectedRole}
               options={serviceRoleOptions}
               style={{ width: 220 }}
@@ -354,8 +365,8 @@ export function ServiceMembershipPanel({
           </div>
           <ConfirmActionButton
             type="primary"
-            title="Grant service role?"
-            okText="Grant role"
+            title="Service 역할을 부여할까요?"
+            okText="역할 부여"
             disabled={!canManage || !selectedUserId || !selectedRole || granting}
             onConfirm={handleGrant}
             content={
@@ -369,7 +380,7 @@ export function ServiceMembershipPanel({
               </Space>
             }
           >
-            Grant role
+            역할 부여
           </ConfirmActionButton>
         </Space>
         <Table<ServiceMemberTableRow>
@@ -380,8 +391,16 @@ export function ServiceMembershipPanel({
           pagination={false}
           columns={columns}
           dataSource={members}
-          scroll={{ x: 760, y: 320 }}
+          scroll={{ x: 760 }}
           tableLayout="fixed"
+          locale={{
+            emptyText: (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="멤버가 없습니다."
+              />
+            ),
+          }}
         />
       </Space>
     </Card>
