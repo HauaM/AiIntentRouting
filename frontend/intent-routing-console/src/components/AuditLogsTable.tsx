@@ -1,5 +1,7 @@
-import { ProTable, type ProColumns } from '@ant-design/pro-components';
+import { useRef } from 'react';
+import { ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Alert, Empty, Tag, Typography } from 'antd';
+import { AdminTableActions } from '@/components/AdminTableActions';
 import { listAuditLogs } from '@/services/adminServices';
 
 type AuditLogsTableProps = {
@@ -7,6 +9,7 @@ type AuditLogsTableProps = {
 };
 
 export function AuditLogsTable({ serviceId }: AuditLogsTableProps) {
+  const actionRef = useRef<ActionType>();
   const columns: ProColumns<API.AuditLog>[] = [
     {
       title: 'Time',
@@ -55,15 +58,18 @@ export function AuditLogsTable({ serviceId }: AuditLogsTableProps) {
       />
       <ProTable<API.AuditLog>
         rowKey="audit_id"
+        actionRef={actionRef}
         columns={columns}
         request={(params) => listAuditLogs(serviceId, params)}
-        toolBarRender={() => []}
+        toolBarRender={() => [
+          <AdminTableActions key="table-actions" onReload={() => actionRef.current?.reload()} />,
+        ]}
         pagination={false}
         locale={{
           emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No audit logs" />,
         }}
         search={{ labelWidth: 96 }}
-        options={{ density: true, fullScreen: false, reload: true, setting: true }}
+        options={false}
       />
     </>
   );

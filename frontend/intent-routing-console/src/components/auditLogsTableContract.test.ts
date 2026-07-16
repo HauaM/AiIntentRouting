@@ -4,20 +4,20 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const source = () =>
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'RuntimeLogsTable.tsx'), 'utf8');
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'AuditLogsTable.tsx'), 'utf8');
 
-describe('RuntimeLogsTable contract', () => {
-  it('renders masked query only and does not use business row backgrounds', () => {
+describe('AuditLogsTable contract', () => {
+  it('keeps audit logs read-only while using explicit warning-free table actions', () => {
     const text = source();
 
-    expect(text).toContain("dataIndex: 'query_masked'");
-    expect(text).toContain('Masked query');
+    expect(text).toContain('Audit logs are append-only');
     expect(text).toContain("import { AdminTableActions } from '@/components/AdminTableActions'");
     expect(text).toContain('options={false}');
     expect(text).toContain('actionRef.current?.reload()');
     expect(text).not.toContain('options={{ density: true');
-    expect(text).not.toContain('rowClassName');
-    expect(text).not.toContain('row-risk');
-    expect(text).not.toContain('query_raw');
+    expect(text).not.toContain('ExportOutlined');
+    expect(text).not.toContain('DeleteOutlined');
+    expect(text).not.toContain('내보내기');
+    expect(text).not.toContain('삭제');
   });
 });

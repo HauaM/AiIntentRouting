@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
+import { AdminTableActions } from '@/components/AdminTableActions';
 import { FieldHelpLabel } from '@/components/FieldHelpLabel';
 import { FutureFeatureNotice } from '@/components/FutureFeatureNotice';
 import { WorkflowNextActionBar } from '@/components/WorkflowNextActionBar';
@@ -357,7 +358,18 @@ export default function TestRunsPage() {
               dataSource={results}
               search={false}
               pagination={false}
-              options={{ density: true, fullScreen: false, reload: false, setting: true }}
+              options={false}
+              toolBarRender={() =>
+                summary
+                  ? [
+                      <AdminTableActions
+                        key="table-actions"
+                        onReload={() => loadRun(summary.test_run_id, session.serviceId)}
+                        reloadDisabled={loading}
+                      />,
+                    ]
+                  : []
+              }
               locale={{
                 emptyText: (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No test run results loaded" />

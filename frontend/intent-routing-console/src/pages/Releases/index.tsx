@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
+import { AdminTableActions } from '@/components/AdminTableActions';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import { FieldHelpLabel } from '@/components/FieldHelpLabel';
 import { FutureFeatureNotice } from '@/components/FutureFeatureNotice';
@@ -440,7 +441,10 @@ export default function ReleasesPage() {
                 pagination={false}
                 search={false}
                 scroll={{ x: 1120 }}
-                options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                options={false}
+                toolBarRender={() => [
+                  <AdminTableActions key="table-actions" onReload={() => actionRef.current?.reload()} />,
+                ]}
                 locale={{
                   emptyText: (
                     <Empty

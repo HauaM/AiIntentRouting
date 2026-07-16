@@ -17,6 +17,7 @@ import {
 } from 'antd';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
+import { AdminTableActions } from '@/components/AdminTableActions';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import { FieldHelpLabel } from '@/components/FieldHelpLabel';
 import { IntentRouteMultiSelect } from '@/components/IntentRouteMultiSelect';
@@ -445,16 +446,14 @@ export default function ApiKeysPage() {
                   toolbar={{
                     title: 'API key inventory',
                     actions: [
-                      <Button
-                        key="reload"
-                        onClick={() => loadApiKeyPageData()}
-                        loading={loadingKeys}
-                      >
-                        새로고침
-                      </Button>,
+                      <AdminTableActions
+                        key="table-actions"
+                        onReload={() => loadApiKeyPageData()}
+                        reloadDisabled={loadingKeys}
+                      />,
                     ],
                   }}
-                  options={{ density: true, fullScreen: false, reload: false, setting: true }}
+                  options={false}
                 />
                 <Card title="Manual revoke">
                   <Form form={revokeForm} layout="vertical">

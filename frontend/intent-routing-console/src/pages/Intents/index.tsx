@@ -31,26 +31,13 @@ import {
   listExamples,
   patchIntent,
 } from '@/services/adminServices';
-
-type IntentFormMode = 'create' | 'edit';
-
-type IntentFormValues = {
-  intent_id: string;
-  domain: string;
-  display_name: string;
-  description: string;
-  route_key: string;
-  status?: 'draft' | 'active' | 'deprecated';
-  include_keywords?: string[];
-  exclude_keywords?: string[];
-};
-
-type ExampleFormValues = {
-  example_type: 'positive' | 'negative';
-  text_raw: string;
-  source: string;
-  test_case_id?: string;
-};
+import {
+  buildExampleFormInitialValues,
+  buildIntentFormInitialValues,
+  type ExampleFormValues,
+  type IntentFormMode,
+  type IntentFormValues,
+} from './intentFormValues';
 
 const statusOptions = [
   { label: 'Draft', value: 'draft' },
@@ -120,11 +107,19 @@ export default function IntentsPage() {
   const [intentSaving, setIntentSaving] = useState(false);
   const [exampleDrawerOpen, setExampleDrawerOpen] = useState(false);
   const [exampleSaving, setExampleSaving] = useState(false);
-  const [intentForm] = Form.useForm<IntentFormValues>();
-  const [exampleForm] = Form.useForm<ExampleFormValues>();
   const serviceIdRef = useRef(session.serviceId);
   const ready = isAdminSessionReady(session);
   const catalogEditable = ready && canEditCatalog(session);
+  const intentFormInitialValues = useMemo(
+    () => buildIntentFormInitialValues(intentFormMode, editingIntent),
+    [editingIntent, intentFormMode],
+  );
+  const intentFormKey =
+    intentFormMode === 'edit' && editingIntent
+      ? `edit:${editingIntent.intent_id}`
+      : 'create';
+  const exampleFormInitialValues = useMemo(() => buildExampleFormInitialValues(), []);
+  const exampleFormKey = selected ? `example:${selected.intent_id}` : 'example:none';
 
   useEffect(() => {
     serviceIdRef.current = session.serviceId;
@@ -133,9 +128,7 @@ export default function IntentsPage() {
     setIntentDrawerOpen(false);
     setEditingIntent(undefined);
     setExampleDrawerOpen(false);
-    intentForm.resetFields();
-    exampleForm.resetFields();
-  }, [exampleForm, intentForm, session.serviceId]);
+  }, [session.serviceId]);
 
   const loadSelectedExamples = useCallback(
     async (intentId = selected?.intent_id) => {
@@ -165,35 +158,18 @@ export default function IntentsPage() {
   const openCreateIntent = () => {
     setEditingIntent(undefined);
     setIntentFormMode('create');
-    intentForm.resetFields();
-    intentForm.setFieldsValue({
-      include_keywords: [],
-      exclude_keywords: [],
-    });
     setIntentDrawerOpen(true);
   };
 
   const openEditIntent = (intent: API.Intent) => {
     setEditingIntent(intent);
     setIntentFormMode('edit');
-    intentForm.resetFields();
-    intentForm.setFieldsValue({
-      intent_id: intent.intent_id,
-      domain: intent.domain,
-      display_name: intent.display_name,
-      description: intent.description,
-      route_key: intent.route_key,
-      status: intent.status as IntentFormValues['status'],
-      include_keywords: intent.include_keywords,
-      exclude_keywords: intent.exclude_keywords,
-    });
     setIntentDrawerOpen(true);
   };
 
   const closeIntentDrawer = () => {
     setIntentDrawerOpen(false);
     setEditingIntent(undefined);
-    intentForm.resetFields();
   };
 
   const handleIntentSubmit = async (values: IntentFormValues) => {
@@ -237,14 +213,11 @@ export default function IntentsPage() {
   };
 
   const openExampleDrawer = () => {
-    exampleForm.resetFields();
-    exampleForm.setFieldsValue({ example_type: 'positive', source: 'admin_ui' });
     setExampleDrawerOpen(true);
   };
 
   const closeExampleDrawer = () => {
     setExampleDrawerOpen(false);
-    exampleForm.resetFields();
   };
 
   const closeDetailDrawer = () => {
@@ -462,7 +435,7 @@ export default function IntentsPage() {
         width={560}
         open={intentDrawerOpen}
         onClose={closeIntentDrawer}
-        destroyOnClose
+        destroyOnHidden
         footer={
           <Space style={{ justifyContent: 'flex-end', width: '100%' }}>
             <Button onClick={closeIntentDrawer}>취소</Button>
@@ -473,10 +446,11 @@ export default function IntentsPage() {
         }
       >
         <Form<IntentFormValues>
+          key={intentFormKey}
           id="intent-form"
-          form={intentForm}
           layout="vertical"
           requiredMark={false}
+          initialValues={intentFormInitialValues}
           onFinish={handleIntentSubmit}
         >
           <Form.Item
@@ -555,7 +529,7 @@ export default function IntentsPage() {
         width={560}
         open={exampleDrawerOpen}
         onClose={closeExampleDrawer}
-        destroyOnClose
+        destroyOnHidden
         footer={
           <Space style={{ justifyContent: 'flex-end', width: '100%' }}>
             <Button onClick={closeExampleDrawer}>취소</Button>
@@ -566,10 +540,11 @@ export default function IntentsPage() {
         }
       >
         <Form<ExampleFormValues>
+          key={exampleFormKey}
           id="example-form"
-          form={exampleForm}
           layout="vertical"
           requiredMark={false}
+          initialValues={exampleFormInitialValues}
           onFinish={handleExampleSubmit}
         >
           <Form.Item

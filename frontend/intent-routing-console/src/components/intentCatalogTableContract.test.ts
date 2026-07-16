@@ -19,6 +19,10 @@ describe('IntentCatalogTable contract', () => {
     expect(text).toContain('copyable: true');
     expect(text).toContain('search={false}');
     expect(text).toContain('scroll={{ x:');
+    expect(text).toContain("import { AdminTableActions } from '@/components/AdminTableActions'");
+    expect(text).toContain('options={false}');
+    expect(text).toContain('actionRef.current?.reload()');
+    expect(text).not.toContain('options={{ density: true');
     expect(text).not.toContain('const statusColor');
   });
 });
