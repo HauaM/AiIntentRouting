@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { history, useModel } from '@umijs/max';
 import type { TableProps } from 'antd';
 import {
@@ -72,6 +72,8 @@ export default function ServicesPage() {
   const [form] = Form.useForm<ServiceFormValues>();
   const [notificationApi, notificationContextHolder] = notification.useNotification();
   const [creating, setCreating] = useState(false);
+  const [createdServiceNotification, setCreatedServiceNotification] =
+    useState<API.Service>();
   const ready = canUseServicesPage(session);
   const canCreate = canCreateServices(session);
   const canManageMembers = canManageServiceMembers(session);
@@ -79,6 +81,22 @@ export default function ServicesPage() {
   const selectedService = session.services.find(
     (service) => service.service_id === session.serviceId,
   );
+
+  useEffect(() => {
+    if (!createdServiceNotification) return;
+
+    notificationApi.success({
+      message: 'Service 등록 완료',
+      description: `${createdServiceNotification.display_name} Service가 등록되고 현재 Service scope로 선택되었습니다.`,
+      duration: 6,
+      actions: (
+        <Button type="primary" size="small" onClick={() => history.push('/intents')}>
+          Intent Catalog로 이동
+        </Button>
+      ),
+    });
+    setCreatedServiceNotification(undefined);
+  }, [createdServiceNotification, notificationApi]);
 
   const columns = useMemo<TableProps<API.AccessibleService>['columns']>(
     () => [
@@ -154,16 +172,7 @@ export default function ServicesPage() {
         return;
       }
       setServiceId(created.service_id);
-      notificationApi.success({
-        message: 'Service 등록 완료',
-        description: `${created.display_name} Service가 등록되고 현재 Service scope로 선택되었습니다.`,
-        duration: 6,
-        actions: (
-          <Button type="primary" size="small" onClick={() => history.push('/intents')}>
-            Intent Catalog로 이동
-          </Button>
-        ),
-      });
+      setCreatedServiceNotification(created);
       form.resetFields();
       form.setFieldsValue(serviceFormInitialValues);
     } finally {
