@@ -141,6 +141,53 @@ body {
   white-space: nowrap;
 }
 
+.services-selected-id {
+  display: inline-block;
+  max-width: min(100%, 420px);
+  vertical-align: bottom;
+}
+
+.services-onboarding-progress {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.services-onboarding-step {
+  background: #f7f9fb;
+  border: 1px solid #e6eaef;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.services-onboarding-step-complete {
+  background: #f1f7ed;
+  border-color: #c7d7c1;
+}
+
+.services-onboarding-step-current {
+  background: #eaf3fc;
+  border-color: #bfd7f0;
+}
+
+.services-create-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.services-create-grid .ant-form-item:nth-child(1),
+.services-create-grid .ant-form-item:nth-child(2) {
+  grid-column: span 2;
+}
+
+.services-create-grid .ant-form-item:nth-child(n + 3) {
+  grid-column: span 1;
+}
+
 .api-key-scope-fields {
   display: grid;
   gap: 12px;
@@ -165,6 +212,37 @@ body {
 .admin-ellipsis-cell {
   display: inline-block;
   max-width: 100%;
+}
+
+.intent-catalog-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.intent-catalog-search {
+  width: 328px;
+}
+
+.intent-catalog-status-filter {
+  width: 160px;
+}
+
+.intent-detail-section {
+  display: grid;
+  gap: 8px;
+}
+
+.intent-keyword-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.intent-keyword-group {
+  display: grid;
+  gap: 6px;
 }
 
 .admin-status-tag {
@@ -314,6 +392,20 @@ body {
 }
 
 @media (max-width: 640px) {
+  .services-onboarding-progress,
+  .services-create-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .services-create-grid .ant-form-item:nth-child(n) {
+    grid-column: span 1;
+  }
+
+  .intent-catalog-search,
+  .intent-catalog-status-filter {
+    width: 100%;
+  }
+
   .permission-service-role-grant {
     align-items: stretch;
     flex-direction: column;
@@ -352,5 +444,15 @@ body {
 
   .release-confirmation-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 641px) and (max-width: 900px) {
+  .services-create-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .services-create-grid .ant-form-item:nth-child(n) {
+    grid-column: span 1;
   }
 }

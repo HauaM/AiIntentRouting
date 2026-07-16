@@ -95,21 +95,21 @@ export default function ServicesPage() {
         ),
       },
       {
-        title: 'Environment',
+        title: '환경',
         dataIndex: 'environment',
         width: 128,
         className: 'admin-nowrap-cell',
         render: (_, row) => <Tag color="blue">{row.environment}</Tag>,
       },
       {
-        title: 'Status',
+        title: '상태',
         dataIndex: 'status',
         width: 112,
         className: 'admin-nowrap-cell',
         render: (_, row) => <StatusTag status={row.status} />,
       },
       {
-        title: 'Roles',
+        title: '역할',
         dataIndex: 'roles',
         width: 240,
         className: 'admin-nowrap-cell',
@@ -171,26 +171,35 @@ export default function ServicesPage() {
             <Alert
               type="info"
               showIcon
-              message="C-1 Service onboarding"
-              description="Service 등록은 권한 우선 온보딩의 첫 단계입니다. 이후 C-2에서 서비스별 사용자 권한 부여 흐름이 연결됩니다."
+              message="Service 온보딩"
+              description="C-1 Service 등록 후 C-2 권한 구성과 C-3 runtime 연동 준비를 순서대로 진행합니다."
             />
             {selectedService ? (
               <>
-                <Card title="Selected Service">
-                  <Descriptions bordered size="small" column={{ xs: 1, md: 3 }}>
+                <Card title="선택한 Service">
+                  <Descriptions bordered size="small" column={{ xs: 1, lg: 2 }}>
                     <Descriptions.Item label="Service ID">
-                      <Typography.Text code>{selectedService.service_id}</Typography.Text>
+                      <Tooltip title={selectedService.service_id}>
+                        <Typography.Text
+                          code
+                          copyable
+                          ellipsis
+                          className="services-selected-id"
+                        >
+                          {selectedService.service_id}
+                        </Typography.Text>
+                      </Tooltip>
                     </Descriptions.Item>
-                    <Descriptions.Item label="Display name">
+                    <Descriptions.Item label="표시 이름">
                       {selectedService.display_name}
                     </Descriptions.Item>
-                    <Descriptions.Item label="Environment">
+                    <Descriptions.Item label="환경">
                       <Tag color="blue">{selectedService.environment}</Tag>
                     </Descriptions.Item>
-                    <Descriptions.Item label="Status">
+                    <Descriptions.Item label="상태">
                       <StatusTag status={selectedService.status} />
                     </Descriptions.Item>
-                    <Descriptions.Item label="Roles">
+                    <Descriptions.Item label="내 역할" span={2}>
                       <Space wrap size={4}>
                         {selectedService.roles.map((role) => (
                           <Tag key={`${selectedService.service_id}:${role}`}>{role}</Tag>
@@ -198,6 +207,29 @@ export default function ServicesPage() {
                       </Space>
                     </Descriptions.Item>
                   </Descriptions>
+                  <div
+                    className="services-onboarding-progress"
+                    aria-label="Service 온보딩 진행 상태"
+                  >
+                    <div className="services-onboarding-step services-onboarding-step-complete">
+                      <Typography.Text strong>C-1 · 등록 완료</Typography.Text>
+                      <Typography.Text type="secondary">
+                        Service가 현재 scope에 포함되었습니다.
+                      </Typography.Text>
+                    </div>
+                    <div className="services-onboarding-step services-onboarding-step-current">
+                      <Typography.Text strong>C-2 · 권한 구성</Typography.Text>
+                      <Typography.Text type="secondary">
+                        멤버와 Service 역할을 확인합니다.
+                      </Typography.Text>
+                    </div>
+                    <div className="services-onboarding-step">
+                      <Typography.Text strong>C-3 · 연동 준비</Typography.Text>
+                      <Typography.Text type="secondary">
+                        API Key와 runtime 상태는 해당 화면에서 확인합니다.
+                      </Typography.Text>
+                    </div>
+                  </div>
                 </Card>
                 <ServiceMembershipPanel
                   selectedService={selectedService}
@@ -207,7 +239,7 @@ export default function ServicesPage() {
               </>
             ) : null}
             {canCreate ? (
-              <Card title="Create Service">
+              <Card title="Service 등록">
                 <Form<ServiceFormValues>
                   form={form}
                   layout="vertical"
@@ -215,7 +247,7 @@ export default function ServicesPage() {
                   initialValues={serviceFormInitialValues}
                   onFinish={handleCreate}
                 >
-                  <Space wrap align="start" size={12}>
+                  <div className="services-create-grid">
                     <Form.Item
                       name="service_id"
                       label={helpLabel('Service ID', serviceHelp.serviceId)}
@@ -228,20 +260,20 @@ export default function ServicesPage() {
                         },
                       ]}
                     >
-                      <Input placeholder="it-helpdesk" style={{ width: 240 }} />
+                      <Input placeholder="it-helpdesk" style={{ width: '100%' }} />
                     </Form.Item>
                     <Form.Item
                       name="display_name"
-                      label={helpLabel('Display name', serviceHelp.displayName)}
+                      label={helpLabel('표시 이름', serviceHelp.displayName)}
                       rules={[
                         { required: true, whitespace: true, message: 'Display name을 입력하세요.' },
                       ]}
                     >
-                      <Input placeholder="IT Helpdesk" style={{ width: 260 }} />
+                      <Input placeholder="IT Helpdesk" style={{ width: '100%' }} />
                     </Form.Item>
                     <Form.Item
                       name="environment"
-                      label={helpLabel('Environment', serviceHelp.environment)}
+                      label={helpLabel('환경', serviceHelp.environment)}
                       rules={[
                         { required: true, whitespace: true, message: 'Environment를 선택하세요.' },
                       ]}
@@ -249,24 +281,24 @@ export default function ServicesPage() {
                       <Select
                         showSearch
                         options={environmentOptions}
-                        style={{ width: 160 }}
+                        style={{ width: '100%' }}
                       />
                     </Form.Item>
                     <Form.Item
                       name="default_threshold_preset"
-                      label={helpLabel('Default preset', serviceHelp.preset)}
+                      label={helpLabel('기본 preset', serviceHelp.preset)}
                       rules={[{ required: true, message: 'Preset을 선택하세요.' }]}
                     >
-                      <Select options={presetOptions} style={{ width: 180 }} />
+                      <Select options={presetOptions} style={{ width: '100%' }} />
                     </Form.Item>
                     <Form.Item
                       name="max_input_tokens"
-                      label={helpLabel('Max input tokens', serviceHelp.maxInputTokens)}
+                      label={helpLabel('최대 입력 token', serviceHelp.maxInputTokens)}
                       rules={[{ required: true, message: 'Token limit을 입력하세요.' }]}
                     >
-                      <InputNumber min={1} max={8192} style={{ width: 180 }} />
+                      <InputNumber min={1} max={8192} style={{ width: '100%' }} />
                     </Form.Item>
-                  </Space>
+                  </div>
                   <Button type="primary" htmlType="submit" loading={creating}>
                     Service 등록
                   </Button>
@@ -276,7 +308,7 @@ export default function ServicesPage() {
               <Alert
                 type="info"
                 showIcon
-                message="Service creation requires system_admin"
+                message="Service 등록에는 system_admin 권한이 필요합니다"
                 description="현재 계정은 접근 가능한 Service를 볼 수 있지만 신규 Service를 등록할 수 없습니다."
               />
             )}
@@ -284,7 +316,7 @@ export default function ServicesPage() {
               <Alert
                 type="success"
                 showIcon
-                message="Service onboarding started"
+                message="Service 온보딩을 시작했습니다"
                 description={
                   <Space direction="vertical" size={8}>
                     <Typography.Text>
@@ -297,7 +329,7 @@ export default function ServicesPage() {
                 }
               />
             ) : null}
-            <Card title="Accessible Services">
+            <Card title="접근 가능한 Services">
               <Table<API.AccessibleService>
                 className="admin-scroll-table"
                 rowKey="service_id"
@@ -305,13 +337,13 @@ export default function ServicesPage() {
                 pagination={false}
                 dataSource={session.services}
                 columns={columns}
-                scroll={{ x: 760, y: 420 }}
+                scroll={{ x: 760 }}
                 tableLayout="fixed"
                 locale={{
                   emptyText: (
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="No accessible services"
+                      description="접근 가능한 Service가 없습니다."
                     />
                   ),
                 }}
