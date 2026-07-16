@@ -185,6 +185,105 @@ body {
   padding-inline: 8px;
 }
 
+.releases-page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.release-form-card,
+.releases-page-stack > .ds-page-card {
+  border: 0;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgb(13 36 56 / 6%);
+}
+
+.release-form-card .ant-card-body,
+.releases-page-stack > .ds-page-card {
+  padding: 16px 24px;
+}
+
+.release-form-guidance {
+  margin-bottom: 16px;
+}
+
+.release-form-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.release-candidate-row {
+  align-items: flex-end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(328px, 552px) auto;
+  justify-content: start;
+}
+
+.release-candidate-field,
+.release-candidate-load-action,
+.release-form-grid .ant-form-item {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.release-candidate-select {
+  max-width: 552px;
+}
+
+.release-candidate-evidence {
+  background: #f7f9fb;
+  border: 1px solid #e6eaef;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px 24px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  padding: 16px;
+}
+
+.release-evidence-title {
+  grid-column: 1 / -1;
+}
+
+.release-evidence-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.release-form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 216px minmax(260px, 328px);
+}
+
+.release-form-grid .ant-input,
+.release-form-grid .ant-select {
+  width: 100%;
+}
+
+.release-form-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.release-confirmation-grid {
+  display: grid;
+  gap: 8px 16px;
+  grid-template-columns: 144px minmax(0, 1fr);
+}
+
+.releases-page-stack .ds-pro-table-card .ant-pro-card-body {
+  padding: 0;
+}
+
+.releases-page-stack .ds-pro-table-card .ant-pro-table-list-toolbar-container {
+  padding-top: 0;
+}
+
 .permission-management-tabs,
 .permission-management-tabs .ant-tabs-nav,
 .permission-management-tabs .ant-tabs-nav-wrap {
@@ -228,5 +327,30 @@ body {
   .toolbar-line {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 768px) {
+  .release-candidate-row,
+  .release-form-grid {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .release-candidate-load-action .ant-form-item-label {
+    display: none;
+  }
+
+  .release-candidate-select {
+    max-width: none;
+  }
+
+  .release-candidate-load-action .ant-btn,
+  .release-form-actions .ant-btn {
+    width: 100%;
+  }
+
+  .release-confirmation-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

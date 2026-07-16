@@ -17,11 +17,12 @@ export function ReleaseCandidateSelect({
 }: ReleaseCandidateSelectProps) {
   return (
     <Select
+      className="release-candidate-select"
       showSearch
       value={value}
       placeholder="Release candidate 선택"
       optionFilterProp="label"
-      style={{ minWidth: 420, width: '100%' }}
+      style={{ width: '100%' }}
       options={candidates.map((candidate) => ({
         value: candidate.test_run_id,
         label: candidate.test_run_id,

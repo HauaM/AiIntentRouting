@@ -19,6 +19,7 @@ import { AdminSessionRequired } from '@/components/AdminSessionRequired';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import { FieldHelpLabel } from '@/components/FieldHelpLabel';
 import { FutureFeatureNotice } from '@/components/FutureFeatureNotice';
+import { StatusTag } from '@/components/StatusTag';
 import {
   activateRelease,
   createRelease,
@@ -28,12 +29,15 @@ import {
 } from '@/services/adminServices';
 import { canManageReleases, isAdminSessionReady } from '@/models/adminSession';
 import { ReleaseCandidateSelect } from './ReleaseCandidateSelect';
-
-const formatRate = (value: number | null | undefined) => {
-  if (value === null || value === undefined) return 'none';
-  const normalized = value <= 1 ? value * 100 : value;
-  return `${normalized.toFixed(1)}%`;
-};
+import {
+  canRollbackRelease,
+  formatReleaseRate,
+  getActivationConfirmation,
+  getActiveRelease,
+  getRollbackConfirmation,
+  getSelectedReleaseCandidate,
+  type ReleaseConfirmationPresentation,
+} from './releasePresentation';
 
 const releaseHelp = {
   environment: '선택한 서비스의 environment를 자동 사용합니다. Release environment는 서비스 environment와 반드시 같아야 합니다.',
@@ -45,11 +49,30 @@ const helpLabel = (label: string, help: string) => (
   <FieldHelpLabel label={label} help={help} />
 );
 
+const ReleaseConfirmationSummary = ({
+  presentation,
+}: {
+  presentation: ReleaseConfirmationPresentation;
+}) => (
+  <Space direction="vertical" size={12} style={{ width: '100%' }}>
+    <div className="release-confirmation-grid">
+      <Typography.Text type="secondary">Service</Typography.Text>
+      <Typography.Text code>{presentation.serviceId}</Typography.Text>
+      <Typography.Text type="secondary">Environment</Typography.Text>
+      <Typography.Text>{presentation.environment}</Typography.Text>
+      <Typography.Text type="secondary">현재 active Release</Typography.Text>
+      <Typography.Text code>{presentation.currentRelease}</Typography.Text>
+      <Typography.Text type="secondary">변경 후 active Release</Typography.Text>
+      <Typography.Text code>{presentation.resultRelease}</Typography.Text>
+    </div>
+    <Typography.Text>{presentation.impact}</Typography.Text>
+  </Space>
+);
+
 export default function ReleasesPage() {
   const { session } = useModel('adminSession');
   const actionRef = useRef<ActionType>();
   const [form] = Form.useForm<API.ReleaseCreateRequest>();
-  const [environment, setEnvironment] = useState<string>();
   const [creating, setCreating] = useState(false);
   const [candidates, setCandidates] = useState<API.ReleaseCandidate[]>([]);
   const [releaseRows, setReleaseRows] = useState<API.Release[]>([]);
@@ -59,6 +82,9 @@ export default function ReleasesPage() {
   const selectedService = session.services.find((service) => service.service_id === session.serviceId);
   const selectedEnvironment = selectedService?.environment || 'prod';
   const selectedTestRunId = Form.useWatch('test_run_id', form);
+  const selectedRollbackTarget = Form.useWatch('rollback_target', form);
+  const selectedCandidate = getSelectedReleaseCandidate(candidates, selectedTestRunId);
+  const activeRelease = getActiveRelease(releaseRows);
 
   const reload = () => actionRef.current?.reload();
 
@@ -156,7 +182,7 @@ export default function ReleasesPage() {
       render: (_, row) => <Tag>{row.environment}</Tag>,
     },
     {
-      title: 'Versions',
+      title: 'Version',
       search: false,
       render: (_, row) => (
         <Space direction="vertical" size={0}>
@@ -166,37 +192,35 @@ export default function ReleasesPage() {
       ),
     },
     {
-      title: 'Pass rate',
+      title: '전체 통과율',
       dataIndex: 'pass_rate',
       search: false,
       width: 108,
-      renderText: (value) => formatRate(Number(value)),
+      renderText: (value) => formatReleaseRate(value as number | null | undefined),
     },
     {
-      title: 'Risk pass',
+      title: 'Risk 통과율',
       dataIndex: 'risk_pass_rate',
       search: false,
       width: 108,
-      renderText: (value) => formatRate(Number(value)),
+      renderText: (value) => formatReleaseRate(value as number | null | undefined),
     },
     {
-      title: 'Status',
+      title: '상태',
       dataIndex: 'active',
       search: false,
       width: 96,
-      render: (_, row) => (
-        <Tag color={row.active ? 'green' : 'default'}>{row.active ? 'active' : 'inactive'}</Tag>
-      ),
+      render: (_, row) => <StatusTag status={row.active ? 'active' : 'inactive'} />,
     },
     {
-      title: 'Released',
+      title: '생성 일시',
       dataIndex: 'released_at',
       valueType: 'dateTime',
       search: false,
       width: 168,
     },
     {
-      title: '',
+      title: '작업',
       valueType: 'option',
       width: 176,
       render: (_, row) =>
@@ -204,12 +228,16 @@ export default function ReleasesPage() {
           ? [
               <ConfirmActionButton
                 key="activate"
-                title="Activate release?"
+                title={getActivationConfirmation(row, activeRelease).title}
                 disabled={row.active}
                 type="link"
                 size="small"
-                okText="Activate"
-                content={`Activate ${row.release_version} for ${row.environment}.`}
+                okText="활성화"
+                content={
+                  <ReleaseConfirmationSummary
+                    presentation={getActivationConfirmation(row, activeRelease)}
+                  />
+                }
                 onConfirm={() => handleActivate(row.service_id, row.release_version)}
               >
                 활성화
@@ -217,15 +245,17 @@ export default function ReleasesPage() {
               <ConfirmActionButton
                 key="rollback"
                 danger
-                title="Rollback release?"
-                disabled={!row.rollback_target}
+                title={getRollbackConfirmation(row, activeRelease).title}
+                disabled={!canRollbackRelease(row)}
                 type="link"
                 size="small"
-                okText="Rollback"
+                okText="롤백"
                 content={
                   row.rollback_target
-                    ? `Rollback ${row.release_version} to ${row.rollback_target}.`
-                    : 'This release has no rollback target.'
+                    ? <ReleaseConfirmationSummary
+                        presentation={getRollbackConfirmation(row, activeRelease)}
+                      />
+                    : '이 Release에는 rollback target이 없습니다.'
                 }
                 onConfirm={() => handleRollback(row.service_id, row.release_version)}
               >
@@ -238,16 +268,16 @@ export default function ReleasesPage() {
 
   return (
     <AdminShell title="Releases">
-      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+      <div className="releases-page-stack">
         <FutureFeatureNotice
           compact
-          title="Release diff approval"
-          backendRequirement="Phase 2 backend contracts are required before this console can request, approve, or reject release diffs."
+          title="Release diff 승인"
+          backendRequirement="Phase 2 backend is implemented, but the frontend route, role gate, and UX tests are not wired yet."
         />
         {ready ? (
           <>
             {canManage ? (
-              <Card title="Create release">
+              <Card title="Release 생성" className="release-form-card ds-page-card">
                 <Form
                   form={form}
                   layout="vertical"
@@ -257,15 +287,15 @@ export default function ReleasesPage() {
                   <Alert
                     type="info"
                     showIcon
-                    style={{ marginBottom: 12 }}
+                    className="release-form-guidance"
                     message="Release는 검증이 끝난 policy/catalog/test run 조합만 등록할 수 있습니다."
                     description="Test Runs에서 통과한 release candidate를 불러와 선택하세요. 선택하면 version 값이 자동으로 채워집니다."
                   />
-                  <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                    <Space wrap align="center">
+                  <div className="release-form-content">
+                    <div className="release-candidate-row">
                       <Form.Item
                         label={helpLabel('Release candidate', releaseHelp.testRun)}
-                        style={{ minWidth: 420, marginBottom: 0 }}
+                        className="release-candidate-field"
                       >
                         <ReleaseCandidateSelect
                           value={selectedTestRunId}
@@ -276,12 +306,12 @@ export default function ReleasesPage() {
                           onSelectCandidate={handleSelectCandidate}
                         />
                       </Form.Item>
-                      <Form.Item label=" " style={{ marginBottom: 0 }}>
+                      <Form.Item label=" " className="release-candidate-load-action">
                         <Button onClick={loadCandidates} loading={candidatesLoading}>
                           후보 불러오기
                         </Button>
                       </Form.Item>
-                    </Space>
+                    </div>
                     <Form.Item name="policy_version" hidden>
                       <Input />
                     </Form.Item>
@@ -301,7 +331,42 @@ export default function ReleasesPage() {
                     >
                       <Input />
                     </Form.Item>
-                    <Space wrap align="start" size={12}>
+                    {selectedCandidate ? (
+                      <section className="release-candidate-evidence" aria-label="선택한 Release 근거">
+                        <Typography.Text strong className="release-evidence-title">
+                          선택한 Release 근거
+                        </Typography.Text>
+                        <div className="release-evidence-item">
+                          <Typography.Text type="secondary">Test run</Typography.Text>
+                          <Typography.Text code copyable>{selectedCandidate.test_run_id}</Typography.Text>
+                        </div>
+                        <div className="release-evidence-item">
+                          <Typography.Text type="secondary">Policy version</Typography.Text>
+                          <Typography.Text code copyable>{selectedCandidate.policy_version}</Typography.Text>
+                        </div>
+                        <div className="release-evidence-item">
+                          <Typography.Text type="secondary">Catalog version</Typography.Text>
+                          <Typography.Text code copyable>{selectedCandidate.intent_catalog_version}</Typography.Text>
+                        </div>
+                        <div className="release-evidence-item">
+                          <Typography.Text type="secondary">전체 통과율</Typography.Text>
+                          <Typography.Text>{formatReleaseRate(selectedCandidate.pass_rate)}</Typography.Text>
+                        </div>
+                        <div className="release-evidence-item">
+                          <Typography.Text type="secondary">Risk 통과율</Typography.Text>
+                          <Typography.Text>{formatReleaseRate(selectedCandidate.risk_pass_rate)}</Typography.Text>
+                        </div>
+                        <div className="release-evidence-item">
+                          <Typography.Text type="secondary">Environment</Typography.Text>
+                          <Typography.Text>{selectedCandidate.environment}</Typography.Text>
+                        </div>
+                        <div className="release-evidence-item">
+                          <Typography.Text type="secondary">Rollback target</Typography.Text>
+                          <Typography.Text code>{selectedRollbackTarget || '없음'}</Typography.Text>
+                        </div>
+                      </section>
+                    ) : null}
+                    <div className="release-form-grid">
                       <Form.Item
                         name="environment"
                         label={helpLabel('Environment', releaseHelp.environment)}
@@ -313,7 +378,7 @@ export default function ReleasesPage() {
                           },
                         ]}
                       >
-                        <Input disabled style={{ width: 160 }} />
+                        <Input disabled />
                       </Form.Item>
                       <Form.Item
                         name="rollback_target"
@@ -324,7 +389,6 @@ export default function ReleasesPage() {
                           showSearch
                           placeholder="Rollback target 선택"
                           optionFilterProp="label"
-                          style={{ width: 260 }}
                           options={releaseRows.map((release) => ({
                             value: release.release_version,
                             label: release.release_version,
@@ -343,13 +407,13 @@ export default function ReleasesPage() {
                           }}
                         />
                       </Form.Item>
-                      <Form.Item label=" ">
-                        <Button type="primary" htmlType="submit" loading={creating}>
-                          Release 생성
-                        </Button>
-                      </Form.Item>
-                    </Space>
-                  </Space>
+                    </div>
+                    <div className="release-form-actions">
+                      <Button type="primary" htmlType="submit" loading={creating}>
+                        Release 생성
+                      </Button>
+                    </div>
+                  </div>
                 </Form>
               </Card>
             ) : (
@@ -360,40 +424,38 @@ export default function ReleasesPage() {
                 description="system_admin 또는 선택한 Service의 service_owner/service_developer만 생성, 활성화, 롤백할 수 있습니다."
               />
             )}
-            <ProTable<API.Release>
-              key={session.serviceId}
-              rowKey="release_version"
-              actionRef={actionRef}
-              columns={columns}
-              request={async () => {
-                const rows = await listReleases(session.serviceId, environment);
-                setReleaseRows(rows);
-                return { data: rows, total: rows.length, success: true };
-              }}
-              params={{ environment, serviceId: session.serviceId }}
-              pagination={false}
-              search={false}
-              toolbar={{
-                filter: (
-                  <Input
-                    allowClear
-                    placeholder="Filter environment"
-                    value={environment}
-                    onChange={(event) => setEnvironment(event.target.value || undefined)}
-                    style={{ width: 220 }}
-                  />
-                ),
-              }}
-              options={{ density: true, fullScreen: false, reload: true, setting: true }}
-              locale={{
-                emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No releases" />,
-              }}
-            />
+            <div className="ds-page-card ds-table-card-padded ds-pro-table-card">
+              <ProTable<API.Release>
+                key={session.serviceId}
+                rowKey="release_version"
+                actionRef={actionRef}
+                columns={columns}
+                headerTitle="Release 목록"
+                request={async () => {
+                  const rows = await listReleases(session.serviceId, selectedEnvironment);
+                  setReleaseRows(rows);
+                  return { data: rows, total: rows.length, success: true };
+                }}
+                params={{ environment: selectedEnvironment, serviceId: session.serviceId }}
+                pagination={false}
+                search={false}
+                scroll={{ x: 1120 }}
+                options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                locale={{
+                  emptyText: (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="등록된 Release가 없습니다."
+                    />
+                  ),
+                }}
+              />
+            </div>
           </>
         ) : (
           <AdminSessionRequired />
         )}
-      </Space>
+      </div>
     </AdminShell>
   );
 }
