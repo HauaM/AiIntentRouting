@@ -16,6 +16,7 @@ import {
 import koKR from 'antd/locale/ko_KR';
 import { listPublicDepartments, submitAdminAccessRequest } from '@/services/authServices';
 import {
+  adminAccessRequestErrorMessage,
   toAdminAccessRequestCreateRequest,
   type AdminAccessRequestFormValues,
 } from './requestForm';
@@ -29,15 +30,6 @@ const requestTheme = {
     borderRadius: 6,
     fontFamily: "Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   },
-};
-
-const errorMessage = (error: any) => {
-  const payload = error?.response?.data ?? error?.data;
-  const detail = payload?.detail;
-  if (typeof detail === 'string') return detail;
-  if (detail?.error?.message) return detail.error.message;
-  if (payload?.error?.message) return payload.error.message;
-  return error?.message ?? '신청을 제출하지 못했습니다.';
 };
 
 export default function AdminAccessRequestPage() {
@@ -88,7 +80,7 @@ export default function AdminAccessRequestPage() {
       );
       setSubmittedRequest(response);
     } catch (err: any) {
-      setError(errorMessage(err));
+      setError(adminAccessRequestErrorMessage(err));
     } finally {
       setLoading(false);
     }
