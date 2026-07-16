@@ -32,4 +32,17 @@ describe('adminShellNavigation', () => {
   it('does not render the Sprint phase notice globally in AdminShell', () => {
     expect(adminShellSource()).not.toContain('Sprint 11 Admin UI Phase 1');
   });
+
+  it('keeps page notification holders mounted outside the restoring content branch', () => {
+    const source = adminShellSource();
+    const configProvider = source.indexOf('<ConfigProvider');
+    const notificationHolder = source.indexOf('{notificationHolder}');
+    const proLayout = source.indexOf('<ProLayout');
+    const restoringBranch = source.indexOf('{restoring || !session.authenticated ?');
+
+    expect(source).toContain('notificationHolder?: ReactNode;');
+    expect(notificationHolder).toBeGreaterThan(configProvider);
+    expect(notificationHolder).toBeLessThan(proLayout);
+    expect(restoringBranch).toBeGreaterThan(notificationHolder);
+  });
 });
