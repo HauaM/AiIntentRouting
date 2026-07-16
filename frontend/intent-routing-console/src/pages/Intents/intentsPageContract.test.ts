@@ -19,6 +19,12 @@ describe('Intents page contract', () => {
     expect(text).toContain("selected.updated_at ?? '없음'");
     expect(text).toContain('<StatusTag status={selected.status}');
     expect(text).toContain('scroll={{ x: 560 }}');
+    expect(text).not.toContain('Form.useForm<IntentFormValues>');
+    expect(text).not.toContain('Form.useForm<ExampleFormValues>');
+    expect(text).not.toContain('intentForm.resetFields()');
+    expect(text).not.toContain('exampleForm.resetFields()');
+    expect(text).toContain('destroyOnHidden');
+    expect(text).not.toContain('destroyOnClose');
     expect(text).not.toContain('width={620}');
   });
 });

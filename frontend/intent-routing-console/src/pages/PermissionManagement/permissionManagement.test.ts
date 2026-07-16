@@ -67,6 +67,13 @@ const invalidAdminCurrentUser = {
 } satisfies API.AdminCurrentUserResponse;
 
 describe('Permission Management helpers', () => {
+  it('disables ProTable built-in option icons for every permission table', () => {
+    const source = pageSource();
+
+    expect(source).not.toContain('options={{ density: true');
+    expect((source.match(/options=\{false\}/g) ?? []).length).toBe(6);
+  });
+
   const systemAdminRow: API.PermissionAdminUserSummary = {
     user_id: 'admin-1',
     email: 'admin1@example.com',

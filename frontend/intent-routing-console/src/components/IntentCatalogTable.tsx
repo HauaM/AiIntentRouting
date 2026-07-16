@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Button, Input, Select, Space, Typography } from 'antd';
+import { AdminTableActions } from '@/components/AdminTableActions';
 import { StatusTag } from '@/components/StatusTag';
 import { listIntents } from '@/services/adminServices';
 
@@ -97,7 +98,7 @@ export function IntentCatalogTable({
       pagination={false}
       search={false}
       scroll={{ x: 860 }}
-      options={{ density: true, fullScreen: false, reload: true, setting: true }}
+      options={false}
       toolbar={{
         filter: (
           <div className="intent-catalog-toolbar">
@@ -125,15 +126,19 @@ export function IntentCatalogTable({
           </div>
         ),
       }}
-      toolBarRender={() =>
-        canEditCatalog
-          ? [
-              <Button key="create" type="primary" onClick={onCreateIntent}>
+      toolBarRender={() => [
+        <AdminTableActions
+          key="table-actions"
+          onReload={() => actionRef.current?.reload()}
+          extra={
+            canEditCatalog ? (
+              <Button type="primary" onClick={onCreateIntent}>
                 Intent 추가
-              </Button>,
-            ]
-          : []
-      }
+              </Button>
+            ) : null
+          }
+        />,
+      ]}
     />
   );
 }

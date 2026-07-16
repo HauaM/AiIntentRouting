@@ -20,6 +20,7 @@ import {
 } from 'antd';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
+import { AdminTableActions } from '@/components/AdminTableActions';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import { StatusTag } from '@/components/StatusTag';
 import {
@@ -895,8 +896,16 @@ export default function OrganizationDirectoryPage() {
                       }}
                       pagination={false}
                       search={false}
-                      toolbar={{ title: renderDepartmentToolbar() }}
-                      options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                      toolbar={{
+                        title: renderDepartmentToolbar(),
+                        actions: [
+                          <AdminTableActions
+                            key="table-actions"
+                            onReload={() => departmentActionRef.current?.reload()}
+                          />,
+                        ],
+                      }}
+                      options={false}
                     />
                   ),
                 },
@@ -919,8 +928,16 @@ export default function OrganizationDirectoryPage() {
                       }}
                       pagination={false}
                       search={false}
-                      toolbar={{ title: renderUserToolbar() }}
-                      options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                      toolbar={{
+                        title: renderUserToolbar(),
+                        actions: [
+                          <AdminTableActions
+                            key="table-actions"
+                            onReload={() => userActionRef.current?.reload()}
+                          />,
+                        ],
+                      }}
+                      options={false}
                     />
                   ),
                 },
@@ -928,6 +945,7 @@ export default function OrganizationDirectoryPage() {
             />
             <Modal
               destroyOnHidden
+              forceRender
               centered
               width={640}
               style={{ maxWidth: 'calc(100vw - 32px)' }}
@@ -943,6 +961,7 @@ export default function OrganizationDirectoryPage() {
               onCancel={closeDepartmentModal}
               onOk={() => departmentForm.submit()}
             >
+              {/* forceRender keeps the imperative form instance connected for external submit/reset handlers. */}
               <Form<DepartmentFormValues>
                 form={departmentForm}
                 layout="vertical"
@@ -1013,6 +1032,7 @@ export default function OrganizationDirectoryPage() {
             </Modal>
             <Modal
               destroyOnHidden
+              forceRender
               centered
               width={640}
               style={{ maxWidth: 'calc(100vw - 32px)' }}
@@ -1028,6 +1048,7 @@ export default function OrganizationDirectoryPage() {
               onCancel={closeUserModal}
               onOk={() => userForm.submit()}
             >
+              {/* forceRender keeps the imperative form instance connected for external submit/reset handlers. */}
               <Form<OrganizationUserFormValues>
                 form={userForm}
                 layout="vertical"

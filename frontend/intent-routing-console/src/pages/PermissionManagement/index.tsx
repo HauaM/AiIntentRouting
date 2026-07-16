@@ -20,6 +20,7 @@ import {
   type MenuProps,
 } from 'antd';
 import { AdminShell } from '@/components/AdminShell';
+import { AdminTableActions } from '@/components/AdminTableActions';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import { StatusTag } from '@/components/StatusTag';
 import {
@@ -274,15 +275,13 @@ export default function PermissionManagementPage() {
   };
 
   const openSystemAdminTransferModal = (row: API.PermissionAdminUserSummary) => {
-    transferReasonForm.resetFields();
-
     Modal.confirm({
       title: 'system_admin 소유권을 이관하시겠습니까?',
       okText: 'system_admin 이관',
       okButtonProps: { danger: true },
       cancelText: '취소',
       content: (
-        <Form form={transferReasonForm} layout="vertical" requiredMark={false}>
+        <Form form={transferReasonForm} layout="vertical" requiredMark={false} clearOnDestroy>
           <Typography.Paragraph style={{ marginBottom: 12 }}>
             {row.display_name} ({row.email}) 계정으로 system_admin 소유권을 이관합니다.
           </Typography.Paragraph>
@@ -364,15 +363,13 @@ export default function PermissionManagementPage() {
   };
 
   const openRejectAccessRequestModal = (applicant: API.AdminAccessRequest) => {
-    rejectRequestForm.resetFields();
-
     Modal.confirm({
       title: '접근 신청을 반려하시겠습니까?',
       okText: '반려',
       okButtonProps: { danger: true },
       cancelText: '취소',
       content: (
-        <Form form={rejectRequestForm} layout="vertical" requiredMark={false}>
+        <Form form={rejectRequestForm} layout="vertical" requiredMark={false} clearOnDestroy>
           <Typography.Paragraph style={{ marginBottom: 12 }}>
             {applicant.name} ({applicant.email}) 신청을 반려합니다.
           </Typography.Paragraph>
@@ -950,7 +947,13 @@ export default function PermissionManagementPage() {
                       pagination={false}
                       scroll={{ x: 1120 }}
                       search={{ labelWidth: 104 }}
-                      options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                      options={false}
+                      toolBarRender={() => [
+                        <AdminTableActions
+                          key="table-actions"
+                          onReload={() => adminActionRef.current?.reload()}
+                        />,
+                      ]}
                     />
                   ),
                 };
@@ -973,7 +976,13 @@ export default function PermissionManagementPage() {
                       pagination={false}
                       scroll={{ x: 1120 }}
                       search={false}
-                      options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                      options={false}
+                      toolBarRender={() => [
+                        <AdminTableActions
+                          key="table-actions"
+                          onReload={() => accessRequestActionRef.current?.reload()}
+                        />,
+                      ]}
                     />
                   ),
                 };
@@ -1004,7 +1013,13 @@ export default function PermissionManagementPage() {
                       pagination={false}
                       scroll={{ x: 760 }}
                       search={false}
-                      options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                      options={false}
+                      toolBarRender={() => [
+                        <AdminTableActions
+                          key="table-actions"
+                          onReload={() => globalRoleActionRef.current?.reload()}
+                        />,
+                      ]}
                     />
                   ),
                 };
@@ -1104,7 +1119,13 @@ export default function PermissionManagementPage() {
                         pagination={false}
                         scroll={{ x: 1120 }}
                         search={{ labelWidth: 104 }}
-                        options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                        options={false}
+                        toolBarRender={() => [
+                          <AdminTableActions
+                            key="table-actions"
+                            onReload={() => serviceRoleActionRef.current?.reload()}
+                          />,
+                        ]}
                       />
                     </Space>
                   ),
@@ -1130,7 +1151,13 @@ export default function PermissionManagementPage() {
                       pagination={false}
                       scroll={{ x: 960 }}
                       search={{ labelWidth: 104 }}
-                      options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                      options={false}
+                      toolBarRender={() => [
+                        <AdminTableActions
+                          key="table-actions"
+                          onReload={() => auditActionRef.current?.reload()}
+                        />,
+                      ]}
                     />
                   ),
                 };
@@ -1152,7 +1179,13 @@ export default function PermissionManagementPage() {
                     pagination={false}
                     scroll={{ x: 860 }}
                     search={false}
-                    options={{ density: true, fullScreen: false, reload: true, setting: true }}
+                    options={false}
+                    toolBarRender={() => [
+                      <AdminTableActions
+                        key="table-actions"
+                        onReload={() => riskActionRef.current?.reload()}
+                      />,
+                    ]}
                   />
                 ),
               };

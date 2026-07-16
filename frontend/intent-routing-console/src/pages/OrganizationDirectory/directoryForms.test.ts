@@ -30,6 +30,13 @@ const pageSource = () =>
   );
 
 describe('directoryForms', () => {
+  it('disables ProTable built-in option icons for directory tables', () => {
+    const source = pageSource();
+
+    expect(source).not.toContain('options={{ density: true');
+    expect((source.match(/options=\{false\}/g) ?? []).length).toBe(2);
+  });
+
   it('trims department form values', () => {
     expect(
       toDepartmentCreateRequest({ dept_number: ' 0969 ', name: ' IT지원부 ' }),

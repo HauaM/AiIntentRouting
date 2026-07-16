@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { ProTable, type ProColumns } from '@ant-design/pro-components';
+import { useRef, useState } from 'react';
+import { ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Drawer, Empty, Space, Tag, Typography } from 'antd';
+import { AdminTableActions } from '@/components/AdminTableActions';
 import { StatusTag } from '@/components/StatusTag';
 import { fetchRuntimeLog, listRuntimeLogs } from '@/services/adminServices';
 
@@ -12,6 +13,7 @@ const runtimeDecisionStatus = (decision?: string | null) =>
   decision === 'risk' ? 'risk' : decision ?? 'none';
 
 export function RuntimeLogsTable({ serviceId }: RuntimeLogsTableProps) {
+  const actionRef = useRef<ActionType>();
   const [selected, setSelected] = useState<API.RuntimeLog>();
   const [open, setOpen] = useState(false);
 
@@ -76,6 +78,7 @@ export function RuntimeLogsTable({ serviceId }: RuntimeLogsTableProps) {
     <>
       <ProTable<API.RuntimeLog>
         rowKey="trace_id"
+        actionRef={actionRef}
         columns={columns}
         request={(params) => listRuntimeLogs(serviceId, params)}
         pagination={false}
@@ -83,7 +86,10 @@ export function RuntimeLogsTable({ serviceId }: RuntimeLogsTableProps) {
           emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No recent runtime logs" />,
         }}
         search={{ labelWidth: 96 }}
-        options={{ density: true, fullScreen: false, reload: true, setting: true }}
+        options={false}
+        toolBarRender={() => [
+          <AdminTableActions key="table-actions" onReload={() => actionRef.current?.reload()} />,
+        ]}
         onRow={(row) => ({ onClick: () => openTrace(row.trace_id) })}
       />
       <Drawer title={selected?.trace_id} open={open} width={560} onClose={() => setOpen(false)}>
