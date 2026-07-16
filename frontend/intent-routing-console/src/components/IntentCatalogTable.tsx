@@ -1,13 +1,8 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
-import { Button, Space, Tag } from 'antd';
+import { Button, Input, Select, Space, Typography } from 'antd';
+import { StatusTag } from '@/components/StatusTag';
 import { listIntents } from '@/services/adminServices';
-
-const statusColor: Record<string, string> = {
-  active: 'green',
-  draft: 'orange',
-  deprecated: 'default',
-};
 
 type IntentCatalogTableProps = {
   serviceId: string;
@@ -25,6 +20,10 @@ export function IntentCatalogTable({
   onEditIntent,
 }: IntentCatalogTableProps) {
   const actionRef = useRef<ActionType>();
+  const [searchInput, setSearchInput] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const [status, setStatus] = useState<string>();
+  const [resultCount, setResultCount] = useState(0);
 
   const columns: ProColumns<API.Intent>[] = [
     {
@@ -39,15 +38,22 @@ export function IntentCatalogTable({
       ),
     },
     {
-      title: 'Route',
+      title: 'Route key',
       dataIndex: 'route_key',
-      render: (_, row) => <Tag>{row.route_key}</Tag>,
+      copyable: true,
+      ellipsis: true,
+      render: (_, row) => (
+        <span className="text-mono admin-ellipsis-cell" title={row.route_key}>
+          {row.route_key}
+        </span>
+      ),
     },
     {
       title: 'Keywords',
       search: false,
-      width: 110,
-      render: (_, row) => `${row.include_keywords?.length ?? 0}/${row.exclude_keywords?.length ?? 0}`,
+      width: 160,
+      render: (_, row) =>
+        `포함 ${row.include_keywords?.length ?? 0} · 제외 ${row.exclude_keywords?.length ?? 0}`,
     },
     {
       title: 'Status',
@@ -58,7 +64,7 @@ export function IntentCatalogTable({
         draft: { text: 'Draft' },
         deprecated: { text: 'Deprecated' },
       },
-      render: (_, row) => <Tag color={statusColor[row.status] ?? 'default'}>{row.status}</Tag>,
+      render: (_, row) => <StatusTag status={row.status} />,
     },
     {
       title: '',
@@ -82,10 +88,43 @@ export function IntentCatalogTable({
       rowKey="intent_id"
       actionRef={actionRef}
       columns={columns}
-      request={(params) => listIntents(serviceId, params)}
+      params={{ keyword, status }}
+      request={async (params) => {
+        const result = await listIntents(serviceId, params);
+        setResultCount(result.total);
+        return result;
+      }}
       pagination={false}
-      search={{ labelWidth: 96 }}
+      search={false}
+      scroll={{ x: 860 }}
       options={{ density: true, fullScreen: false, reload: true, setting: true }}
+      toolbar={{
+        filter: (
+          <div className="intent-catalog-toolbar">
+            <Input.Search
+              allowClear
+              className="intent-catalog-search"
+              placeholder="Intent ID 또는 이름 검색"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              onSearch={(value) => setKeyword(value.trim())}
+            />
+            <Select
+              allowClear
+              className="intent-catalog-status-filter"
+              placeholder="전체 상태"
+              value={status}
+              options={[
+                { label: 'Active', value: 'active' },
+                { label: 'Draft', value: 'draft' },
+                { label: 'Deprecated', value: 'deprecated' },
+              ]}
+              onChange={setStatus}
+            />
+            <Typography.Text type="secondary">{resultCount}개 Intent</Typography.Text>
+          </div>
+        ),
+      }}
       toolBarRender={() =>
         canEditCatalog
           ? [

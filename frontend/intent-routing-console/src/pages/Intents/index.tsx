@@ -21,6 +21,7 @@ import { AdminSessionRequired } from '@/components/AdminSessionRequired';
 import { ConfirmActionButton } from '@/components/ConfirmActionButton';
 import { FieldHelpLabel } from '@/components/FieldHelpLabel';
 import { IntentCatalogTable } from '@/components/IntentCatalogTable';
+import { StatusTag } from '@/components/StatusTag';
 import { WorkflowNextActionBar } from '@/components/WorkflowNextActionBar';
 import { canEditCatalog, isAdminSessionReady } from '@/models/adminSession';
 import {
@@ -30,12 +31,6 @@ import {
   listExamples,
   patchIntent,
 } from '@/services/adminServices';
-
-const statusColor: Record<string, string> = {
-  active: 'green',
-  draft: 'orange',
-  deprecated: 'default',
-};
 
 type IntentFormMode = 'create' | 'edit';
 
@@ -338,8 +333,8 @@ export default function IntentsPage() {
       {ready ? (
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
           <WorkflowNextActionBar
-            title="Catalog work ready for validation"
-            description="Intent와 Example 정리가 끝나면 Test Runs에서 검증 bundle을 만듭니다."
+            title="다음 단계: Test Runs에서 검증"
+            description="Intent와 Example을 정리한 뒤 Test Runs에서 검증 bundle을 만드세요."
             primaryLabel="Test Runs로 이동"
             onPrimary={() => history.push('/test-runs')}
             disabled={!catalogEditable}
@@ -357,8 +352,15 @@ export default function IntentsPage() {
         <AdminSessionRequired />
       )}
       <Drawer
-        title={selected?.intent_id}
-        width={620}
+        title={
+          selected ? (
+            <Space size={8}>
+              <span className="text-mono">{selected.intent_id}</span>
+              <StatusTag status={selected.status} />
+            </Space>
+          ) : undefined
+        }
+        width={560}
         open={Boolean(selected)}
         onClose={closeDetailDrawer}
         extra={
@@ -368,63 +370,96 @@ export default function IntentsPage() {
         }
       >
         {selected ? (
-          <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <Descriptions bordered size="small" column={1}>
-              <Descriptions.Item label="Display name">{selected.display_name}</Descriptions.Item>
-              <Descriptions.Item label="Domain">{selected.domain}</Descriptions.Item>
-              <Descriptions.Item label="Description">{selected.description}</Descriptions.Item>
-              <Descriptions.Item label="Route">
-                <Tag>{selected.route_key}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="Status">
-                <Tag color={statusColor[selected.status] ?? 'default'}>{selected.status}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="Created">{selected.created_at ?? 'none'}</Descriptions.Item>
-              <Descriptions.Item label="Updated">{selected.updated_at ?? 'none'}</Descriptions.Item>
-            </Descriptions>
-            <Space wrap>
-              {selected.include_keywords.map((keyword) => (
-                <Tag color="green" key={`include:${keyword}`}>
-                  + {keyword}
-                </Tag>
-              ))}
-              {selected.exclude_keywords.map((keyword) => (
-                <Tag color="default" key={`exclude:${keyword}`}>
-                  - {keyword}
-                </Tag>
-              ))}
-            </Space>
-            <Space align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
+          <Space direction="vertical" size={20} style={{ width: '100%' }}>
+            <section className="intent-detail-section">
               <Typography.Title level={5} style={{ margin: 0 }}>
-                Examples
+                기본 정보
               </Typography.Title>
-              {catalogEditable ? (
-                <Button type="primary" onClick={openExampleDrawer}>
-                  Example 추가
-                </Button>
-              ) : null}
-            </Space>
-            <Alert
-              type="info"
-              showIcon
-              message="Example은 사용자가 실제로 입력할 법한 예시 문장입니다."
-              description="현재 백엔드는 Example 추가와 승인만 제공합니다. 편집/삭제/반려는 Phase 2 항목입니다."
-            />
-            <Table<API.Example>
-              rowKey="example_id"
-              size="small"
-              loading={examplesLoading}
-              dataSource={examples}
-              columns={exampleColumns}
-              pagination={false}
-              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-            />
+              <Descriptions bordered size="small" column={1}>
+                <Descriptions.Item label="Display name">{selected.display_name}</Descriptions.Item>
+                <Descriptions.Item label="Domain">{selected.domain}</Descriptions.Item>
+                <Descriptions.Item label="Description">{selected.description}</Descriptions.Item>
+                <Descriptions.Item label="Route key">
+                  <Typography.Text copyable className="text-mono">
+                    {selected.route_key}
+                  </Typography.Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Status">
+                  <StatusTag status={selected.status} />
+                </Descriptions.Item>
+                <Descriptions.Item label="Created">{selected.created_at ?? '없음'}</Descriptions.Item>
+                <Descriptions.Item label="Updated">{selected.updated_at ?? '없음'}</Descriptions.Item>
+              </Descriptions>
+            </section>
+
+            <section className="intent-detail-section">
+              <Typography.Title level={5} style={{ margin: 0 }}>
+                키워드
+              </Typography.Title>
+              <div className="intent-keyword-groups">
+                <div className="intent-keyword-group">
+                  <Typography.Text strong>포함 키워드</Typography.Text>
+                  {selected.include_keywords.length ? (
+                    <Space wrap>
+                      {selected.include_keywords.map((keyword) => (
+                        <Tag color="green" key={`include:${keyword}`}>
+                          + {keyword}
+                        </Tag>
+                      ))}
+                    </Space>
+                  ) : (
+                    <Typography.Text type="secondary">없음</Typography.Text>
+                  )}
+                </div>
+                <div className="intent-keyword-group">
+                  <Typography.Text strong>제외 키워드</Typography.Text>
+                  {selected.exclude_keywords.length ? (
+                    <Space wrap>
+                      {selected.exclude_keywords.map((keyword) => (
+                        <Tag key={`exclude:${keyword}`}>- {keyword}</Tag>
+                      ))}
+                    </Space>
+                  ) : (
+                    <Typography.Text type="secondary">없음</Typography.Text>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="intent-detail-section">
+              <Space align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
+                <Typography.Title level={5} style={{ margin: 0 }}>
+                  Examples
+                </Typography.Title>
+                {catalogEditable ? (
+                  <Button type="primary" onClick={openExampleDrawer}>
+                    Example 추가
+                  </Button>
+                ) : null}
+              </Space>
+              <Alert
+                type="info"
+                showIcon
+                message="Example은 사용자가 실제로 입력할 법한 예시 문장입니다."
+                description="현재 백엔드는 Example 추가와 승인만 제공합니다. 편집/삭제/반려는 Phase 2 항목입니다."
+              />
+              <Table<API.Example>
+                rowKey="example_id"
+                size="small"
+                loading={examplesLoading}
+                dataSource={examples}
+                columns={exampleColumns}
+                pagination={false}
+                scroll={{ x: 560 }}
+                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+              />
+            </section>
           </Space>
         ) : null}
       </Drawer>
       <Drawer
         title={intentFormMode === 'create' ? 'Intent 추가' : 'Intent 편집'}
-        width={520}
+        width={560}
         open={intentDrawerOpen}
         onClose={closeIntentDrawer}
         destroyOnClose
@@ -517,7 +552,7 @@ export default function IntentsPage() {
       </Drawer>
       <Drawer
         title={selected ? `${selected.intent_id} Example 추가` : 'Example 추가'}
-        width={520}
+        width={560}
         open={exampleDrawerOpen}
         onClose={closeExampleDrawer}
         destroyOnClose
