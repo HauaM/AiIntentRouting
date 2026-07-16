@@ -11,7 +11,7 @@ const servicesIndexSource = () =>
 describe('Services membership panel contract', () => {
   it('replaces the C-2 future notice with the real selected-Service panel', () => {
     const source = readSource('index.tsx');
-    const selectedServiceIndex = source.indexOf('<Card title="Selected Service">');
+    const selectedServiceIndex = source.indexOf('<Card title="선택한 Service">');
     const membershipPanelIndex = source.indexOf('<ServiceMembershipPanel');
 
     expect(source).toContain("import { ServiceMembershipPanel } from './ServiceMembershipPanel'");
@@ -41,7 +41,10 @@ describe('Services membership panel contract', () => {
     const source = readSource('ServiceMembershipPanel.tsx');
     const grantIndex = source.indexOf('await grantServiceRole(');
     const grantCurrentCheckIndex = source.indexOf('if (!isCurrentRequest()) return;', grantIndex);
-    const grantSuccessIndex = source.indexOf("message.success('Service role granted.');", grantCurrentCheckIndex);
+    const grantSuccessIndex = source.indexOf(
+      "message.success('Service 역할을 부여했습니다.');",
+      grantCurrentCheckIndex,
+    );
     const grantClearIndex = source.indexOf('setSelectedUserId(undefined);', grantSuccessIndex);
     const grantReloadIndex = source.indexOf('await loadMembers(expectedServiceId);', grantIndex);
     const grantRefreshIndex = source.indexOf('await onMembershipChanged();', grantReloadIndex);
@@ -65,7 +68,7 @@ describe('Services membership panel contract', () => {
     const grantArea = source.match(/<Space wrap align="end"[\s\S]*?<\/Space>/)?.[0];
 
     expect(grantArea).toContain('<ConfirmActionButton');
-    expect(grantArea).toContain('title="Grant service role?"');
+    expect(grantArea).toContain('title="Service 역할을 부여할까요?"');
     expect(grantArea).toContain('onConfirm={handleGrant}');
     expect(grantArea).not.toContain('onClick={handleGrant}');
   });
@@ -84,5 +87,22 @@ describe('Services membership panel contract', () => {
     expect(source).toContain('scroll={{');
     expect(source).toContain('pagination={false}');
     expect(source).toContain('tableLayout="fixed"');
+  });
+
+  it('localizes the selected-Service membership controls', () => {
+    const source = readSource('ServiceMembershipPanel.tsx');
+
+    expect(source).toContain('<Card title="Service 멤버십">');
+    expect(source).toContain('<Typography.Text>사용자</Typography.Text>');
+    expect(source).toContain('<Typography.Text>역할</Typography.Text>');
+    expect(source).toContain('placeholder="관리자 계정 검색"');
+    expect(source).toContain('멤버가 없습니다.');
+  });
+
+  it('does not reserve a fixed vertical viewport for an empty member list', () => {
+    const source = readSource('ServiceMembershipPanel.tsx');
+
+    expect(source).toContain('scroll={{ x: 760 }}');
+    expect(source).not.toContain('scroll={{ x: 760, y: 320 }}');
   });
 });
