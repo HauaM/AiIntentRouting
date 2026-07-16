@@ -181,8 +181,7 @@ export default function ServicesPage() {
   };
 
   return (
-    <AdminShell title="Services">
-      {notificationContextHolder}
+    <AdminShell title="Services" notificationHolder={notificationContextHolder}>
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
         {ready ? (
           <>
