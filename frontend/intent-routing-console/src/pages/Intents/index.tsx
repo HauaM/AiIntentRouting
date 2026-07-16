@@ -427,7 +427,7 @@ export default function IntentsPage() {
             </section>
 
             <section className="intent-detail-section">
-              <Space align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
+              <div className="intent-detail-examples-header">
                 <Typography.Title level={5} style={{ margin: 0 }}>
                   Examples
                 </Typography.Title>
@@ -436,7 +436,7 @@ export default function IntentsPage() {
                     Example 추가
                   </Button>
                 ) : null}
-              </Space>
+              </div>
               <Alert
                 type="info"
                 showIcon
@@ -450,7 +450,7 @@ export default function IntentsPage() {
                 dataSource={examples}
                 columns={exampleColumns}
                 pagination={false}
-                scroll={{ x: 560 }}
+                scroll={{ x: true }}
                 locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
               />
             </section>
