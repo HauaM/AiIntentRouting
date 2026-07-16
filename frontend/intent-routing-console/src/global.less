@@ -214,6 +214,37 @@ body {
   max-width: 100%;
 }
 
+.intent-catalog-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.intent-catalog-search {
+  width: 328px;
+}
+
+.intent-catalog-status-filter {
+  width: 160px;
+}
+
+.intent-detail-section {
+  display: grid;
+  gap: 8px;
+}
+
+.intent-keyword-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.intent-keyword-group {
+  display: grid;
+  gap: 6px;
+}
+
 .admin-status-tag {
   align-items: center;
   display: inline-flex;
@@ -269,6 +300,11 @@ body {
 
   .services-create-grid .ant-form-item:nth-child(n) {
     grid-column: span 1;
+  }
+
+  .intent-catalog-search,
+  .intent-catalog-status-filter {
+    width: 100%;
   }
 
   .permission-service-role-grant {
