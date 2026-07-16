@@ -202,9 +202,37 @@ export default function AdminAccessRequestPage() {
                   <Input.Password autoComplete="new-password" />
                 </Form.Item>
                 <Form.Item
+                  label="비밀번호 확인"
+                  name="password_confirm"
+                  dependencies={['password']}
+                  rules={[
+                    { required: true, message: '비밀번호를 다시 입력해 주세요.' },
+                    ({ getFieldValue }) => ({
+                      validator(_, value) {
+                        if (!value || getFieldValue('password') === value) {
+                          return Promise.resolve();
+                        }
+                        return Promise.reject(new Error('비밀번호가 일치하지 않습니다.'));
+                      },
+                    }),
+                  ]}
+                >
+                  <Input.Password autoComplete="new-password" />
+                </Form.Item>
+                <Form.Item
                   label="접근 사유"
                   name="access_reason"
-                  rules={[{ required: true, message: '접근 사유를 입력해 주세요.' }]}
+                  rules={[
+                    { required: true, message: '접근 사유를 입력해 주세요.' },
+                    {
+                      validator: (_, value) =>
+                        !value || value.trim().length >= 10
+                          ? Promise.resolve()
+                          : Promise.reject(
+                              new Error('접근 사유는 10자 이상 입력해 주세요.'),
+                            ),
+                    },
+                  ]}
                 >
                   <Input.TextArea rows={4} showCount maxLength={500} />
                 </Form.Item>

@@ -4,6 +4,7 @@ export type AdminAccessRequestFormValues = {
   department_id: string;
   email: string;
   password: string;
+  password_confirm: string;
   access_reason: string;
 };
 

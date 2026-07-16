@@ -31,6 +31,7 @@ describe('admin access request form helpers', () => {
         department_id: ' dept-001 ',
         email: ' Admin.User@Example.com ',
         password: 'secret-passphrase',
+        password_confirm: 'secret-passphrase',
         access_reason: ' Need Admin UI access for onboarding ',
       }),
     ).toEqual({
@@ -63,5 +64,14 @@ describe('admin access request form helpers', () => {
     expect(source).toContain('Alert');
     expect(source).not.toContain("validateStatus={error ? 'error' : undefined}");
     expect(source).not.toContain('help={error}');
+  });
+
+  it('requires matching password confirmation and a trimmed ten-character reason', () => {
+    const source = requestPageSource();
+
+    expect(source).toContain('name="password_confirm"');
+    expect(source).toContain("dependencies={['password']}");
+    expect(source).toContain("getFieldValue('password')");
+    expect(source).toContain('value.trim().length >= 10');
   });
 });
