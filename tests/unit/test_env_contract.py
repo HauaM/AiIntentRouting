@@ -3,6 +3,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from pytest import MonkeyPatch
+
+from intent_routing.db.session import get_database_url
+
 ROOT = Path(__file__).resolve().parents[2]
 
 EXPECTED_LOCAL_ENV = {
@@ -50,6 +54,17 @@ def test_env_example_uses_runtime_local_defaults() -> None:
     assert "# ADMIN_SYSTEM_ADMIN_DISPLAY_NAME=Local Admin" in text
     assert "ADMIN_SYSTEM_ADMIN_EMAIL" not in values
     assert "ADMIN_SYSTEM_ADMIN_PASSWORD" not in values
+
+
+def test_database_url_fallback_matches_local_compose_port(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    assert (
+        get_database_url()
+        == "postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing"
+    )
 
 
 def test_closed_network_env_uses_secret_placeholders_without_live_key_material() -> None:
