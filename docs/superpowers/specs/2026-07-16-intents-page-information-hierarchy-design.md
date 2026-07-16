@@ -1,7 +1,7 @@
 # Intents Page Information Hierarchy Design
 
-**Date:** 2026-07-16  
-**Status:** Approved direction — implementation specification  
+**Date:** 2026-07-16
+**Status:** Approved direction — implementation specification
 **Target:** `frontend/intent-routing-console` route `/intents`
 
 ## Context
