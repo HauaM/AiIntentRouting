@@ -5,7 +5,7 @@ from os import environ
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-DEFAULT_DATABASE_URL = "postgresql+psycopg://intent:intent@127.0.0.1:5432/intent_routing"
+DEFAULT_DATABASE_URL = "postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing"
 
 
 def get_database_url() -> str:
