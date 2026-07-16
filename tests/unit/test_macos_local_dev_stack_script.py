@@ -1,6 +1,9 @@
+import shutil
 import stat
 import subprocess
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/run_local_dev_stack_macos.sh"
@@ -13,8 +16,15 @@ def script_text() -> str:
 def test_macos_script_is_executable_zsh() -> None:
     assert SCRIPT.stat().st_mode & stat.S_IXUSR
     assert script_text().startswith("#!/usr/bin/env zsh\n")
+
+
+def test_macos_script_has_valid_zsh_syntax() -> None:
+    zsh = shutil.which("zsh")
+    if zsh is None:
+        pytest.skip("zsh is unavailable on this CI runner")
+
     result = subprocess.run(
-        ["zsh", "-n", str(SCRIPT)],
+        [zsh, "-n", str(SCRIPT)],
         cwd=ROOT,
         check=False,
         capture_output=True,
