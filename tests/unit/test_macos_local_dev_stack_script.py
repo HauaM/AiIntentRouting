@@ -44,3 +44,15 @@ def test_macos_script_runtime_contract() -> None:
         'stop_port_listeners "${FRONTEND_PORT}" "frontend"',
     ):
         assert fragment in text
+
+
+def test_macos_script_colors_service_logs_and_honors_no_color() -> None:
+    text = script_text()
+    assert "BACKEND_COLOR=$'\\033[36m'" in text
+    assert "FRONTEND_COLOR=$'\\033[35m'" in text
+    assert "RESET_COLOR=$'\\033[0m'" in text
+    assert '[[ -t 1 && -z "${NO_COLOR:-}" ]]' in text
+    assert 'prefix_logs backend "${BACKEND_COLOR}"' in text
+    assert 'prefix_logs frontend "${FRONTEND_COLOR}"' in text
+    assert '>"${backend_log}" 2>&1 &' in text
+    assert '>"${frontend_log}" 2>&1 &' in text

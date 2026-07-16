@@ -12,6 +12,9 @@ typeset BACKEND_PID="" FRONTEND_PID="" BACKEND_TAIL_PID="" FRONTEND_TAIL_PID=""
 typeset ADMIN_SYSTEM_ADMIN_EMAIL_WAS_SET=0
 typeset ADMIN_SYSTEM_ADMIN_PASSWORD_WAS_SET=0
 typeset ADMIN_SYSTEM_ADMIN_DISPLAY_NAME_WAS_SET=0
+BACKEND_COLOR=$'\033[36m'
+FRONTEND_COLOR=$'\033[35m'
+RESET_COLOR=$'\033[0m'
 
 for key in DATABASE_URL APP_ENV INTENT_ROUTING_ENVIRONMENT ADMIN_AUTH_MODE \
   ADMIN_BOOTSTRAP_TOKEN ADMIN_SYSTEM_ADMIN_EMAIL ADMIN_SYSTEM_ADMIN_PASSWORD \
@@ -34,7 +37,12 @@ log() {
 
 prefix_logs() {
   local label="$1"
-  awk -v prefix="[${label}] " '{ print prefix $0; fflush(); }'
+  local color="$2"
+  if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+    awk -v prefix="${color}[${label}] ${RESET_COLOR}" '{ print prefix $0; fflush(); }'
+  else
+    awk -v prefix="[${label}] " '{ print prefix $0; fflush(); }'
+  fi
 }
 
 fail() {
@@ -274,12 +282,13 @@ seed_local_admin_service() {
       --service-id "${ADMIN_UI_SERVICE_ID}" \
       --environment "${INTENT_ROUTING_ENVIRONMENT}" \
       --state-path "${state_path}"
-  ) 2>&1 | prefix_logs backend
+  ) 2>&1 | prefix_logs backend "${BACKEND_COLOR}"
 }
 
 run_migrations() {
   log "Running database migrations"
-  (cd "${ROOT_DIR}" && uv run alembic upgrade head) 2>&1 | prefix_logs backend
+  (cd "${ROOT_DIR}" && uv run alembic upgrade head) 2>&1 | \
+    prefix_logs backend "${BACKEND_COLOR}"
 }
 
 current_system_admin_email() {
@@ -337,7 +346,8 @@ start_backend() {
   ) >"${backend_log}" 2>&1 &
   BACKEND_PID="$!"
 
-  tail -n +1 -F "${backend_log}" 2>/dev/null | prefix_logs backend &
+  tail -n +1 -F "${backend_log}" 2>/dev/null | \
+    prefix_logs backend "${BACKEND_COLOR}" &
   BACKEND_TAIL_PID="$!"
   wait_for_url "backend" "http://${HOST}:${BACKEND_PORT}/healthz" "${BACKEND_PID}"
 }
@@ -358,7 +368,8 @@ start_frontend() {
   ) >"${frontend_log}" 2>&1 &
   FRONTEND_PID="$!"
 
-  tail -n +1 -F "${frontend_log}" 2>/dev/null | prefix_logs frontend &
+  tail -n +1 -F "${frontend_log}" 2>/dev/null | \
+    prefix_logs frontend "${FRONTEND_COLOR}" &
   FRONTEND_TAIL_PID="$!"
 }
 
