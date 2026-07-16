@@ -70,6 +70,7 @@ const adminUiTheme = {
 
 type AdminShellProps = PropsWithChildren<{
   title: string;
+  notificationHolder?: ReactNode;
 }>;
 
 const routeIcons: Record<AdminShellRouteIcon, ReactNode> = {
@@ -85,7 +86,7 @@ const routeIcons: Record<AdminShellRouteIcon, ReactNode> = {
   auditLogs: <AuditOutlined />,
 };
 
-export function AdminShell({ title, children }: AdminShellProps) {
+export function AdminShell({ title, children, notificationHolder }: AdminShellProps) {
   const location = useLocation();
   const {
     session,
@@ -106,6 +107,7 @@ export function AdminShell({ title, children }: AdminShellProps) {
 
   return (
     <ConfigProvider locale={koKR} theme={adminUiTheme}>
+      {notificationHolder}
       <ProLayout
         title="Intent Routing"
         layout="mix"

@@ -85,4 +85,13 @@ describe('Services page presentation contract', () => {
     expect(createHandlerSource).toContain('setCreatedServiceNotification(created);');
     expect(createHandlerSource).not.toContain('notificationApi.success({');
   });
+
+  it('mounts the notification holder through the persistent AdminShell slot', () => {
+    const source = pageSource();
+
+    expect(source).toContain(
+      '<AdminShell title="Services" notificationHolder={notificationContextHolder}>',
+    );
+    expect(source).not.toContain('\n      {notificationContextHolder}\n');
+  });
 });
