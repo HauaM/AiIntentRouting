@@ -23,4 +23,16 @@ describe('Intents page contract', () => {
     expect(text).not.toContain('scroll={{ x: 560 }}');
     expect(text).not.toContain('width={620}');
   });
+
+  it('supports multiline positive and negative example entry', () => {
+    const text = source();
+
+    expect(text).toContain("positive_text_raw");
+    expect(text).toContain("negative_text_raw");
+    expect(text).toContain("buildExampleCreateRequests(values)");
+    expect(text).toContain("Promise.all(");
+    expect(text).toContain("positiveCount");
+    expect(text).toContain("negativeCount");
+    expect(text).not.toContain('name="example_type"');
+  });
 });

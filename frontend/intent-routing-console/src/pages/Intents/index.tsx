@@ -46,8 +46,8 @@ type IntentFormValues = {
 };
 
 type ExampleFormValues = {
-  example_type: 'positive' | 'negative';
-  text_raw: string;
+  positive_text_raw?: string;
+  negative_text_raw?: string;
   source: string;
   test_case_id?: string;
 };
@@ -56,11 +56,6 @@ const statusOptions = [
   { label: 'Draft', value: 'draft' },
   { label: 'Active', value: 'active' },
   { label: 'Deprecated', value: 'deprecated' },
-];
-
-const exampleTypeOptions = [
-  { label: 'Positive', value: 'positive' },
-  { label: 'Negative', value: 'negative' },
 ];
 
 const routeKeyPattern = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){2,3}$/;
@@ -74,8 +69,8 @@ const intentHelp = {
   routeKey: '다운스트림 시스템으로 넘길 라우팅 키입니다. 점(.)으로 구분된 3~4개 소문자 segment를 사용합니다. 예: it.password_reset.self_service',
   includeKeywords: '이 Intent 판단에 도움이 되는 단어를 입력합니다. 쉼표로 여러 개를 추가할 수 있습니다.',
   excludeKeywords: '이 Intent가 아니라고 판단할 때 도움이 되는 단어를 입력합니다.',
-  exampleType: 'Positive는 해당 Intent에 맞는 문장, Negative는 해당 Intent로 분류되면 안 되는 문장입니다.',
-  rawText: '사용자가 실제로 입력할 법한 문장을 넣습니다. 저장 후 화면에는 마스킹된 텍스트가 표시됩니다.',
+  positiveExamples: '이 Intent에 해당하는 문장을 한 줄에 하나씩 입력합니다.',
+  negativeExamples: '이 Intent로 분류되면 안 되는 헷갈리는 문장을 한 줄에 하나씩 입력합니다.',
   source: '이 예시가 어디서 왔는지 남기는 값입니다. 예: admin_ui, ticket_sample, qa_seed',
   testCaseId: '선택 항목입니다. 별도 테스트 케이스와 연결할 때만 입력합니다.',
 };
@@ -90,6 +85,35 @@ const normalizeTags = (values?: string[]) =>
 const trimOptional = (value?: string) => {
   const trimmed = value?.trim();
   return trimmed || null;
+};
+
+const splitExampleLines = (value?: string) =>
+  (value ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+const buildExampleCreateRequests = (values: ExampleFormValues): API.ExampleCreateRequest[] => {
+  const source = values.source.trim();
+  const test_case_id = trimOptional(values.test_case_id);
+  const toRequest = (
+    example_type: API.ExampleCreateRequest['example_type'],
+    text_raw: string,
+  ): API.ExampleCreateRequest => ({
+    example_type,
+    text_raw,
+    source,
+    test_case_id,
+  });
+
+  return [
+    ...splitExampleLines(values.positive_text_raw).map((text) =>
+      toRequest('positive', text),
+    ),
+    ...splitExampleLines(values.negative_text_raw).map((text) =>
+      toRequest('negative', text),
+    ),
+  ];
 };
 
 const validateRouteKey = (_: unknown, value?: string) => {
@@ -238,7 +262,11 @@ export default function IntentsPage() {
 
   const openExampleDrawer = () => {
     exampleForm.resetFields();
-    exampleForm.setFieldsValue({ example_type: 'positive', source: 'admin_ui' });
+    exampleForm.setFieldsValue({
+      positive_text_raw: '',
+      negative_text_raw: '',
+      source: 'admin_ui',
+    });
     setExampleDrawerOpen(true);
   };
 
@@ -256,16 +284,25 @@ export default function IntentsPage() {
     if (!selected) return;
     const serviceId = session.serviceId;
     const intentId = selected.intent_id;
+    const requests = buildExampleCreateRequests(values);
+    if (!requests.length) {
+      message.warning('Positive 또는 Negative example을 한 줄 이상 입력하세요.');
+      return;
+    }
+
+    const positiveCount = requests.filter(
+      (request) => request.example_type === 'positive',
+    ).length;
+    const negativeCount = requests.length - positiveCount;
     setExampleSaving(true);
     try {
-      await createExample(serviceId, intentId, {
-        example_type: values.example_type,
-        text_raw: values.text_raw.trim(),
-        source: values.source.trim(),
-        test_case_id: trimOptional(values.test_case_id),
-      });
+      await Promise.all(
+        requests.map((request) => createExample(serviceId, intentId, request)),
+      );
       if (serviceIdRef.current !== serviceId) return;
-      message.success('Example이 추가되었습니다.');
+      message.success(
+        `Example ${requests.length}건이 추가되었습니다. Positive ${positiveCount}건, Negative ${negativeCount}건`,
+      );
       closeExampleDrawer();
       await loadSelectedExamples(intentId);
     } finally {
@@ -573,18 +610,22 @@ export default function IntentsPage() {
           onFinish={handleExampleSubmit}
         >
           <Form.Item
-            label={helpLabel('Type', intentHelp.exampleType)}
-            name="example_type"
-            rules={[{ required: true, message: 'Type을 선택하세요.' }]}
+            label={helpLabel('Positive examples', intentHelp.positiveExamples)}
+            name="positive_text_raw"
           >
-            <Select options={exampleTypeOptions} />
+            <Input.TextArea
+              rows={6}
+              placeholder={'비밀번호를 재설정하고 싶어요\n로그인이 안 돼서 비밀번호 초기화가 필요합니다'}
+            />
           </Form.Item>
           <Form.Item
-            label={helpLabel('Raw text', intentHelp.rawText)}
-            name="text_raw"
-            rules={[{ required: true, whitespace: true, message: 'Example 문장을 입력하세요.' }]}
+            label={helpLabel('Negative examples', intentHelp.negativeExamples)}
+            name="negative_text_raw"
           >
-            <Input.TextArea rows={4} />
+            <Input.TextArea
+              rows={6}
+              placeholder={'비밀번호 정책을 바꾸고 싶어요\n계정 잠금 해제 절차를 알려주세요'}
+            />
           </Form.Item>
           <Form.Item
             label={helpLabel('Source', intentHelp.source)}
