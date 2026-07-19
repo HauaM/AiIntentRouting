@@ -267,6 +267,15 @@ export async function patchIntent(
   );
 }
 
+export async function deleteIntent(serviceId: string, intentId: string) {
+  return request<void>(
+    servicePath(serviceId, `/intents/${encodeURIComponent(intentId)}`),
+    {
+      method: 'DELETE',
+    },
+  );
+}
+
 export async function listExamples(serviceId: string, intentId: string) {
   return request<API.Example[]>(
     servicePath(serviceId, `/intents/${encodeURIComponent(intentId)}/examples`),
@@ -284,6 +293,29 @@ export async function createExample(
     {
       method: 'POST',
       data: payload,
+    },
+  );
+}
+
+export async function patchExample(
+  serviceId: string,
+  exampleId: string,
+  payload: API.ExamplePatchRequest,
+) {
+  return request<API.Example>(
+    servicePath(serviceId, `/examples/${encodeURIComponent(exampleId)}`),
+    {
+      method: 'PATCH',
+      data: payload,
+    },
+  );
+}
+
+export async function deleteExample(serviceId: string, exampleId: string) {
+  return request<void>(
+    servicePath(serviceId, `/examples/${encodeURIComponent(exampleId)}`),
+    {
+      method: 'DELETE',
     },
   );
 }

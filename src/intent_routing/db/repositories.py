@@ -1680,6 +1680,10 @@ class IntentRoutingRepository:
         self.session.flush()
         return intent
 
+    def delete_intent(self, intent: models.Intent) -> None:
+        self.session.delete(intent)
+        self.session.flush()
+
     def create_example(self, **values: Any) -> models.IntentExample:
         return self._add_and_flush(models.IntentExample(**values))
 
@@ -1730,6 +1734,20 @@ class IntentRoutingRepository:
             example.embedding = embedding
         self.session.flush()
         return example
+
+    def update_example(
+        self,
+        example: models.IntentExample,
+        **values: Any,
+    ) -> models.IntentExample:
+        for key, value in values.items():
+            setattr(example, key, value)
+        self.session.flush()
+        return example
+
+    def delete_example(self, example: models.IntentExample) -> None:
+        self.session.delete(example)
+        self.session.flush()
 
     def search_approved_examples_by_embedding(
         self,

@@ -99,8 +99,8 @@ No dangerous writes in Phase 0.
 
 Only connect currently supported API writes:
 
-- Intent create/update.
-- Example create/approve.
+- Intent create/update/delete.
+- Example create/update/delete/approve.
 - Policy/catalog version create.
 - Test run create/results.
 - Release create/activate/rollback.
@@ -154,7 +154,10 @@ Keep using `FutureFeatureNotice` for unsupported capabilities:
 - Runtime metrics: `window_hours`.
 - Runtime logs: `limit`.
 - Runtime log masked field: `query_masked`.
+- Intent delete: `DELETE /services/{sid}/intents/{intent_id}`.
+- Example update: `PATCH /services/{sid}/examples/{example_id}`.
 - Example approve: `PATCH /services/{sid}/examples/{example_id}:approve`.
+- Example delete: `DELETE /services/{sid}/examples/{example_id}`.
 - Release activate/rollback: `POST ...:activate`, `POST ...:rollback`.
 - Release diff: `GET /services/{sid}/releases/{release_version}/diff`.
 - Release approval workflow: `POST /services/{sid}/publish-requests`,

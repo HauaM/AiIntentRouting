@@ -33,6 +33,22 @@ describe('Intents page contract', () => {
     expect(text).toContain("Promise.all(");
     expect(text).toContain("positiveCount");
     expect(text).toContain("negativeCount");
-    expect(text).not.toContain('name="example_type"');
+    expect(text).toContain("exampleFormMode === 'create'");
+    expect(text).toContain("exampleFormMode === 'edit'");
+  });
+
+  it('supports intent delete and example edit/delete actions', () => {
+    const text = source();
+
+    expect(text).toContain('deleteIntent');
+    expect(text).toContain('deleteExample');
+    expect(text).toContain('patchExample');
+    expect(text).toContain('openEditExample');
+    expect(text).toContain('handleDeleteIntent');
+    expect(text).toContain('Example 편집');
+    expect(text).toContain('삭제');
+    expect(text).toContain('수정/삭제 시 승인된 Example의 embedding도 함께 갱신 또는 제거됩니다.');
+    expect(text).not.toContain('현재 백엔드는 Example 추가와 승인만 제공합니다.');
+    expect(text).not.toContain('편집/삭제/반려는 Phase 2 항목입니다.');
   });
 });

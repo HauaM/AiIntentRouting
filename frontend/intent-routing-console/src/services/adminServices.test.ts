@@ -39,7 +39,10 @@ import {
   listServiceMembers,
   listServiceApiKeys,
   listTestRuns,
+  deleteExample,
+  deleteIntent,
   patchIntent,
+  patchExample,
   patchManagedAdminUser,
   patchDepartment,
   patchOrganizationUser,
@@ -145,6 +148,38 @@ describe('admin service Phase 1 write flow requests', () => {
     expect(requestMock).toHaveBeenCalledWith(
       '/services/svc%2Fadmin/examples/example%2Fa:approve',
       { method: 'PATCH' },
+    );
+  });
+
+  it('patches examples and deletes embedded catalog rows with encoded ids', async () => {
+    const payload: API.ExamplePatchRequest = {
+      example_type: 'negative',
+      text_raw: 'Password reset needed',
+      source: 'admin-edit',
+      test_case_id: null,
+    };
+
+    await patchExample('svc/admin', 'example/a', payload);
+    await deleteExample('svc/admin', 'example/a');
+    await deleteIntent('svc/admin', 'intent/a');
+
+    expect(requestMock).toHaveBeenNthCalledWith(
+      1,
+      '/services/svc%2Fadmin/examples/example%2Fa',
+      {
+        method: 'PATCH',
+        data: payload,
+      },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      2,
+      '/services/svc%2Fadmin/examples/example%2Fa',
+      { method: 'DELETE' },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      3,
+      '/services/svc%2Fadmin/intents/intent%2Fa',
+      { method: 'DELETE' },
     );
   });
 

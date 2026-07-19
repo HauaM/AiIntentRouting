@@ -369,6 +369,13 @@ declare namespace API {
     test_case_id?: string | null;
   };
 
+  type ExamplePatchRequest = {
+    example_type?: 'positive' | 'negative';
+    text_raw?: string;
+    source?: string;
+    test_case_id?: string | null;
+  };
+
   type Example = {
     example_id: string;
     service_id: string;
