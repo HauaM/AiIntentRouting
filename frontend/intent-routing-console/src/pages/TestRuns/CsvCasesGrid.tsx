@@ -52,7 +52,7 @@ const columns: ColumnsType<CsvCaseDraft> = [
     render: (value: string, row) =>
       expectedIntentRequired.has(row.case_type) ? (
         <Tooltip title={value}>
-          <Typography.Text ellipsis>{value}</Typography.Text>
+          <Typography.Text code ellipsis>{value}</Typography.Text>
         </Tooltip>
       ) : (
         <Typography.Text type="secondary">없음</Typography.Text>

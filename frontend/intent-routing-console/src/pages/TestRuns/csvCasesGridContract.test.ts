@@ -35,4 +35,10 @@ describe('CsvCasesGrid contract', () => {
     expect((grid.match(/<Tooltip/g) ?? []).length).toBeGreaterThanOrEqual(4);
     expect((grid.match(/<Typography\.Text[^>]*ellipsis/g) ?? []).length).toBeGreaterThanOrEqual(4);
   });
+
+  it('renders expected intent identifiers as code', () => {
+    const grid = read('CsvCasesGrid.tsx');
+
+    expect(grid).toContain('<Typography.Text code ellipsis>{value}</Typography.Text>');
+  });
 });

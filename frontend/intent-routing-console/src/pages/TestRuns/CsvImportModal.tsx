@@ -82,7 +82,11 @@ export function CsvImportModal({
     >
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
         <Typography.Text type="secondary">
-          헤더는 반드시 case_id, query, expected_intent, case_type, memo 순서여야 합니다.
+          헤더는 반드시 <Typography.Text code>case_id</Typography.Text>,{' '}
+          <Typography.Text code>query</Typography.Text>,{' '}
+          <Typography.Text code>expected_intent</Typography.Text>,{' '}
+          <Typography.Text code>case_type</Typography.Text>,{' '}
+          <Typography.Text code>memo</Typography.Text> 순서여야 합니다.
         </Typography.Text>
         {validationErrors.length ? (
           <Alert

@@ -26,4 +26,12 @@ describe('CsvImportModal contract', () => {
     expect(modal).toContain('validationErrors.map');
     expect(modal).toContain('저장');
   });
+
+  it('formats the displayed CSV header identifiers as code', () => {
+    const modal = read('CsvImportModal.tsx');
+
+    expect(modal).toContain('<Typography.Text code>case_id</Typography.Text>');
+    expect(modal).toContain('<Typography.Text code>expected_intent</Typography.Text>');
+    expect(modal).toContain('<Typography.Text code>case_type</Typography.Text>');
+  });
 });
