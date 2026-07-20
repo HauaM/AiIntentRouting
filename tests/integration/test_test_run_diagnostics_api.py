@@ -109,7 +109,9 @@ def test_repository_returns_catalog_version_diagnostic_stats(db_session: Session
         created_by="test",
         created_at=now,
     )
-    db_session.add_all([service, catalog])
+    db_session.add(service)
+    db_session.flush()
+    db_session.add(catalog)
     db_session.flush()
 
     vector_index = models.VectorIndexVersion(
@@ -272,7 +274,11 @@ def test_repository_distinguishes_stale_selected_vector_index(
         status="ready",
         created_at=now,
     )
-    db_session.add_all([service, catalog, selected_index, ready_index])
+    db_session.add(service)
+    db_session.flush()
+    db_session.add(catalog)
+    db_session.flush()
+    db_session.add_all([selected_index, ready_index])
     db_session.commit()
 
     stats = IntentRoutingRepository(db_session).get_catalog_version_diagnostic_record(
@@ -435,9 +441,13 @@ def test_get_test_run_diagnostics_reports_stale_selected_vector_index(
         result="PASS",
         reason="matched expected decision and intent",
     )
-    db_session.add_all(
-        [service, policy, catalog, dataset, selected_index, ready_index, test_run, result]
-    )
+    db_session.add(service)
+    db_session.flush()
+    db_session.add_all([policy, catalog, dataset])
+    db_session.flush()
+    db_session.add_all([selected_index, ready_index])
+    db_session.flush()
+    db_session.add_all([test_run, result])
     db_session.flush()
     db_session.add(
         _catalog_embedding(
@@ -561,7 +571,13 @@ def test_get_test_run_diagnostics_reports_selected_catalog_readiness(
         result="FAIL",
         reason="actual decision did not match expected decision",
     )
-    db_session.add_all([service, policy, catalog, dataset, vector_index, test_run, result])
+    db_session.add(service)
+    db_session.flush()
+    db_session.add_all([policy, catalog, dataset])
+    db_session.flush()
+    db_session.add(vector_index)
+    db_session.flush()
+    db_session.add_all([test_run, result])
     db_session.flush()
     db_session.add(
         _catalog_embedding(
