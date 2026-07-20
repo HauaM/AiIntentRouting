@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from typing import Any
+
 from intent_routing.diagnostics.models import CatalogVersionDiagnosticStats
 from intent_routing.diagnostics.test_runs import diagnose_test_run
 from intent_routing.testing.csv_runner import CsvTestRunSummary
 
 
 def _summary(**overrides: object) -> CsvTestRunSummary:
-    values = {
+    values: dict[str, Any] = {
         "test_run_id": "tr-test",
         "test_dataset_version": "tds-test",
         "model_version": "fake-embedding-v1",
@@ -25,7 +27,7 @@ def _summary(**overrides: object) -> CsvTestRunSummary:
 
 
 def _catalog_stats(**overrides: object) -> CatalogVersionDiagnosticStats:
-    values = {
+    values: dict[str, Any] = {
         "intent_catalog_version": "cat-test",
         "display_version": "v1",
         "status": "active",
