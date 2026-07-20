@@ -44,14 +44,15 @@ def test_policy_request_rejects_invalid_threshold_contract(payload: dict[str, ob
         PolicyVersionCreateRequest.model_validate(payload)
 
 
-def test_test_run_request_rejects_independent_threshold_preset() -> None:
-    with pytest.raises(ValidationError):
-        TestRunCreateRequest.model_validate(
-            {
-                "policy_version": "pol-1",
-                "intent_catalog_version": "cat-1",
-                "threshold_preset": "exploratory",
-                "source_filename": "cases.csv",
-                "csv_text": "case_id,query,expected_intent,case_type,memo",
-            }
-        )
+def test_test_run_request_accepts_legacy_threshold_preset() -> None:
+    request = TestRunCreateRequest.model_validate(
+        {
+            "policy_version": "pol-1",
+            "intent_catalog_version": "cat-1",
+            "threshold_preset": "exploratory",
+            "source_filename": "cases.csv",
+            "csv_text": "case_id,query,expected_intent,case_type,memo",
+        }
+    )
+
+    assert request.threshold_preset == "exploratory"

@@ -815,6 +815,7 @@ class TestRunCreateRequest(BaseModel):
 
     policy_version: str = Field(min_length=1)
     intent_catalog_version: str = Field(min_length=1)
+    threshold_preset: ThresholdPreset | Literal["custom"] | None = None
     source_filename: str = Field(min_length=1)
     csv_text: str = Field(min_length=1)
 

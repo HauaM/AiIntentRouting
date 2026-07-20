@@ -152,7 +152,6 @@ def _seed_pilot_with_api(
         json={
             "policy_version": policy_version["policy_version"],
             "intent_catalog_version": catalog_version["intent_catalog_version"],
-            "threshold_preset": BALANCED_GATE_PRESET,
             "source_filename": csv_path.name,
             "csv_text": csv_path.read_text(encoding="utf-8"),
         },
