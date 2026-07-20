@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 from uuid import uuid4
 
@@ -17,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from intent_routing.api.admin import get_admin_session
 from intent_routing.db import models
-from intent_routing.db.repositories import IntentRoutingRepository
+from intent_routing.db.repositories import ExampleSearchResult, IntentRoutingRepository
 from intent_routing.embedding.fake import FakeEmbeddingProvider
 from intent_routing.main import create_app
 from intent_routing.security.encryption import EncryptedText, EnvelopeEncryptor
@@ -243,6 +244,40 @@ def _seed_csv_runner_state(
         created_by="integration-test",
         created_at=now,
     )
+    vector_index_version = f"vec-{catalog_version}-{provider.model_version}-001"
+    repository.create_vector_index_version(
+        vector_index_version=vector_index_version,
+        service_id=service_id,
+        intent_catalog_version=catalog_version,
+        model_version=provider.model_version,
+        status="ready",
+        created_at=now,
+    )
+    encrypted = encryptor.encrypt_text("API Timeout이 발생해요")
+    db_session.add(
+        models.CatalogVersionExampleEmbedding(
+            intent_catalog_version=catalog_version,
+            service_id=service_id,
+            model_version=provider.model_version,
+            vector_index_version=vector_index_version,
+            intent_id="it_api_timeout",
+            example_id=None,
+            example_type="positive",
+            text_raw_ciphertext=encrypted.ciphertext,
+            text_raw_encrypted_dek=encrypted.encrypted_dek,
+            text_raw_encrypted_dek_iv=encrypted.encrypted_dek_iv,
+            text_raw_encrypted_dek_auth_tag=encrypted.encrypted_dek_auth_tag,
+            text_raw_key_id=encrypted.key_id,
+            text_raw_iv=encrypted.iv,
+            text_raw_auth_tag=encrypted.auth_tag,
+            text_raw_algorithm=encrypted.algorithm,
+            text_masked="API Timeout이 발생해요",
+            embedding=provider.embed_texts(["API Timeout이 발생해요"], max_tokens=256)[0],
+            embedding_status="active",
+            created_at=now,
+        )
+    )
+    db_session.flush()
     return policy_version, catalog_version
 
 
@@ -1541,6 +1576,8 @@ def test_post_test_run_persists_dataset_run_and_results(
     assert body["review_rate"] == pytest.approx(0.0)
     assert body["risk_pass_rate"] == pytest.approx(1.0)
     assert body["gate_passed"] is True
+    assert body["model_version"] == "emb-fake-v1"
+    assert body["vector_index_version"] == f"vec-{catalog_version}-emb-fake-v1-001"
     assert body["block_reasons"] == []
     assert body["recommendations"] == []
 
@@ -1560,9 +1597,125 @@ def test_post_test_run_persists_dataset_run_and_results(
     assert persisted_dataset.source_filename == "sprint0_cases.csv"
     assert persisted_run is not None
     assert persisted_run.threshold_value == Decimal("0.8")
+    assert persisted_run.model_version == "emb-fake-v1"
+    assert persisted_run.vector_index_version == f"vec-{catalog_version}-emb-fake-v1-001"
     assert len(persisted_cases) == 5
     assert len(persisted_results) == 5
     assert {result.result for result in persisted_results} == {"PASS"}
+
+
+def test_post_test_run_rejects_when_current_provider_model_has_no_ready_catalog_index(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    monkeypatch.setattr(
+        "intent_routing.testing.csv_runner.get_embedding_provider",
+        lambda: SimpleNamespace(
+            model_version="emb-fake-v2",
+            dimension=1024,
+            embed_texts=lambda texts, *, max_tokens: [[1.0] + [0.0] * 1023 for _ in texts],
+        ),
+    )
+    client = _client(db_session, raise_server_exceptions=False)
+    service_id = f"svc-test-run-{uuid4().hex}"
+    policy_version, catalog_version = _seed_csv_runner_state(
+        db_session,
+        client,
+        service_id,
+    )
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/test-runs",
+        headers=_admin_headers(),
+        json={
+            "policy_version": policy_version,
+            "intent_catalog_version": catalog_version,
+            "source_filename": "sprint0_cases.csv",
+            "csv_text": _sprint0_csv_text(),
+        },
+    )
+
+    assert response.status_code == 400
+    assert "ready vector index" in response.json()["error"]["message"].casefold()
+
+
+def test_post_test_run_uses_catalog_version_and_model_scoped_semantic_search(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    client = _client(db_session)
+    service_id = f"svc-test-run-{uuid4().hex}"
+    policy_version, catalog_version = _seed_csv_runner_state(
+        db_session,
+        client,
+        service_id,
+    )
+    captured: dict[str, object] = {}
+
+    def legacy_search_should_not_be_used(
+        self: IntentRoutingRepository,
+        service_id: str,
+        query_embedding: list[float],
+        *,
+        limit: int,
+    ) -> list[object]:
+        del self, service_id, query_embedding, limit
+        raise AssertionError("CSV runner must use catalog-version scoped example search")
+
+    def capture_version_scoped_search(
+        self: IntentRoutingRepository,
+        intent_catalog_version: str,
+        model_version: str,
+        query_embedding: list[float],
+        limit: int,
+    ) -> list[ExampleSearchResult]:
+        del self, query_embedding
+        captured["intent_catalog_version"] = intent_catalog_version
+        captured["model_version"] = model_version
+        captured["limit"] = limit
+        return [
+            ExampleSearchResult(
+                example_id=uuid4(),
+                intent_id="it_api_timeout",
+                example_type="positive",
+                similarity=0.99,
+            )
+        ]
+
+    monkeypatch.setattr(
+        IntentRoutingRepository,
+        "search_approved_examples_by_embedding",
+        legacy_search_should_not_be_used,
+    )
+    monkeypatch.setattr(
+        IntentRoutingRepository,
+        "search_catalog_version_examples_by_embedding",
+        capture_version_scoped_search,
+    )
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/test-runs",
+        headers=_admin_headers(),
+        json={
+            "policy_version": policy_version,
+            "intent_catalog_version": catalog_version,
+            "source_filename": "sprint0_cases.csv",
+            "csv_text": _sprint0_csv_text(),
+        },
+    )
+
+    assert response.status_code == 201
+    assert captured == {
+        "intent_catalog_version": catalog_version,
+        "model_version": "emb-fake-v1",
+        "limit": 8,
+    }
 
 
 def test_post_test_run_accepts_multipart_csv_upload(

@@ -1708,6 +1708,15 @@ class IntentRoutingRepository:
             )
         )
 
+    def list_examples_for_service(self, service_id: str) -> list[models.IntentExample]:
+        return list(
+            self.session.scalars(
+                select(models.IntentExample)
+                .where(models.IntentExample.service_id == service_id)
+                .order_by(models.IntentExample.created_at, models.IntentExample.example_id)
+            )
+        )
+
     def list_approved_examples(
         self,
         service_id: str,
@@ -1827,6 +1836,40 @@ class IntentRoutingRepository:
     def create_catalog_version(self, **values: Any) -> models.IntentCatalogVersion:
         return self._add_and_flush(models.IntentCatalogVersion(**values))
 
+    def list_catalog_display_versions(self, service_id: str) -> list[str]:
+        return [
+            value
+            for value in self.session.scalars(
+                select(models.IntentCatalogVersion.display_version)
+                .where(models.IntentCatalogVersion.service_id == service_id)
+                .where(models.IntentCatalogVersion.display_version.is_not(None))
+                .order_by(models.IntentCatalogVersion.created_at)
+            )
+            if value is not None
+        ]
+
+    def list_active_catalog_versions(
+        self,
+        service_id: str,
+        *,
+        limit: int = 100,
+    ) -> list[models.IntentCatalogVersion]:
+        return list(
+            self.session.scalars(
+                select(models.IntentCatalogVersion)
+                .where(models.IntentCatalogVersion.service_id == service_id)
+                .where(models.IntentCatalogVersion.status == "active")
+                .order_by(models.IntentCatalogVersion.created_at.desc())
+                .limit(limit)
+            )
+        )
+
+    def create_catalog_version_example_embedding(
+        self,
+        **values: Any,
+    ) -> models.CatalogVersionExampleEmbedding:
+        return self._add_and_flush(models.CatalogVersionExampleEmbedding(**values))
+
     def get_catalog_version(
         self,
         service_id: str,
@@ -1845,19 +1888,189 @@ class IntentRoutingRepository:
         self,
         service_id: str,
         *,
+        status: str | None = None,
         limit: int = 50,
     ) -> list[models.IntentCatalogVersion]:
+        statement = select(models.IntentCatalogVersion).where(
+            models.IntentCatalogVersion.service_id == service_id
+        )
+        if status is not None:
+            statement = statement.where(models.IntentCatalogVersion.status == status)
         return list(
             self.session.scalars(
-                select(models.IntentCatalogVersion)
-                .where(models.IntentCatalogVersion.service_id == service_id)
-                .order_by(
+                statement.order_by(
                     models.IntentCatalogVersion.created_at.desc(),
                     models.IntentCatalogVersion.intent_catalog_version,
                 )
                 .limit(limit)
             )
         )
+
+    def catalog_version_has_release_reference(
+        self,
+        service_id: str,
+        intent_catalog_version: str,
+    ) -> bool:
+        return self.session.scalar(
+            select(models.Release.release_version)
+            .where(models.Release.service_id == service_id)
+            .where(models.Release.intent_catalog_version == intent_catalog_version)
+            .limit(1)
+        ) is not None
+
+    def catalog_version_release_count(
+        self,
+        service_id: str,
+        intent_catalog_version: str,
+    ) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(models.Release)
+                .where(models.Release.service_id == service_id)
+                .where(models.Release.intent_catalog_version == intent_catalog_version)
+            )
+            or 0
+        )
+
+    def get_ready_vector_index_version(
+        self,
+        service_id: str,
+        intent_catalog_version: str,
+        model_version: str | None = None,
+    ) -> models.VectorIndexVersion | None:
+        statement = (
+            select(models.VectorIndexVersion)
+            .where(models.VectorIndexVersion.service_id == service_id)
+            .where(
+                models.VectorIndexVersion.intent_catalog_version
+                == intent_catalog_version
+            )
+            .where(models.VectorIndexVersion.status == "ready")
+        )
+        if model_version is not None:
+            statement = statement.where(
+                models.VectorIndexVersion.model_version == model_version
+            )
+        return self.session.scalar(
+            statement.order_by(
+                models.VectorIndexVersion.created_at.desc(),
+                models.VectorIndexVersion.vector_index_version.desc(),
+            )
+        )
+
+    def deactivate_catalog_version(
+        self,
+        *,
+        service_id: str,
+        intent_catalog_version: str,
+        deactivated_at: datetime,
+    ) -> models.IntentCatalogVersion | None:
+        version = self.get_catalog_version(service_id, intent_catalog_version)
+        if version is None:
+            return None
+        version.status = "inactive"
+        version.deactivated_at = deactivated_at
+        self.session.flush()
+        return version
+
+    def deactivate_catalog_version_embeddings(
+        self,
+        *,
+        intent_catalog_version: str,
+        deactivated_at: datetime,
+    ) -> None:
+        self.session.execute(
+            update(models.CatalogVersionExampleEmbedding)
+            .where(
+                models.CatalogVersionExampleEmbedding.intent_catalog_version
+                == intent_catalog_version
+            )
+            .where(models.CatalogVersionExampleEmbedding.embedding_status == "active")
+            .values(
+                embedding_status="inactive",
+                embedding=None,
+                deactivated_at=deactivated_at,
+            )
+        )
+        self.session.flush()
+
+    def list_catalog_version_example_embeddings(
+        self,
+        intent_catalog_version: str,
+    ) -> list[models.CatalogVersionExampleEmbedding]:
+        return list(
+            self.session.scalars(
+                select(models.CatalogVersionExampleEmbedding)
+                .where(
+                    models.CatalogVersionExampleEmbedding.intent_catalog_version
+                    == intent_catalog_version
+                )
+                .order_by(models.CatalogVersionExampleEmbedding.created_at)
+            )
+        )
+
+    def count_active_catalog_version_embeddings(
+        self,
+        intent_catalog_version: str,
+    ) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(models.CatalogVersionExampleEmbedding)
+                .where(
+                    models.CatalogVersionExampleEmbedding.intent_catalog_version
+                    == intent_catalog_version
+                )
+                .where(models.CatalogVersionExampleEmbedding.embedding_status == "active")
+            )
+            or 0
+        )
+
+    def search_catalog_version_examples_by_embedding(
+        self,
+        intent_catalog_version: str,
+        model_version: str,
+        query_embedding: list[float],
+        limit: int,
+    ) -> list[ExampleSearchResult]:
+        if len(query_embedding) != 1024:
+            raise ValueError("query_embedding must have 1024 dimensions")
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        statement = text(
+            """
+            SELECT example_id,
+                   intent_id,
+                   example_type,
+                   1 - (embedding <=> :query_embedding) AS similarity
+            FROM catalog_version_example_embeddings
+            WHERE intent_catalog_version = :intent_catalog_version
+              AND model_version = :model_version
+              AND embedding_status = 'active'
+              AND embedding IS NOT NULL
+            ORDER BY embedding <=> :query_embedding
+            LIMIT :limit
+            """
+        ).bindparams(bindparam("query_embedding", type_=Vector(1024)))
+        rows = self.session.execute(
+            statement,
+            {
+                "intent_catalog_version": intent_catalog_version,
+                "model_version": model_version,
+                "query_embedding": query_embedding,
+                "limit": limit,
+            },
+        ).mappings()
+        return [
+            ExampleSearchResult(
+                example_id=row["example_id"],
+                intent_id=row["intent_id"],
+                example_type=row["example_type"],
+                similarity=float(row["similarity"]),
+            )
+            for row in rows
+        ]
 
     def create_test_dataset(
         self,

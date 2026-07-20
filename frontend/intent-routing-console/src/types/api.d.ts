@@ -432,21 +432,50 @@ declare namespace API {
     created_at: string;
   };
 
-  type CatalogVersion = {
-    intent_catalog_version: string;
-    service_id: string;
-    snapshot: Record<string, unknown>;
-    created_by: string;
-    created_at: string;
+  type CatalogVersionStatus = 'active' | 'inactive';
+
+  type CatalogVersionCreateRequest = {
+    description: string;
+    source_catalog_version?: string | null;
   };
 
-  type CatalogVersionListItem = {
+  type CatalogVersionLifecycle = {
     intent_catalog_version: string;
+    display_version: string;
     service_id: string;
+    model_version: string;
+    vector_index_version: string;
+    description: string;
+    status: CatalogVersionStatus;
+    reproducibility_status: string;
+    released: boolean;
+    release_count: number;
+    source_catalog_version: string | null;
     intent_count: number;
-    approved_example_count: number;
+    example_count: number;
+    embedding_count: number;
     created_by: string;
     created_at: string;
+    activated_at: string | null;
+    deactivated_at: string | null;
+  };
+
+  type CatalogVersion = CatalogVersionLifecycle & {
+    snapshot: Record<string, unknown>;
+  };
+
+  type CatalogVersionListItem = CatalogVersionLifecycle;
+
+  type CatalogVersionDiff = {
+    service_id: string;
+    from_version: string | null;
+    to_version: string;
+    added_intents: string[];
+    removed_intents: string[];
+    changed_intents: string[];
+    added_examples: string[];
+    removed_examples: string[];
+    changed_examples: string[];
   };
 
   type TestRunCreateRequest = {
@@ -459,6 +488,8 @@ declare namespace API {
   type TestRunSummary = {
     test_run_id: string;
     test_dataset_version: string;
+    model_version: string | null;
+    vector_index_version: string | null;
     threshold_preset: string;
     threshold_value: number;
     pass_rate: number;

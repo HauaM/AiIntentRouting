@@ -405,9 +405,26 @@ class IntentCatalogVersion(Base):
 
     intent_catalog_version: Mapped[str] = mapped_column(Text, primary_key=True)
     service_id: Mapped[str] = mapped_column(Text, ForeignKey("services.service_id"))
+    display_version: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'active'"))
+    reproducibility_status: Mapped[str] = mapped_column(
+        Text, server_default=text("'complete'")
+    )
+    source_catalog_version: Mapped[str | None] = mapped_column(Text)
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB)
     created_by: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("service_id", "display_version"),
+        CheckConstraint(
+            "status in ('active', 'inactive')",
+            name="ck_intent_catalog_versions_status",
+        ),
+    )
 
 
 class VectorIndexVersion(Base):
@@ -419,6 +436,38 @@ class VectorIndexVersion(Base):
     model_version: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class CatalogVersionExampleEmbedding(Base):
+    __tablename__ = "catalog_version_example_embeddings"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    intent_catalog_version: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("intent_catalog_versions.intent_catalog_version"),
+    )
+    service_id: Mapped[str] = mapped_column(Text)
+    model_version: Mapped[str] = mapped_column(Text)
+    vector_index_version: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("vector_index_versions.vector_index_version"),
+    )
+    intent_id: Mapped[str] = mapped_column(Text)
+    example_id: Mapped[UUID | None] = mapped_column()
+    example_type: Mapped[str] = mapped_column(Text)
+    text_raw_ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    text_raw_encrypted_dek: Mapped[bytes] = mapped_column(LargeBinary)
+    text_raw_encrypted_dek_iv: Mapped[bytes] = mapped_column(LargeBinary)
+    text_raw_encrypted_dek_auth_tag: Mapped[bytes] = mapped_column(LargeBinary)
+    text_raw_key_id: Mapped[str] = mapped_column(Text)
+    text_raw_iv: Mapped[bytes] = mapped_column(LargeBinary)
+    text_raw_auth_tag: Mapped[bytes] = mapped_column(LargeBinary)
+    text_raw_algorithm: Mapped[str] = mapped_column(Text)
+    text_masked: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))
+    embedding_status: Mapped[str] = mapped_column(Text, server_default=text("'active'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class TestDataset(Base):
@@ -462,6 +511,8 @@ class TestRun(Base):
     intent_catalog_version: Mapped[str] = mapped_column(
         Text, ForeignKey("intent_catalog_versions.intent_catalog_version")
     )
+    model_version: Mapped[str | None] = mapped_column(Text)
+    vector_index_version: Mapped[str | None] = mapped_column(Text)
     threshold_preset: Mapped[str] = mapped_column(Text)
     threshold_value: Mapped[Decimal] = mapped_column(Numeric)
     pass_rate: Mapped[Decimal] = mapped_column(Numeric)

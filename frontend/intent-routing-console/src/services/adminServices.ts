@@ -344,19 +344,79 @@ export async function listPolicyVersions(serviceId: string, limit = 50) {
   });
 }
 
-export async function createCatalogVersion(serviceId: string) {
+export async function createCatalogVersion(
+  serviceId: string,
+  payload: API.CatalogVersionCreateRequest,
+) {
   return request<API.CatalogVersion>(servicePath(serviceId, '/catalog-versions'), {
     method: 'POST',
+    data: payload,
   });
 }
 
-export async function listCatalogVersions(serviceId: string, limit = 50) {
+export async function listCatalogVersions(
+  serviceId: string,
+  params: { limit?: number; status?: API.CatalogVersionStatus } = {},
+) {
   return request<API.CatalogVersionListItem[]>(
     servicePath(serviceId, '/catalog-versions'),
     {
       method: 'GET',
-      params: { limit },
+      params: {
+        limit: params.limit ?? 50,
+        status: params.status,
+      },
     },
+  );
+}
+
+export async function fetchCatalogVersion(serviceId: string, catalogVersion: string) {
+  return request<API.CatalogVersion>(
+    servicePath(serviceId, `/catalog-versions/${encodeURIComponent(catalogVersion)}`),
+    { method: 'GET' },
+  );
+}
+
+export async function fetchCatalogVersionDiff(
+  serviceId: string,
+  catalogVersion: string,
+  params: { compare_to?: string | null } = {},
+) {
+  return request<API.CatalogVersionDiff>(
+    servicePath(
+      serviceId,
+      `/catalog-versions/${encodeURIComponent(catalogVersion)}/diff`,
+    ),
+    {
+      method: 'GET',
+      params: { compare_to: params.compare_to || undefined },
+    },
+  );
+}
+
+export async function deactivateCatalogVersion(
+  serviceId: string,
+  catalogVersion: string,
+) {
+  return request<API.CatalogVersionLifecycle>(
+    servicePath(
+      serviceId,
+      `/catalog-versions/${encodeURIComponent(catalogVersion)}:deactivate`,
+    ),
+    { method: 'POST' },
+  );
+}
+
+export async function loadCatalogVersionToDraft(
+  serviceId: string,
+  catalogVersion: string,
+) {
+  return request<API.CatalogVersion>(
+    servicePath(
+      serviceId,
+      `/catalog-versions/${encodeURIComponent(catalogVersion)}:load-to-draft`,
+    ),
+    { method: 'POST' },
   );
 }
 

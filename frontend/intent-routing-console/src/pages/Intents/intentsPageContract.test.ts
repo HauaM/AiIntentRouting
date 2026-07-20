@@ -49,6 +49,52 @@ describe('Intents page contract', () => {
     expect(text).not.toContain('test_case_id');
   });
 
+  it('loads catalog version history only when history exists and shows page state', () => {
+    const text = source();
+
+    expect(text).toContain('loadLatestCatalogVersionState');
+    expect(text).toContain('listCatalogVersions(session.serviceId, { limit: 1 })');
+    expect(text).toContain('setCatalogHistoryExists(Boolean(latestVersion))');
+    expect(text).toContain('catalogHistoryExists ? (');
+    expect(text).toContain('catalogPageState');
+    expect(text).toContain("catalogPageState.mode === 'draft'");
+    expect(text).toContain('Catalog version 불러오기');
+    expect(text).toContain('버전 상태');
+    expect(text).toContain('수정된 초안');
+  });
+
+  it('opens a compact all-history catalog version loader without status filtering', () => {
+    const text = source();
+
+    expect(text).toContain('openCatalogVersionLoadModal');
+    expect(text).toContain('listCatalogVersions(session.serviceId, { limit: 100 })');
+    expect(text).toContain('catalogVersionLoadOpen');
+    expect(text).toContain('catalogVersionSelection');
+    expect(text).toContain('loadCatalogVersionToDraft');
+    expect(text).toContain('confirmLoadCatalogVersionToDraft');
+    expect(text).toContain("setCatalogPageState({ mode: 'draft', sourceVersion: loaded })");
+    expect(text).toContain('display_version');
+    expect(text).toContain('created_at');
+    expect(text).toContain('release_count');
+    expect(text).toContain('status');
+    expect(text).toContain('description');
+  });
+
+  it('marks catalog page state as draft after editable catalog mutations', () => {
+    const text = source();
+
+    expect(text).toContain('markCatalogPageDraft');
+    expect(text).toContain('void loadLatestCatalogVersionState();');
+    expect(text).toContain('setCatalogPageState((current) =>');
+    expect(text).toContain('createIntent(serviceId');
+    expect(text).toContain('patchIntent(serviceId');
+    expect(text).toContain('deleteIntent(serviceId');
+    expect(text).toContain('createExample(serviceId');
+    expect(text).toContain('patchExample(serviceId');
+    expect(text).toContain('approveExample(example.service_id');
+    expect(text).toContain('deleteExample(example.service_id');
+  });
+
   it('supports intent delete and example edit/delete actions', () => {
     const text = source();
 

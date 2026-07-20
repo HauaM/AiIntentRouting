@@ -29,6 +29,19 @@ describe('adminShellNavigation', () => {
     expect(names(['system_admin'])).toContain('권한관리');
   });
 
+  it('places catalog version management between Intent Catalog and Releases', () => {
+    const routePaths = paths(['service_developer']);
+
+    expect(routePaths).toContain('/catalog-versions');
+    expect(names(['service_developer'])).toContain('Catalog 버전관리');
+    expect(routePaths.indexOf('/catalog-versions')).toBeGreaterThan(
+      routePaths.indexOf('/intents'),
+    );
+    expect(routePaths.indexOf('/catalog-versions')).toBeLessThan(
+      routePaths.indexOf('/releases'),
+    );
+  });
+
   it('does not render the Sprint phase notice globally in AdminShell', () => {
     expect(adminShellSource()).not.toContain('Sprint 11 Admin UI Phase 1');
   });

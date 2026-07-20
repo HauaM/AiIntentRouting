@@ -5,11 +5,12 @@ import hashlib
 import json
 import secrets
 from collections.abc import Mapping
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from io import StringIO
 from os import environ
-from typing import Annotated, Any, Literal, NoReturn
+from typing import Annotated, Any, Literal, NoReturn, cast
 from uuid import UUID, uuid4
 
 from cryptography.exceptions import InvalidTag
@@ -105,6 +106,14 @@ from intent_routing.testing.csv_runner import (
     summarize_test_run,
 )
 from intent_routing.versions import releases as release_service
+from intent_routing.versions.catalogs import (
+    CatalogVersionDependencyError,
+    CatalogVersionValidationError,
+    build_catalog_version_diff,
+)
+from intent_routing.versions.catalogs import (
+    create_catalog_version as create_catalog_version_domain,
+)
 
 router = APIRouter(prefix="/admin/v1", tags=["admin"])
 
@@ -793,21 +802,47 @@ class PolicyVersionResponse(BaseModel):
     created_at: datetime
 
 
-class CatalogVersionResponse(BaseModel):
-    intent_catalog_version: str
-    service_id: str
-    snapshot: dict[str, Any]
-    created_by: str
-    created_at: datetime
+class CatalogVersionCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = Field(min_length=10)
+    source_catalog_version: str | None = None
+
+    @field_validator("description")
+    @classmethod
+    def description_must_remain_long_after_trimming(cls, value: str) -> str:
+        if len(value.strip()) < 10:
+            raise ValueError("description must be at least 10 characters")
+        return value
 
 
-class CatalogVersionListItemResponse(BaseModel):
+class CatalogVersionLifecycleResponse(BaseModel):
     intent_catalog_version: str
+    display_version: str
     service_id: str
+    model_version: str
+    vector_index_version: str
+    description: str
+    status: Literal["active", "inactive"]
+    reproducibility_status: str
+    released: bool
+    release_count: int
+    source_catalog_version: str | None
     intent_count: int
-    approved_example_count: int
+    example_count: int
+    embedding_count: int
     created_by: str
     created_at: datetime
+    activated_at: datetime | None
+    deactivated_at: datetime | None
+
+
+class CatalogVersionResponse(CatalogVersionLifecycleResponse):
+    snapshot: dict[str, Any]
+
+
+class CatalogVersionListItemResponse(CatalogVersionLifecycleResponse):
+    pass
 
 
 class TestRunCreateRequest(BaseModel):
@@ -823,6 +858,8 @@ class TestRunCreateRequest(BaseModel):
 class TestRunSummaryResponse(BaseModel):
     test_run_id: str
     test_dataset_version: str
+    model_version: str | None
+    vector_index_version: str | None
     threshold_preset: str
     threshold_value: float
     pass_rate: float
@@ -840,6 +877,8 @@ class TestRunListItemResponse(BaseModel):
     source_filename: str
     policy_version: str
     intent_catalog_version: str
+    model_version: str | None
+    vector_index_version: str | None
     threshold_preset: str
     threshold_value: float
     pass_rate: float
@@ -2211,41 +2250,64 @@ def _policy_version_response(policy_version: PolicyVersion) -> PolicyVersionResp
 
 def _catalog_version_response(
     catalog_version: IntentCatalogVersion,
+    repository: IntentRoutingRepository,
 ) -> CatalogVersionResponse:
     return CatalogVersionResponse(
-        intent_catalog_version=catalog_version.intent_catalog_version,
-        service_id=catalog_version.service_id,
+        **_catalog_version_lifecycle_response(catalog_version, repository).model_dump(),
         snapshot=catalog_version.snapshot,
+    )
+
+
+def _catalog_version_lifecycle_response(
+    catalog_version: IntentCatalogVersion,
+    repository: IntentRoutingRepository,
+) -> CatalogVersionLifecycleResponse:
+    snapshot = catalog_version.snapshot or {}
+    intents = snapshot.get("intents", []) if isinstance(snapshot, Mapping) else []
+    intent_count = len(intents) if isinstance(intents, list) else 0
+    example_count = sum(
+        len(intent.get("examples", []))
+        for intent in intents
+        if isinstance(intent, Mapping) and isinstance(intent.get("examples", []), list)
+    ) if isinstance(intents, list) else 0
+    vector = repository.get_ready_vector_index_version(
+        catalog_version.service_id,
+        catalog_version.intent_catalog_version,
+    )
+    release_count = repository.catalog_version_release_count(
+        catalog_version.service_id, catalog_version.intent_catalog_version
+    )
+    return CatalogVersionLifecycleResponse(
+        intent_catalog_version=catalog_version.intent_catalog_version,
+        display_version=catalog_version.display_version or "",
+        service_id=catalog_version.service_id,
+        model_version=vector.model_version if vector is not None else "",
+        vector_index_version=vector.vector_index_version if vector is not None else "",
+        description=catalog_version.description or "",
+        status=cast("Literal['active', 'inactive']", catalog_version.status),
+        reproducibility_status=catalog_version.reproducibility_status,
+        released=release_count > 0,
+        release_count=release_count,
+        source_catalog_version=catalog_version.source_catalog_version,
+        intent_count=intent_count,
+        example_count=example_count,
+        embedding_count=repository.count_active_catalog_version_embeddings(catalog_version.intent_catalog_version),
         created_by=catalog_version.created_by,
         created_at=catalog_version.created_at,
+        activated_at=catalog_version.activated_at,
+        deactivated_at=catalog_version.deactivated_at,
     )
 
 
 def _catalog_version_list_item_response(
     catalog_version: IntentCatalogVersion,
+    repository: IntentRoutingRepository,
 ) -> CatalogVersionListItemResponse:
-    snapshot = catalog_version.snapshot or {}
-    intents = snapshot.get("intents", [])
-    intent_count = len(intents) if isinstance(intents, list) else 0
-    approved_example_count = 0
-    if isinstance(intents, list):
-        for intent in intents:
-            if not isinstance(intent, Mapping):
-                continue
-            examples = intent.get("examples", [])
-            if isinstance(examples, list):
-                approved_example_count += sum(
-                    1
-                    for example in examples
-                    if isinstance(example, Mapping) and example.get("approved") is True
-                )
     return CatalogVersionListItemResponse(
-        intent_catalog_version=catalog_version.intent_catalog_version,
-        service_id=catalog_version.service_id,
-        intent_count=intent_count,
-        approved_example_count=approved_example_count,
-        created_by=catalog_version.created_by,
-        created_at=catalog_version.created_at,
+        **_catalog_version_lifecycle_response(
+            catalog_version,
+            repository,
+        ).model_dump()
     )
 
 
@@ -2253,6 +2315,8 @@ def _test_run_summary_response(summary: CsvTestRunSummary) -> TestRunSummaryResp
     return TestRunSummaryResponse(
         test_run_id=summary.test_run_id,
         test_dataset_version=summary.test_dataset_version,
+        model_version=summary.model_version,
+        vector_index_version=summary.vector_index_version,
         threshold_preset=summary.threshold_preset,
         threshold_value=summary.threshold_value,
         pass_rate=summary.pass_rate,
@@ -2277,6 +2341,8 @@ def _test_run_list_item_response(
         source_filename=dataset.source_filename,
         policy_version=test_run.policy_version,
         intent_catalog_version=test_run.intent_catalog_version,
+        model_version=test_run.model_version,
+        vector_index_version=test_run.vector_index_version,
         threshold_preset=test_run.threshold_preset,
         threshold_value=float(test_run.threshold_value),
         pass_rate=float(test_run.pass_rate),
@@ -4705,6 +4771,7 @@ def create_intent(
     _require_service_catalog_access(context, service_id)
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     _ensure_service_exists(repository, service_id)
     try:
         intent = repository.create_intent(
@@ -4813,6 +4880,7 @@ def patch_intent(
 ) -> IntentResponse:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     intent = repository.get_intent(service_id, intent_id)
     if intent is None:
         _raise_not_found("Intent does not exist.")
@@ -4846,6 +4914,7 @@ def delete_intent(
 ) -> None:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     intent = repository.get_intent(service_id, intent_id)
     if intent is None:
         _raise_not_found("Intent does not exist.")
@@ -4887,6 +4956,7 @@ def create_example(
     _require_service_catalog_access(context, service_id)
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     if repository.get_intent(service_id, intent_id) is None:
         _raise_not_found("Intent does not exist.")
 
@@ -5035,6 +5105,7 @@ def get_policy_version(
 )
 def create_catalog_version(
     service_id: str,
+    request: CatalogVersionCreateRequest,
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> CatalogVersionResponse:
@@ -5043,18 +5114,29 @@ def create_catalog_version(
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
     try:
-        catalog_version = repository.create_catalog_version(
-            intent_catalog_version=_catalog_version_id(service_id, now),
-            service_id=service_id,
-            snapshot=_catalog_snapshot(repository, service_id),
-            created_by=context.actor_id,
-            created_at=now,
+        service = repository.get_service(service_id)
+        if service is None:
+            _raise_not_found("Service does not exist.")
+        catalog_version = create_catalog_version_domain(
+            repository,
+            service,
+            request.description,
+            context.actor_id,
+            now,
+            get_embedding_provider().model_version,
+            request.source_catalog_version,
         )
+    except (CatalogVersionValidationError, CatalogVersionDependencyError) as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     except IntegrityError:
         session.rollback()
         _raise_conflict("Catalog version already exists.")
 
-    response = _catalog_version_response(catalog_version)
+    response = _catalog_version_response(catalog_version, repository)
     repository.insert_audit_log(
         event_type="catalog_version.created",
         actor_id=context.actor_id,
@@ -5080,15 +5162,199 @@ def list_catalog_versions(
     service_id: str,
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
+    status_filter: Annotated[
+        Literal["active", "inactive"] | None, Query(alias="status")
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[CatalogVersionListItemResponse]:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
     return [
-        _catalog_version_list_item_response(catalog_version)
-        for catalog_version in repository.list_catalog_versions(service_id, limit=limit)
+        _catalog_version_list_item_response(catalog_version, repository)
+        for catalog_version in repository.list_catalog_versions(
+            service_id, status=status_filter, limit=limit
+        )
     ]
+
+
+@router.get(
+    "/services/{service_id}/catalog-versions/{intent_catalog_version}",
+    response_model=CatalogVersionResponse,
+)
+def get_catalog_version(
+    service_id: str,
+    intent_catalog_version: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> CatalogVersionResponse:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    version = repository.get_catalog_version(service_id, intent_catalog_version)
+    if version is None:
+        _raise_not_found("Catalog version does not exist.")
+    return _catalog_version_response(version, repository)
+
+
+@router.get("/services/{service_id}/catalog-versions/{intent_catalog_version}/diff")
+def get_catalog_version_diff(
+    service_id: str,
+    intent_catalog_version: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    compare_to: str | None = None,
+) -> dict[str, object]:
+    _require_service_catalog_access(context, service_id)
+    try:
+        diff = build_catalog_version_diff(
+            IntentRoutingRepository(session),
+            service_id=service_id,
+            intent_catalog_version=intent_catalog_version,
+            compare_to=compare_to,
+        )
+        return asdict(diff)
+    except CatalogVersionDependencyError as exc:
+        _raise_not_found(str(exc))
+
+
+@router.post(
+    "/services/{service_id}/catalog-versions/{intent_catalog_version}:deactivate",
+    response_model=CatalogVersionLifecycleResponse,
+)
+def deactivate_catalog_version(
+    service_id: str,
+    intent_catalog_version: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> CatalogVersionLifecycleResponse:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
+    if repository.catalog_version_has_release_reference(service_id, intent_catalog_version):
+        _raise_conflict("Catalog version is referenced by a Release.")
+    now = datetime.now(UTC)
+    version = repository.deactivate_catalog_version(
+        service_id=service_id,
+        intent_catalog_version=intent_catalog_version,
+        deactivated_at=now,
+    )
+    if version is None:
+        _raise_not_found("Catalog version does not exist.")
+    repository.deactivate_catalog_version_embeddings(
+        intent_catalog_version=intent_catalog_version,
+        deactivated_at=now,
+    )
+    session.commit()
+    return _catalog_version_lifecycle_response(version, repository)
+
+
+@router.post(
+    "/services/{service_id}/catalog-versions/{intent_catalog_version}:load-to-draft",
+    response_model=CatalogVersionResponse,
+)
+def load_catalog_version_to_draft(
+    service_id: str,
+    intent_catalog_version: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> CatalogVersionResponse:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
+    version = repository.get_catalog_version(service_id, intent_catalog_version)
+    if version is None:
+        _raise_not_found("Catalog version does not exist.")
+    snapshot = version.snapshot or {}
+    intents = snapshot.get("intents", []) if isinstance(snapshot, Mapping) else []
+    now = datetime.now(UTC)
+    snapshot_intent_ids = {
+        item["intent_id"]
+        for item in intents
+        if isinstance(item, Mapping) and isinstance(item.get("intent_id"), str)
+    }
+    snapshot_example_ids = {
+        embedding.example_id
+        for embedding in repository.list_catalog_version_example_embeddings(
+            intent_catalog_version
+        )
+        if embedding.example_id is not None
+    }
+    for example in repository.list_examples_for_service(service_id):
+        if example.example_id not in snapshot_example_ids:
+            repository.delete_example(example)
+    for intent in repository.list_intents(service_id):
+        if intent.intent_id not in snapshot_intent_ids:
+            repository.delete_intent(intent)
+    for item in intents if isinstance(intents, list) else []:
+        if not isinstance(item, Mapping) or not isinstance(item.get("intent_id"), str):
+            continue
+        intent_id = item["intent_id"]
+        values = {
+            "domain": item.get("domain", ""),
+            "display_name": item.get("display_name", ""),
+            "description": item.get("description", ""),
+            "route_key": item.get("route_key", ""),
+            "status": "draft",
+            "include_keywords": list(item.get("include_keywords", [])),
+            "exclude_keywords": list(item.get("exclude_keywords", [])),
+            "updated_by": context.actor_id,
+            "updated_at": now,
+        }
+        existing = repository.get_intent(service_id, intent_id)
+        if existing is None:
+            repository.create_intent(
+                service_id=service_id,
+                intent_id=intent_id,
+                created_by=context.actor_id,
+                created_at=now,
+                **values,
+            )
+        else:
+            repository.update_intent(existing, **values)
+    for embedding in repository.list_catalog_version_example_embeddings(intent_catalog_version):
+        if embedding.example_id is None:
+            continue
+        values = {
+            "service_id": service_id,
+            "intent_id": embedding.intent_id,
+            "example_type": embedding.example_type,
+            "text_raw_ciphertext": embedding.text_raw_ciphertext,
+            "text_raw_encrypted_dek": embedding.text_raw_encrypted_dek,
+            "text_raw_encrypted_dek_iv": embedding.text_raw_encrypted_dek_iv,
+            "text_raw_encrypted_dek_auth_tag": embedding.text_raw_encrypted_dek_auth_tag,
+            "text_raw_key_id": embedding.text_raw_key_id,
+            "text_raw_iv": embedding.text_raw_iv,
+            "text_raw_auth_tag": embedding.text_raw_auth_tag,
+            "text_raw_algorithm": embedding.text_raw_algorithm,
+            "text_masked": embedding.text_masked,
+            "embedding": None,
+            "source": "catalog_version_load",
+            "test_case_id": None,
+            "approved": False,
+            "created_by": context.actor_id,
+            "created_at": now,
+        }
+        existing_example = repository.get_example(service_id, embedding.example_id)
+        if existing_example is None:
+            repository.create_example(example_id=embedding.example_id, **values)
+        else:
+            repository.update_example(existing_example, **values)
+    response = _catalog_version_response(version, repository)
+    repository.insert_audit_log(
+        event_type="catalog_version.loaded_to_draft",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="intent_catalog_version",
+        target_id=intent_catalog_version,
+        view_reason=None,
+        source_ip=None,
+        before_state=None,
+        after_state=response.model_dump(mode="json"),
+        created_at=now,
+    )
+    session.commit()
+    return response
 
 
 @router.get(
@@ -5123,6 +5389,7 @@ def approve_example(
 ) -> ExampleResponse:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     example = repository.get_example(service_id, example_id)
     if example is None:
         _raise_not_found("Example does not exist.")
@@ -5162,6 +5429,7 @@ def patch_example(
 ) -> ExampleResponse:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     example = repository.get_example(service_id, example_id)
     if example is None:
         _raise_not_found("Example does not exist.")
@@ -5228,6 +5496,7 @@ def delete_example(
 ) -> None:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     example = repository.get_example(service_id, example_id)
     if example is None:
         _raise_not_found("Example does not exist.")

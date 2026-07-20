@@ -46,17 +46,6 @@ def release_version_id(
     return f"{prefix}{_next_sequence(existing_versions)}"
 
 
-def vector_index_version_id(
-    repository: IntentRoutingRepository,
-    *,
-    intent_catalog_version: str,
-    model_version: str,
-) -> str:
-    prefix = f"vec-{intent_catalog_version}-{model_version}-"
-    existing_versions = repository.list_vector_index_versions_by_prefix(prefix)
-    return f"{prefix}{_next_sequence(existing_versions)}"
-
-
 def validate_release_inputs(
     repository: IntentRoutingRepository,
     *,
@@ -74,6 +63,8 @@ def validate_release_inputs(
     catalog = repository.get_catalog_version(service_id, intent_catalog_version)
     if catalog is None:
         raise ReleaseDependencyNotFoundError("Catalog version does not exist.")
+    if catalog.status != "active":
+        raise ReleaseValidationError("Catalog version is inactive.")
 
     test_run = repository.get_test_run(test_run_id)
     if test_run is None or test_run.service_id != service_id:
@@ -117,6 +108,15 @@ def create_release(
     released_by: str,
     now: datetime,
 ) -> models.Release:
+    for lock_key in sorted(
+        [
+            f"catalog-version:{service_id}",
+            f"release-version:{service_id}:{now:%Y%m%d}",
+            f"vector-index-version:{intent_catalog_version}:{model_version}",
+        ]
+    ):
+        repository.acquire_advisory_xact_lock(lock_key)
+
     dependencies = validate_release_inputs(
         repository,
         service_id=service_id,
@@ -126,27 +126,31 @@ def create_release(
         test_run_id=test_run_id,
         rollback_target=rollback_target,
     )
-    for lock_key in sorted(
-        [
-            f"release-version:{service_id}:{now:%Y%m%d}",
-            f"vector-index-version:{intent_catalog_version}:{model_version}",
-        ]
-    ):
-        repository.acquire_advisory_xact_lock(lock_key)
 
-    vector_index_version = vector_index_version_id(
-        repository,
-        intent_catalog_version=intent_catalog_version,
-        model_version=model_version,
+    vector_index = repository.get_ready_vector_index_version(
+        service_id,
+        intent_catalog_version,
+        model_version,
     )
-    repository.create_vector_index_version(
-        vector_index_version=vector_index_version,
-        service_id=service_id,
-        intent_catalog_version=intent_catalog_version,
-        model_version=model_version,
-        status="ready",
-        created_at=now,
-    )
+    if vector_index is None:
+        raise ReleaseValidationError(
+            "Catalog version does not have a ready vector index for the requested model."
+        )
+    if (
+        dependencies.test_run.model_version is not None
+        and dependencies.test_run.model_version != vector_index.model_version
+    ):
+        raise ReleaseValidationError(
+            "Test run model version does not match the selected catalog vector index."
+        )
+    if (
+        dependencies.test_run.vector_index_version is not None
+        and dependencies.test_run.vector_index_version
+        != vector_index.vector_index_version
+    ):
+        raise ReleaseValidationError(
+            "Test run vector index version does not match the selected catalog vector index."
+        )
     return repository.create_release(
         release_version=release_version_id(
             repository,
@@ -157,8 +161,8 @@ def create_release(
         environment=environment,
         policy_version=policy_version,
         intent_catalog_version=intent_catalog_version,
-        model_version=model_version,
-        vector_index_version=vector_index_version,
+        model_version=vector_index.model_version,
+        vector_index_version=vector_index.vector_index_version,
         test_dataset_version=dependencies.test_run.test_dataset_version,
         test_run_id=test_run_id,
         pass_rate=dependencies.test_run.pass_rate,

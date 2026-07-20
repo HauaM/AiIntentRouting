@@ -16,6 +16,9 @@ import {
   createService,
   createTestRun,
   createManagedAdminUser,
+  deactivateCatalogVersion,
+  fetchCatalogVersion,
+  fetchCatalogVersionDiff,
   fetchRuntimeSetupGuidance,
   fetchTestRun,
   fetchTestRunResults,
@@ -55,6 +58,7 @@ import {
   rollbackRelease,
   searchAdminUsers,
   transferSystemAdmin,
+  loadCatalogVersionToDraft,
 } from './adminServices';
 
 vi.mock('@umijs/max', () => ({
@@ -200,10 +204,15 @@ describe('admin service Phase 1 write flow requests', () => {
   });
 
   it('creates catalog versions', async () => {
-    await createCatalogVersion('svc/admin');
+    const payload: API.CatalogVersionCreateRequest = {
+      description: 'Catalog baseline for regression tests',
+    };
+
+    await createCatalogVersion('svc/admin', payload);
 
     expect(requestMock).toHaveBeenCalledWith('/services/svc%2Fadmin/catalog-versions', {
       method: 'POST',
+      data: payload,
     });
   });
 
@@ -575,7 +584,7 @@ describe('admin service Phase 1 write flow requests', () => {
     });
     expect(requestMock).toHaveBeenCalledWith('/services/svc%2Fadmin/catalog-versions', {
       method: 'GET',
-      params: { limit: 50 },
+      params: { limit: 50, status: undefined },
     });
     expect(requestMock).toHaveBeenCalledWith('/services/svc%2Fadmin/test-runs', {
       method: 'GET',
@@ -603,6 +612,43 @@ describe('admin service Phase 1 write flow requests', () => {
         limit: 50,
       },
     });
+  });
+
+  it('lists active catalog versions with explicit lifecycle filters', async () => {
+    await listCatalogVersions('svc/admin', { limit: 100, status: 'active' });
+
+    expect(requestMock).toHaveBeenCalledWith('/services/svc%2Fadmin/catalog-versions', {
+      method: 'GET',
+      params: { limit: 100, status: 'active' },
+    });
+  });
+
+  it('uses catalog version lifecycle operation endpoints', async () => {
+    await fetchCatalogVersion('svc/admin', 'cat/v1');
+    await fetchCatalogVersionDiff('svc/admin', 'cat/v2', { compare_to: 'cat/v1' });
+    await deactivateCatalogVersion('svc/admin', 'cat/v2');
+    await loadCatalogVersionToDraft('svc/admin', 'cat/v2');
+
+    expect(requestMock).toHaveBeenNthCalledWith(
+      1,
+      '/services/svc%2Fadmin/catalog-versions/cat%2Fv1',
+      { method: 'GET' },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      2,
+      '/services/svc%2Fadmin/catalog-versions/cat%2Fv2/diff',
+      { method: 'GET', params: { compare_to: 'cat/v1' } },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      3,
+      '/services/svc%2Fadmin/catalog-versions/cat%2Fv2:deactivate',
+      { method: 'POST' },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      4,
+      '/services/svc%2Fadmin/catalog-versions/cat%2Fv2:load-to-draft',
+      { method: 'POST' },
+    );
   });
 
   it('uses Permission Management read endpoints with GET query params only', async () => {
