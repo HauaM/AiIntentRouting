@@ -80,6 +80,8 @@ describe('Intents page contract', () => {
     expect(text).toContain('loadCatalogVersionToDraft');
     expect(text).toContain('confirmLoadCatalogVersionToDraft');
     expect(text).toContain("setCatalogPageState({ mode: 'draft', sourceVersion: loaded })");
+    expect(text).toContain('refreshCatalog();');
+    expect(text).toContain("if (selected?.intent_id) await loadSelectedExamples(selected.intent_id);");
     expect(text).toContain('CatalogVersionCreateModal');
     expect(text).toContain('CatalogVersionDiffDrawer');
     expect(text).toContain('Catalog 버전 등록');
@@ -105,6 +107,7 @@ describe('Intents page contract', () => {
     expect(historyModalSource).toContain('scroll={{ x: 1280, y: 360 }}');
     expect(historyModalSource).toContain('draft로 불러오기');
     expect(historyModalSource).toContain('비활성화');
+    expect(historyModalSource).toContain('disabled: row.released || row.release_count > 0');
     expect(historyModalSource).toContain('MoreOutlined');
   });
 
