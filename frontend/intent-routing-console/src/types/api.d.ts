@@ -541,6 +541,8 @@ declare namespace API {
     test_run_vector_index_version: string | null;
     ready_vector_index_version: string | null;
     ready_vector_index_model_version: string | null;
+    test_run_vector_index_ready: boolean | null;
+    test_run_vector_index_status: string | null;
   };
 
   type TestRunDiagnostics = {

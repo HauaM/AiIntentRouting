@@ -34,17 +34,27 @@ export function TestRunDiagnosticsPanel({
 }: TestRunDiagnosticsPanelProps) {
   const [loading, setLoading] = useState(false);
   const [diagnostics, setDiagnostics] = useState<API.TestRunDiagnostics>();
+  const [error, setError] = useState<string>();
 
   useEffect(() => {
     if (!testRunId) {
       setDiagnostics(undefined);
+      setError(undefined);
+      setLoading(false);
       return;
     }
     let alive = true;
+    setDiagnostics(undefined);
+    setError(undefined);
     setLoading(true);
     fetchTestRunDiagnostics(serviceId, testRunId)
       .then((nextDiagnostics) => {
         if (alive) setDiagnostics(nextDiagnostics);
+      })
+      .catch(() => {
+        if (alive) {
+          setError('진단 결과를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        }
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -89,48 +99,54 @@ export function TestRunDiagnosticsPanel({
               message={primaryCopy}
               description={
                 primaryIssue
-                  ? `issue code: ${primaryIssue.code}`
-                  : 'Backend diagnostics did not identify a blocker, warning, or recommendation.'
+                  ? (
+                    <>
+                      이슈 코드: <Typography.Text code>{primaryIssue.code}</Typography.Text>
+                    </>
+                  )
+                  : '백엔드 진단에서 주요 이슈를 찾지 못했습니다.'
               }
             />
             {catalog ? (
               <Descriptions bordered size="small" column={{ xs: 1, md: 2, xl: 3 }}>
-                <Descriptions.Item label="Catalog">
+                <Descriptions.Item label="Catalog 버전">
                   <Typography.Text code>{catalog.intent_catalog_version}</Typography.Text>
                 </Descriptions.Item>
-                <Descriptions.Item label="Status">{catalog.status}</Descriptions.Item>
-                <Descriptions.Item label="Reproducibility">
+                <Descriptions.Item label="상태">{catalog.status}</Descriptions.Item>
+                <Descriptions.Item label="재현성">
                   {catalog.reproducibility_status}
                 </Descriptions.Item>
-                <Descriptions.Item label="Intents">{catalog.intent_count}</Descriptions.Item>
-                <Descriptions.Item label="Examples">{catalog.example_count}</Descriptions.Item>
-                <Descriptions.Item label="Embeddings">{catalog.embedding_count}</Descriptions.Item>
-                <Descriptions.Item label="Ready vector">
-                  {catalog.ready_vector_index_version ?? 'none'}
+                <Descriptions.Item label="Intent 수">{catalog.intent_count}</Descriptions.Item>
+                <Descriptions.Item label="예시 수">{catalog.example_count}</Descriptions.Item>
+                <Descriptions.Item label="Embedding 수">{catalog.embedding_count}</Descriptions.Item>
+                <Descriptions.Item label="준비된 vector index">
+                  {catalog.ready_vector_index_version ?? '없음'}
                 </Descriptions.Item>
-                <Descriptions.Item label="Test run vector">
-                  {catalog.test_run_vector_index_version ?? 'none'}
+                <Descriptions.Item label="Test Run vector index">
+                  {catalog.test_run_vector_index_version ?? '없음'}
                 </Descriptions.Item>
               </Descriptions>
             ) : null}
             <Space wrap>
               {diagnostics.issues.map((issue) => (
                 <Tag key={issue.code} color={severityColor[issue.severity] ?? 'default'}>
-                  {issue.severity}: {issue.code}
+                  {issue.severity}: <Typography.Text code>{issue.code}</Typography.Text>
                 </Tag>
               ))}
             </Space>
             <Descriptions bordered size="small" column={{ xs: 1, md: 2 }}>
-              <Descriptions.Item label="Result counts">
+              <Descriptions.Item label="결과 집계">
                 <Typography.Text code>{JSON.stringify(diagnostics.result_counts)}</Typography.Text>
               </Descriptions.Item>
-              <Descriptions.Item label="Actual decisions">
+              <Descriptions.Item label="실제 결정 집계">
                 <Typography.Text code>
                   {JSON.stringify(diagnostics.actual_decision_counts)}
                 </Typography.Text>
               </Descriptions.Item>
             </Descriptions>
           </Space>
+        ) : error ? (
+          <Alert type="error" showIcon message="진단 결과를 불러오지 못했습니다." description={error} />
         ) : (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="조회된 진단 결과가 없습니다." />
         )}
