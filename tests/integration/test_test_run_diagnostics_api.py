@@ -153,7 +153,20 @@ def test_repository_distinguishes_stale_selected_vector_index(
         intent_catalog_version=f"cat-diagnostics-stale-index-{suffix}",
         display_version="v1",
         service_id=service.service_id,
-        snapshot={"service_id": service.service_id, "intents": []},
+        snapshot={
+            "service_id": service.service_id,
+            "intents": [
+                {
+                    "intent_id": "program_supported_question",
+                    "examples": [
+                        {
+                            "example_id": str(uuid4()),
+                            "example_type": "positive",
+                        }
+                    ],
+                }
+            ],
+        },
         description="diagnostic stale index test version",
         status="active",
         reproducibility_status="complete",
