@@ -211,7 +211,6 @@ describe('admin service Phase 1 write flow requests', () => {
     const payload: API.TestRunCreateRequest = {
       policy_version: 'pol-1',
       intent_catalog_version: 'cat-1',
-      threshold_preset: 'strict',
       source_filename: 'cases.csv',
       csv_text: 'case_id,query',
     };

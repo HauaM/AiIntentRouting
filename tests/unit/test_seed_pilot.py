@@ -53,7 +53,7 @@ def test_seed_pilot_runs_csv_gate_with_balanced_threshold_for_strict_catalog(
     test_run_request = next(
         request for request in http_client.requests if request["path"].endswith("/test-runs")
     )
-    assert test_run_request["json"]["threshold_preset"] == "balanced"
+    assert "threshold_preset" not in test_run_request["json"]
     assert state["test_runs"]["balanced"]["gate_passed"] is True
     assert "strict" not in state["test_runs"]
 
@@ -209,7 +209,7 @@ def _admin_response(
         return {
             "test_run_id": "tr-svc-test-001",
             "gate_passed": gate_passed,
-            "threshold_preset": json["threshold_preset"] if json is not None else None,
+            "threshold_preset": "balanced",
         }
     if path.endswith("/releases"):
         return {"release_version": "rel-svc-test-001"}

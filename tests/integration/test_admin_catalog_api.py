@@ -1263,6 +1263,66 @@ def test_create_and_get_policy_version_persists_thresholds_and_off_topic_policy(
     assert audit_log.target_type == "policy_version"
 
 
+def test_create_custom_policy_version_persists_explicit_threshold(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    client = _client(db_session)
+    service_id = f"svc-custom-policy-{uuid4().hex}"
+    _create_service(client, service_id)
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/policy-versions",
+        headers=_admin_headers(),
+        json={
+            **_policy_version_payload(),
+            "threshold_preset": "custom",
+            "threshold_value": 0.72,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["threshold_preset"] == "custom"
+    assert response.json()["threshold_value"] == pytest.approx(0.72)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {**_policy_version_payload(), "threshold_preset": "custom"},
+        {
+            **_policy_version_payload(),
+            "threshold_preset": "balanced",
+            "threshold_value": 0.72,
+        },
+        {
+            **_policy_version_payload(),
+            "threshold_preset": "custom",
+            "threshold_value": 0.5,
+            "min_candidate_score": 0.55,
+        },
+    ],
+)
+def test_create_policy_version_rejects_invalid_threshold_contract(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, object],
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    client = _client(db_session)
+    service_id = f"svc-invalid-policy-{uuid4().hex}"
+    _create_service(client, service_id)
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/policy-versions",
+        headers=_admin_headers(),
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
 def test_service_developer_can_manage_only_scoped_policy_versions(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -1466,7 +1526,6 @@ def test_post_test_run_persists_dataset_run_and_results(
         json={
             "policy_version": policy_version,
             "intent_catalog_version": catalog_version,
-            "threshold_preset": "balanced",
             "source_filename": "sprint0_cases.csv",
             "csv_text": _sprint0_csv_text(),
         },
@@ -1527,7 +1586,6 @@ def test_post_test_run_accepts_multipart_csv_upload(
         data={
             "policy_version": policy_version,
             "intent_catalog_version": catalog_version,
-            "threshold_preset": "balanced",
         },
         files={
             "file": (
@@ -1576,7 +1634,6 @@ def test_get_test_run_summary_and_results_returns_persisted_rows(
         json={
             "policy_version": policy_version,
             "intent_catalog_version": catalog_version,
-            "threshold_preset": "balanced",
             "source_filename": "sprint0_cases.csv",
             "csv_text": _sprint0_csv_text(),
         },
@@ -1628,7 +1685,7 @@ def test_get_test_run_summary_and_results_returns_persisted_rows(
     assert [row["case_id"] for row in rows] == ["C001", "C002", "C003", "C004", "C005"]
 
 
-def test_same_csv_can_run_with_each_threshold_preset(
+def test_same_csv_uses_selected_policy_threshold_preset(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1643,26 +1700,20 @@ def test_same_csv_can_run_with_each_threshold_preset(
         service_id,
     )
 
-    created: dict[str, dict[str, object]] = {}
-    for preset in ("strict", "balanced", "exploratory"):
-        response = client.post(
-            f"/admin/v1/services/{service_id}/test-runs",
-            headers=_admin_headers(),
-            json={
-                "policy_version": policy_version,
-                "intent_catalog_version": catalog_version,
-                "threshold_preset": preset,
-                "source_filename": "sprint0_cases.csv",
-                "csv_text": _sprint0_csv_text(),
-            },
-        )
-        assert response.status_code == 201
-        created[preset] = response.json()
+    response = client.post(
+        f"/admin/v1/services/{service_id}/test-runs",
+        headers=_admin_headers(),
+        json={
+            "policy_version": policy_version,
+            "intent_catalog_version": catalog_version,
+            "source_filename": "sprint0_cases.csv",
+            "csv_text": _sprint0_csv_text(),
+        },
+    )
 
-    assert len({body["test_run_id"] for body in created.values()}) == 3
-    assert created["strict"]["threshold_value"] == pytest.approx(1.0)
-    assert created["balanced"]["threshold_value"] == pytest.approx(0.8)
-    assert created["exploratory"]["threshold_value"] == pytest.approx(0.6)
+    assert response.status_code == 201
+    assert response.json()["threshold_preset"] == "balanced"
+    assert response.json()["threshold_value"] == pytest.approx(0.8)
 
 
 def test_post_test_run_invalid_csv_returns_error_envelope(
@@ -1684,7 +1735,6 @@ def test_post_test_run_invalid_csv_returns_error_envelope(
         json={
             "policy_version": policy_version,
             "intent_catalog_version": catalog_version,
-            "threshold_preset": "balanced",
             "source_filename": "bad.csv",
             "csv_text": (
                 "case_id,query,case_type,expected_intent,memo\n"

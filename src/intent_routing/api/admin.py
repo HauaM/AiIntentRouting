@@ -14,7 +14,14 @@ from uuid import UUID, uuid4
 
 from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -741,7 +748,8 @@ class OffTopicPolicySettings(BaseModel):
 class PolicyVersionCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    threshold_preset: ThresholdPreset
+    threshold_preset: ThresholdPreset | Literal["custom"]
+    threshold_value: float | None = Field(default=None, ge=0.0, le=1.0)
     clarify_margin: float = Field(ge=0.0, le=1.0)
     min_candidate_score: float = Field(ge=0.0, le=1.0)
     fallback_score: float = Field(ge=0.0, le=1.0)
@@ -749,6 +757,26 @@ class PolicyVersionCreateRequest(BaseModel):
     off_topic_policy: OffTopicPolicySettings = Field(
         default_factory=OffTopicPolicySettings
     )
+
+    @model_validator(mode="after")
+    def validate_threshold_contract(self) -> PolicyVersionCreateRequest:
+        if self.threshold_preset == "custom":
+            if self.threshold_value is None:
+                raise ValueError(
+                    "threshold_value is required when threshold_preset is custom"
+                )
+            threshold_value = self.threshold_value
+        else:
+            if self.threshold_value is not None:
+                raise ValueError(
+                    "threshold_value is only allowed when threshold_preset is custom"
+                )
+            threshold_value = self.threshold_preset.threshold
+        if not self.fallback_score <= self.min_candidate_score <= threshold_value:
+            raise ValueError(
+                "fallback_score must be <= min_candidate_score <= threshold_value"
+            )
+        return self
 
 
 class PolicyVersionResponse(BaseModel):
@@ -787,7 +815,7 @@ class TestRunCreateRequest(BaseModel):
 
     policy_version: str = Field(min_length=1)
     intent_catalog_version: str = Field(min_length=1)
-    threshold_preset: ThresholdPreset
+    threshold_preset: ThresholdPreset | Literal["custom"] | None = None
     source_filename: str = Field(min_length=1)
     csv_text: str = Field(min_length=1)
 
@@ -2553,7 +2581,6 @@ async def _test_run_create_request_from_multipart(
             {
                 "policy_version": form.get("policy_version"),
                 "intent_catalog_version": form.get("intent_catalog_version"),
-                "threshold_preset": form.get("threshold_preset"),
                 "source_filename": source_filename,
                 "csv_text": csv_text,
             }
@@ -4922,8 +4949,14 @@ def create_policy_version(
         policy_version = repository.create_policy_version(
             policy_version=_policy_version_id(service_id, now),
             service_id=service_id,
-            threshold_preset=request.threshold_preset.value,
-            threshold_value=Decimal(str(request.threshold_preset.threshold)),
+            threshold_preset=str(request.threshold_preset),
+            threshold_value=Decimal(
+                str(
+                    request.threshold_value
+                    if request.threshold_preset == "custom"
+                    else request.threshold_preset.threshold
+                )
+            ),
             clarify_margin=Decimal(str(request.clarify_margin)),
             min_candidate_score=Decimal(str(request.min_candidate_score)),
             fallback_score=Decimal(str(request.fallback_score)),
@@ -5249,7 +5282,6 @@ async def create_test_run(
             service=service,
             policy_version=policy_version,
             catalog_version=catalog_version,
-            threshold_preset=request.threshold_preset,
             source_filename=request.source_filename,
             csv_text=request.csv_text,
             created_by=context.actor_id,

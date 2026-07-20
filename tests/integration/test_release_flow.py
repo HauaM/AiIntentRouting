@@ -1865,7 +1865,6 @@ def _run_sprint_zero_csv(
         json={
             "policy_version": policy_version,
             "intent_catalog_version": catalog_version,
-            "threshold_preset": "balanced",
             "source_filename": "sprint0_cases.csv",
             "csv_text": _sprint0_csv_text(),
         },

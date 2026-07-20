@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
-from intent_routing.domain.enums import Decision, ThresholdPreset
+from intent_routing.domain.enums import Decision
 from intent_routing.embedding.provider import get_embedding_provider
 from intent_routing.policy.risk import RiskPolicy
 from intent_routing.routing.engine import (
@@ -126,14 +126,14 @@ def run_csv_tests(
     service: models.Service,
     policy_version: models.PolicyVersion,
     catalog_version: models.IntentCatalogVersion,
-    threshold_preset: ThresholdPreset,
     source_filename: str,
     csv_text: str,
     created_by: str,
 ) -> CsvTestRunSummary:
     cases = parse_test_cases_csv(csv_text)
     now = datetime.now(UTC)
-    threshold_value = threshold_preset.threshold
+    threshold_preset = policy_version.threshold_preset
+    threshold_value = float(policy_version.threshold_value)
     dataset_version = _version_id("tds", service.service_id, now)
     test_run_id = _version_id("tr", service.service_id, now)
     release = _release_context(
@@ -182,7 +182,7 @@ def run_csv_tests(
             "test_dataset_version": dataset_version,
             "policy_version": policy_version.policy_version,
             "intent_catalog_version": catalog_version.intent_catalog_version,
-            "threshold_preset": threshold_preset.value,
+            "threshold_preset": threshold_preset,
             "threshold_value": Decimal(str(threshold_value)),
             "pass_rate": Decimal(str(gate.pass_rate)),
             "review_rate": Decimal(str(gate.review_rate)),
@@ -196,7 +196,7 @@ def run_csv_tests(
     return _summary(
         test_run_id=test_run_id,
         test_dataset_version=dataset_version,
-        threshold_preset=threshold_preset.value,
+        threshold_preset=threshold_preset,
         threshold_value=threshold_value,
         pass_rate=gate.pass_rate,
         review_rate=gate.review_rate,
@@ -249,7 +249,7 @@ def _release_context(
     service: models.Service,
     policy_version: models.PolicyVersion,
     catalog_version: models.IntentCatalogVersion,
-    threshold_preset: ThresholdPreset,
+    threshold_preset: str,
     threshold_value: float,
 ) -> ActiveReleaseContext:
     return ActiveReleaseContext(
@@ -257,7 +257,7 @@ def _release_context(
         service_id=service.service_id,
         policy_version=policy_version.policy_version,
         intent_catalog_version=catalog_version.intent_catalog_version,
-        threshold_preset=threshold_preset.value,
+        threshold_preset=threshold_preset,
         threshold=threshold_value,
         threshold_value=threshold_value,
         clarify_margin=float(policy_version.clarify_margin),

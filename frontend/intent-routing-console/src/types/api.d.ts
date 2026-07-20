@@ -409,7 +409,8 @@ declare namespace API {
   };
 
   type PolicyVersionCreateRequest = {
-    threshold_preset: ThresholdPreset;
+    threshold_preset: ThresholdPreset | 'custom';
+    threshold_value?: number;
     clarify_margin: number;
     min_candidate_score: number;
     fallback_score: number;
@@ -451,7 +452,6 @@ declare namespace API {
   type TestRunCreateRequest = {
     policy_version: string;
     intent_catalog_version: string;
-    threshold_preset: ThresholdPreset;
     source_filename: string;
     csv_text: string;
   };
