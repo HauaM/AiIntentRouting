@@ -21,6 +21,16 @@ it('renders Test Runs as a three-step wizard in the required order', () => {
   expect(page).not.toContain('type="inner"');
 });
 
+it('keeps result lookup inside the single wizard panel without nested Cards', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain('<Form form={lookupForm}');
+  expect(page.indexOf('<Form form={lookupForm}')).toBeGreaterThan(
+    page.indexOf('ds-page-card steps-form-page-card'),
+  );
+  expect(page).not.toContain('<Card');
+});
+
 it('keeps test policy selection in step two and detailed values in the modal', () => {
   const page = read('index.tsx');
   const panel = read('TestPolicyPanel.tsx');
@@ -51,4 +61,30 @@ it('keeps CSV import, export, and create wired to the same applied cases state',
   expect(page).toContain('setCsvImportOpen(false)');
   expect(page).toContain('downloadCsvFile(');
   expect(page).toContain('csvCases,');
+});
+
+it('localizes result and lookup labels while preserving technical identifiers', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain("title: '케이스'");
+  expect(page).toContain("title: '마스킹된 질의'");
+  expect(page).toContain("title: '기대 결과'");
+  expect(page).toContain("title: '실제 결과'");
+  expect(page).toContain("pass: { text: '통과' }");
+  expect(page).toContain("fail: { text: '실패' }");
+  expect(page).toContain("review: { text: '검토' }");
+  expect(page).toContain('{resultLabel[row.result] ?? row.result}');
+  expect(page).toContain("message.success('테스트 실행 결과를 불러왔습니다.')");
+  expect(page).toContain('<Typography.Text code>test_run_id</Typography.Text>');
+  expect(page).toContain('기존 테스트 실행 결과 조회');
+  expect(page).not.toContain('Test Run 결과를 불러왔습니다.');
+});
+
+it('handles create and lookup request failures with clear messages', () => {
+  const page = read('index.tsx');
+
+  expect((page.match(/catch/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  expect(page).toContain("message.error('테스트 실행 생성에 실패했습니다.')");
+  expect(page).toContain("message.error('테스트 실행은 생성되었지만 결과를 불러오지 못했습니다.')");
+  expect(page).toContain("message.error('테스트 실행 결과를 불러오지 못했습니다.')");
 });

@@ -4,7 +4,6 @@ import { history, useModel } from '@umijs/max';
 import {
   Alert,
   Button,
-  Card,
   Descriptions,
   Empty,
   Form,
@@ -44,6 +43,12 @@ const resultColor: Record<string, string> = {
   pass: 'green',
   fail: 'red',
   review: 'orange',
+};
+
+const resultLabel: Record<string, string> = {
+  pass: '통과',
+  fail: '실패',
+  review: '검토',
 };
 
 const csvTemplate = [
@@ -109,6 +114,7 @@ export default function TestRunsPage() {
     }
     const sourceFilename =
       createForm.getFieldValue('source_filename')?.trim() || 'test-cases.csv';
+    let testRunCreated = false;
     setLoading(true);
     try {
       const created = await createTestRun(serviceId, {
@@ -117,6 +123,7 @@ export default function TestRunsPage() {
         source_filename: sourceFilename,
         csv_text: buildCsvText(csvCases),
       });
+      testRunCreated = true;
       if (serviceIdRef.current !== serviceId) return;
       setSummary(created);
       lookupForm.setFieldsValue({ test_run_id: created.test_run_id });
@@ -124,7 +131,13 @@ export default function TestRunsPage() {
       if (serviceIdRef.current !== serviceId) return;
       setResults(nextResults);
       setCurrentStep(2);
-      message.success('Test Run을 생성했습니다.');
+      message.success('테스트 실행을 생성했습니다.');
+    } catch {
+      if (testRunCreated) {
+        message.error('테스트 실행은 생성되었지만 결과를 불러오지 못했습니다.');
+      } else {
+        message.error('테스트 실행 생성에 실패했습니다.');
+      }
     } finally {
       setLoading(false);
     }
@@ -134,7 +147,9 @@ export default function TestRunsPage() {
     setLoading(true);
     try {
       const loaded = await loadRun(values.test_run_id.trim(), session.serviceId);
-      if (loaded) message.success('Test run loaded.');
+      if (loaded) message.success('테스트 실행 결과를 불러왔습니다.');
+    } catch {
+      message.error('테스트 실행 결과를 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
@@ -142,62 +157,66 @@ export default function TestRunsPage() {
 
   const columns: ProColumns<API.TestRunResult>[] = [
     {
-      title: 'Case',
+      title: '케이스',
       dataIndex: 'case_id',
       copyable: true,
       width: 140,
       render: (_, row) => <Typography.Text code>{row.case_id}</Typography.Text>,
     },
     {
-      title: 'Masked query',
+      title: '마스킹된 질의',
       dataIndex: 'query_masked',
       search: false,
       render: (text) => <span className="masked-query">{text}</span>,
     },
     {
-      title: 'Expected',
+      title: '기대 결과',
       search: false,
       render: (_, row) => (
         <Space direction="vertical" size={0}>
           <span>{row.expected_decision}</span>
-          <span className="muted-small">{row.expected_intent ?? 'no intent'}</span>
+          <span className="muted-small">{row.expected_intent ?? '인텐트 없음'}</span>
         </Space>
       ),
     },
     {
-      title: 'Actual',
+      title: '실제 결과',
       search: false,
       render: (_, row) => (
         <Space direction="vertical" size={0}>
           <span>{row.actual_decision}</span>
           <span className="muted-small">
-            {row.actual_intent ?? row.actual_route_key ?? 'none'}
+            {row.actual_intent ?? row.actual_route_key ?? '없음'}
           </span>
         </Space>
       ),
     },
     {
-      title: 'Confidence',
+      title: '신뢰도',
       dataIndex: 'confidence',
       search: false,
       width: 112,
       renderText: (value) =>
-        value === null || value === undefined ? 'none' : Number(value).toFixed(3),
+        value === null || value === undefined ? '없음' : Number(value).toFixed(3),
     },
     {
-      title: 'Result',
+      title: '결과',
       dataIndex: 'result',
       valueType: 'select',
       valueEnum: {
-        pass: { text: 'pass' },
-        fail: { text: 'fail' },
-        review: { text: 'review' },
+        pass: { text: '통과' },
+        fail: { text: '실패' },
+        review: { text: '검토' },
       },
       width: 104,
-      render: (_, row) => <Tag color={resultColor[row.result] ?? 'default'}>{row.result}</Tag>,
+      render: (_, row) => (
+        <Tag color={resultColor[row.result] ?? 'default'}>
+          {resultLabel[row.result] ?? row.result}
+        </Tag>
+      ),
     },
     {
-      title: 'Reason',
+      title: '사유',
       dataIndex: 'reason',
       search: false,
       ellipsis: true,
@@ -298,28 +317,35 @@ export default function TestRunsPage() {
                             style={{ marginBottom: 12 }}
                             message={
                               summary.gate_passed
-                                ? 'Release 생성에 사용할 test_run_id가 준비되었습니다.'
+                                ? <>
+                                    Release 생성에 사용할 <Typography.Text code>test_run_id</Typography.Text>가 준비되었습니다.
+                                  </>
                                 : 'Release 생성 전에 blocked 사유를 해결해야 합니다.'
                             }
-                            description="Release에는 이 test_run_id와 테스트에 사용한 version 값을 그대로 입력합니다."
+                            description={
+                              <>
+                                Release에는 <Typography.Text code>test_run_id</Typography.Text>와 테스트에 사용한
+                                version 값을 그대로 입력합니다.
+                              </>
+                            }
                           />
                           <Descriptions bordered size="small" column={{ xs: 1, md: 2, xl: 3 }}>
-                            <Descriptions.Item label="Test Run">
+                            <Descriptions.Item label="테스트 실행 ID">
                               <Typography.Text code>{summary.test_run_id}</Typography.Text>
                             </Descriptions.Item>
-                            <Descriptions.Item label="Dataset">
+                            <Descriptions.Item label="데이터셋">
                               {summary.test_dataset_version}
                             </Descriptions.Item>
                             <Descriptions.Item label="정책 기준">
                               {summary.threshold_preset} / {summary.threshold_value}
                             </Descriptions.Item>
-                            <Descriptions.Item label="Pass rate">
+                            <Descriptions.Item label="통과율">
                               {formatRate(summary.pass_rate)}
                             </Descriptions.Item>
-                            <Descriptions.Item label="Review rate">
+                            <Descriptions.Item label="검토율">
                               {formatRate(summary.review_rate)}
                             </Descriptions.Item>
-                            <Descriptions.Item label="Risk pass">
+                            <Descriptions.Item label="위험 통과율">
                               {formatRate(summary.risk_pass_rate)}
                             </Descriptions.Item>
                             <Descriptions.Item label="Gate">
@@ -348,9 +374,9 @@ export default function TestRunsPage() {
                           ) : null}
                         </section>
                       ) : (
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="조회된 Test Run이 없습니다."
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description="조회된 테스트 실행이 없습니다."
                         />
                       )}
                       <ProTable<API.TestRunResult>
@@ -364,13 +390,34 @@ export default function TestRunsPage() {
                           emptyText: (
                             <Empty
                               image={Empty.PRESENTED_IMAGE_SIMPLE}
-                              description="조회된 Test Run 결과가 없습니다."
+                              description="조회된 테스트 실행 결과가 없습니다."
                             />
                           ),
                         }}
                       />
                     </Space>
                   ) : null}
+                  <section>
+                    <Typography.Title level={5} style={{ margin: 0 }}>
+                      기존 테스트 실행 결과 조회
+                    </Typography.Title>
+                    <Typography.Text type="secondary">
+                      <Typography.Text code>test_run_id</Typography.Text>로 이전 실행 결과를 조회할 수 있습니다.
+                    </Typography.Text>
+                    <Form form={lookupForm} layout="inline" onFinish={handleLookup}>
+                      <Form.Item
+                        name="test_run_id"
+                        rules={[
+                          { required: true, whitespace: true, message: 'test_run_id를 입력하세요.' },
+                        ]}
+                      >
+                        <Input placeholder="tr_..." style={{ width: 260 }} disabled={!canRun} />
+                      </Form.Item>
+                      <Button htmlType="submit" loading={loading} disabled={!canRun}>
+                        결과 조회
+                      </Button>
+                    </Form>
+                  </section>
                   <Space wrap>
                     <Button
                       disabled={currentStep === 0}
@@ -394,7 +441,7 @@ export default function TestRunsPage() {
                         disabled={!policy?.policy_version || !catalogVersion || !csvCases.length}
                         onClick={handleCreate}
                       >
-                        Test Run 생성
+                        테스트 실행 생성
                       </Button>
                     ) : null}
                   </Space>
@@ -404,25 +451,10 @@ export default function TestRunsPage() {
               <Alert
                 type="info"
                 showIcon
-                message="Test Run 작업 권한이 필요합니다."
-                description="선택한 서비스의 system_admin, service_owner, service_developer 역할만 Test Run 생성과 조회를 사용할 수 있습니다."
+                message="테스트 실행 작업 권한이 필요합니다."
+                description="선택한 서비스의 system_admin, service_owner, service_developer 역할만 테스트 실행 생성과 조회를 사용할 수 있습니다."
               />
             )}
-            <Card title="Test Run 결과 조회">
-              <Form form={lookupForm} layout="inline" onFinish={handleLookup}>
-                <Form.Item
-                  name="test_run_id"
-                  rules={[
-                    { required: true, whitespace: true, message: 'test_run_id를 입력하세요.' },
-                  ]}
-                >
-                  <Input placeholder="tr_..." style={{ width: 260 }} disabled={!canRun} />
-                </Form.Item>
-                <Button htmlType="submit" loading={loading} disabled={!canRun}>
-                  결과 조회
-                </Button>
-              </Form>
-            </Card>
             <CsvImportModal
               open={csvImportOpen}
               initialCsvText={csvText}
