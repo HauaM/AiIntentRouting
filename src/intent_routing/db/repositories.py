@@ -100,6 +100,23 @@ class ExampleSearchResult:
 
 
 @dataclass(frozen=True, slots=True)
+class CatalogVersionDiagnosticRecord:
+    intent_catalog_version: str
+    display_version: str | None
+    status: str
+    reproducibility_status: str
+    intent_count: int
+    example_count: int
+    embedding_count: int
+    test_run_model_version: str | None
+    test_run_vector_index_version: str | None
+    ready_vector_index_version: str | None
+    ready_vector_index_model_version: str | None
+    test_run_vector_index_ready: bool | None
+    test_run_vector_index_status: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class AdminSessionContextRecord:
     user: models.AdminUser
     admin_session: models.AdminSession
@@ -1882,6 +1899,113 @@ class IntentRoutingRepository:
                 models.IntentCatalogVersion.intent_catalog_version
                 == intent_catalog_version
             )
+        )
+
+    def get_catalog_version_diagnostic_record(
+        self,
+        service_id: str,
+        intent_catalog_version: str,
+        *,
+        model_version: str | None,
+        vector_index_version: str | None,
+    ) -> CatalogVersionDiagnosticRecord | None:
+        catalog_version = self.get_catalog_version(service_id, intent_catalog_version)
+        if catalog_version is None:
+            return None
+
+        snapshot = catalog_version.snapshot if isinstance(catalog_version.snapshot, dict) else {}
+        raw_intents = snapshot.get("intents")
+        intents = raw_intents if isinstance(raw_intents, list) else []
+        example_count = 0
+        for intent in intents:
+            if isinstance(intent, dict):
+                examples = intent.get("examples")
+                if isinstance(examples, list):
+                    example_count += len(examples)
+
+        ready_vector_index_statement = (
+            select(models.VectorIndexVersion)
+            .where(models.VectorIndexVersion.service_id == service_id)
+            .where(models.VectorIndexVersion.intent_catalog_version == intent_catalog_version)
+            .where(models.VectorIndexVersion.status == "ready")
+        )
+        if model_version is not None:
+            ready_vector_index_statement = ready_vector_index_statement.where(
+                models.VectorIndexVersion.model_version == model_version
+            )
+        ready_vector_index = self.session.scalar(
+            ready_vector_index_statement.order_by(
+                models.VectorIndexVersion.created_at.desc(),
+                models.VectorIndexVersion.vector_index_version.desc(),
+            )
+        )
+
+        selected_vector_index = None
+        if vector_index_version is not None:
+            selected_vector_index_statement = (
+                select(models.VectorIndexVersion)
+                .where(models.VectorIndexVersion.service_id == service_id)
+                .where(
+                    models.VectorIndexVersion.intent_catalog_version
+                    == intent_catalog_version
+                )
+                .where(models.VectorIndexVersion.vector_index_version == vector_index_version)
+            )
+            if model_version is not None:
+                selected_vector_index_statement = selected_vector_index_statement.where(
+                    models.VectorIndexVersion.model_version == model_version
+                )
+            selected_vector_index = self.session.scalar(selected_vector_index_statement)
+        selected_vector_index_ready = (
+            selected_vector_index.status == "ready"
+            if selected_vector_index is not None
+            else False
+            if vector_index_version is not None
+            else None
+        )
+
+        embedding_count_statement = (
+            select(func.count(models.CatalogVersionExampleEmbedding.id))
+            .where(
+                models.CatalogVersionExampleEmbedding.service_id == service_id,
+                models.CatalogVersionExampleEmbedding.intent_catalog_version
+                == intent_catalog_version,
+                models.CatalogVersionExampleEmbedding.embedding_status == "active",
+                models.CatalogVersionExampleEmbedding.embedding.is_not(None),
+            )
+        )
+        if model_version is not None:
+            embedding_count_statement = embedding_count_statement.where(
+                models.CatalogVersionExampleEmbedding.model_version == model_version
+            )
+        if vector_index_version is not None:
+            embedding_count_statement = embedding_count_statement.where(
+                models.CatalogVersionExampleEmbedding.vector_index_version == vector_index_version
+            )
+        embedding_count = self.session.scalar(embedding_count_statement)
+
+        return CatalogVersionDiagnosticRecord(
+            intent_catalog_version=catalog_version.intent_catalog_version,
+            display_version=catalog_version.display_version,
+            status=catalog_version.status,
+            reproducibility_status=catalog_version.reproducibility_status,
+            intent_count=len(intents),
+            example_count=example_count,
+            embedding_count=int(embedding_count or 0),
+            test_run_model_version=model_version,
+            test_run_vector_index_version=vector_index_version,
+            ready_vector_index_version=(
+                ready_vector_index.vector_index_version
+                if ready_vector_index is not None
+                else None
+            ),
+            ready_vector_index_model_version=(
+                ready_vector_index.model_version if ready_vector_index is not None else None
+            ),
+            test_run_vector_index_ready=selected_vector_index_ready,
+            test_run_vector_index_status=(
+                selected_vector_index.status if selected_vector_index is not None else None
+            ),
         )
 
     def list_catalog_versions(
