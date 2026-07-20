@@ -10,6 +10,7 @@ import {
   Form,
   Input,
   Space,
+  Steps,
   Tag,
   Typography,
   message,
@@ -28,7 +29,7 @@ import {
 import {
   TestPolicyPanel,
 } from './TestPolicyPanel';
-import { ValidationVersionsPanel } from './ValidationVersionsPanel';
+import { CatalogVersionStep } from './CatalogVersionStep';
 
 const formatRate = (value: number | null | undefined) => {
   if (value === null || value === undefined) return 'none';
@@ -65,6 +66,8 @@ export default function TestRunsPage() {
   const [loading, setLoading] = useState(false);
   const [policy, setPolicy] = useState<API.PolicyVersion>();
   const [catalogVersion, setCatalogVersion] = useState<string>();
+  const [selectedCatalogVersion, setSelectedCatalogVersion] =
+    useState<API.CatalogVersionListItem>();
   const serviceIdRef = useRef(session.serviceId);
   const ready = isAdminSessionReady(session);
   const canRun = canEditCatalog(session);
@@ -77,6 +80,7 @@ export default function TestRunsPage() {
     createForm.resetFields();
     setPolicy(undefined);
     setCatalogVersion(undefined);
+    setSelectedCatalogVersion(undefined);
   }, [createForm, lookupForm, session.serviceId]);
 
   const handleVersionsChange = (next: {
@@ -233,19 +237,27 @@ export default function TestRunsPage() {
                   <Form.Item name="intent_catalog_version" hidden>
                     <Input />
                   </Form.Item>
+                  <Steps
+                    current={0}
+                    items={[{ title: 'Intent Catalog 선택' }, { title: '테스트 정책' }]}
+                    style={{ marginBottom: 20 }}
+                  />
+                  <CatalogVersionStep
+                    serviceId={session.serviceId}
+                    value={selectedCatalogVersion}
+                    onChange={(nextCatalogVersion) => {
+                      setSelectedCatalogVersion(nextCatalogVersion);
+                      setCatalogVersion(nextCatalogVersion?.intent_catalog_version);
+                      createForm.setFieldsValue({
+                        intent_catalog_version: nextCatalogVersion?.intent_catalog_version,
+                      });
+                    }}
+                  />
                   <TestPolicyPanel
                     serviceId={session.serviceId}
                     policy={policy}
                     onPolicyCreated={handlePolicyCreated}
                   />
-                  <div style={{ marginTop: 20 }}>
-                    <ValidationVersionsPanel
-                      serviceId={session.serviceId}
-                      policy={policy}
-                      catalogVersion={catalogVersion}
-                      onChange={handleVersionsChange}
-                    />
-                  </div>
                   <Space wrap align="start" size={12} style={{ marginTop: 16 }}>
                     <Form.Item
                       name="source_filename"
