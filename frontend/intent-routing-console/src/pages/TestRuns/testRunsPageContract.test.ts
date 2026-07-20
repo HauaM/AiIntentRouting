@@ -4,31 +4,51 @@ import { resolve } from 'node:path';
 const read = (file: string) =>
   readFileSync(resolve(process.cwd(), `src/pages/TestRuns/${file}`), 'utf8');
 
-it('separates test policy selection from validation versions', () => {
+it('renders Test Runs as a three-step wizard in the required order', () => {
   const page = read('index.tsx');
 
-  expect(page).toContain('<TestPolicyPanel');
-  expect(page).toContain('<ValidationVersionsPanel');
-  expect(page).not.toContain('ValidationBundlePanel');
+  expect(page).toContain('<Steps');
+  expect(page).toContain('ds-page-card steps-form-page-card');
+  expect(page).toContain("title: 'Intent Catalog 선택'");
+  expect(page).toContain("title: '테스트 설정'");
+  expect(page).toContain("title: '테스트 결과 확인'");
+  expect(page.indexOf("title: 'Intent Catalog 선택'")).toBeLessThan(
+    page.indexOf("title: '테스트 설정'"),
+  );
+  expect(page.indexOf("title: '테스트 설정'")).toBeLessThan(
+    page.indexOf("title: '테스트 결과 확인'"),
+  );
+  expect(page).not.toContain('type="inner"');
 });
 
-it('keeps detailed policy values inside the direct-settings modal', () => {
+it('keeps test policy selection in step two and detailed values in the modal', () => {
+  const page = read('index.tsx');
   const panel = read('TestPolicyPanel.tsx');
   const modal = read('CustomTestPolicyModal.tsx');
-  const policy = read('testPolicy.ts');
 
-  expect(policy).toContain('엄격 기준');
-  expect(policy).toContain('기본 기준');
-  expect(policy).toContain('탐색 기준');
-  expect(policy).toContain('직접 설정');
+  expect(page).toContain('<TestPolicyPanel');
+  expect(page).toContain('<CsvCasesGrid');
   expect(panel).not.toContain('명확화 여유 점수');
   expect(modal).toContain('명확화 여유 점수');
-  expect(modal).toContain('현재 선택된 정책을 초기값으로 보여줍니다.');
 });
 
-it('requires explicit policy version creation before a test run can use it', () => {
-  const panel = read('TestPolicyPanel.tsx');
+it('creates test runs from applied CSV grid data instead of a main textarea', () => {
+  const page = read('index.tsx');
 
-  expect(panel).toContain('새 정책 버전 만들기');
-  expect(panel).toContain('createPolicyVersion(serviceId, toPolicyVersionPayload(draft))');
+  expect(page).toContain('buildCsvText(csvCases)');
+  expect(page).toContain('setCsvCases');
+  expect(page).toContain('<CsvImportModal');
+  expect(page).not.toContain('Input.TextArea rows={8}');
+  expect(page).not.toContain('name="csv_text"');
+});
+
+it('keeps CSV import, export, and create wired to the same applied cases state', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain('onSave={(nextCases, nextCsvText)');
+  expect(page).toContain('setCsvCases(nextCases)');
+  expect(page).toContain('setCsvText(nextCsvText)');
+  expect(page).toContain('setCsvImportOpen(false)');
+  expect(page).toContain('downloadCsvFile(');
+  expect(page).toContain('csvCases,');
 });

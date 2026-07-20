@@ -17,8 +17,6 @@ import {
 } from 'antd';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
-import { FieldHelpLabel } from '@/components/FieldHelpLabel';
-import { FutureFeatureNotice } from '@/components/FutureFeatureNotice';
 import { WorkflowNextActionBar } from '@/components/WorkflowNextActionBar';
 import { canEditCatalog, isAdminSessionReady } from '@/models/adminSession';
 import {
@@ -26,10 +24,15 @@ import {
   fetchTestRun,
   fetchTestRunResults,
 } from '@/services/adminServices';
-import {
-  TestPolicyPanel,
-} from './TestPolicyPanel';
 import { CatalogVersionStep } from './CatalogVersionStep';
+import { CsvCasesGrid } from './CsvCasesGrid';
+import { CsvImportModal } from './CsvImportModal';
+import { TestPolicyPanel } from './TestPolicyPanel';
+import {
+  buildCsvText,
+  downloadCsvFile,
+  type CsvCaseDraft,
+} from './csvCaseBuilder';
 
 const formatRate = (value: number | null | undefined) => {
   if (value === null || value === undefined) return 'none';
@@ -46,16 +49,8 @@ const resultColor: Record<string, string> = {
 const csvTemplate = [
   'case_id,query,expected_intent,case_type,memo',
   'tc-001,password reset help,it_password_reset,positive,known happy path',
+  'tc-002,maybe login maybe password,,clarify,should request clarification',
 ].join('\n');
-
-const testRunHelp = {
-  sourceFilename: '업로드 파일명처럼 기록되는 이름입니다. 실제 파일 업로드가 아니라 CSV text 내용과 함께 저장됩니다.',
-  csvText: '헤더는 반드시 case_id,query,expected_intent,case_type,memo 입니다. case_type은 positive, confusing, risk, off_topic, fallback 중 하나입니다. positive/confusing은 expected_intent가 필요하고, 나머지는 비워야 합니다.',
-};
-
-const helpLabel = (label: string, help: string) => (
-  <FieldHelpLabel label={label} help={help} />
-);
 
 export default function TestRunsPage() {
   const { session } = useModel('adminSession');
@@ -66,6 +61,10 @@ export default function TestRunsPage() {
   const [loading, setLoading] = useState(false);
   const [policy, setPolicy] = useState<API.PolicyVersion>();
   const [catalogVersion, setCatalogVersion] = useState<string>();
+  const [currentStep, setCurrentStep] = useState(0);
+  const [csvCases, setCsvCases] = useState<CsvCaseDraft[]>([]);
+  const [csvText, setCsvText] = useState(csvTemplate);
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [selectedCatalogVersion, setSelectedCatalogVersion] =
     useState<API.CatalogVersionListItem>();
   const serviceIdRef = useRef(session.serviceId);
@@ -76,28 +75,16 @@ export default function TestRunsPage() {
     serviceIdRef.current = session.serviceId;
     setSummary(undefined);
     setResults([]);
-    lookupForm.resetFields();
-    createForm.resetFields();
     setPolicy(undefined);
     setCatalogVersion(undefined);
     setSelectedCatalogVersion(undefined);
+    setCsvCases([]);
+    setCsvText(csvTemplate);
+    setCsvImportOpen(false);
+    setCurrentStep(0);
+    lookupForm.resetFields();
+    createForm.resetFields();
   }, [createForm, lookupForm, session.serviceId]);
-
-  const handleVersionsChange = (next: {
-    policy?: API.PolicyVersion;
-    catalogVersion?: string;
-  }) => {
-    setPolicy(next.policy);
-    setCatalogVersion(next.catalogVersion);
-    createForm.setFieldsValue({
-      policy_version: next.policy?.policy_version,
-      intent_catalog_version: next.catalogVersion,
-    });
-  };
-
-  const handlePolicyCreated = (nextPolicy: API.PolicyVersion) => {
-    handleVersionsChange({ policy: nextPolicy, catalogVersion });
-  };
 
   const loadRun = async (testRunId: string, serviceId = session.serviceId) => {
     const nextSummary = await fetchTestRun(serviceId, testRunId);
@@ -105,23 +92,30 @@ export default function TestRunsPage() {
     if (serviceIdRef.current !== serviceId) return false;
     setSummary(nextSummary);
     setResults(nextResults);
+    setCurrentStep(2);
     lookupForm.setFieldsValue({ test_run_id: testRunId });
     return true;
   };
 
-  const handleCreate = async (values: API.TestRunCreateRequest) => {
+  const handleCreate = async () => {
     const serviceId = session.serviceId;
     if (!policy?.policy_version || !catalogVersion) {
       message.error('테스트 정책과 Catalog 버전을 먼저 준비하세요.');
       return;
     }
+    if (!csvCases.length) {
+      message.error('테스트 CSV 데이터를 먼저 등록하세요.');
+      return;
+    }
+    const sourceFilename =
+      createForm.getFieldValue('source_filename')?.trim() || 'test-cases.csv';
     setLoading(true);
     try {
       const created = await createTestRun(serviceId, {
-        policy_version: values.policy_version.trim(),
-        intent_catalog_version: values.intent_catalog_version.trim(),
-        source_filename: values.source_filename.trim(),
-        csv_text: values.csv_text.trim(),
+        policy_version: policy.policy_version,
+        intent_catalog_version: catalogVersion,
+        source_filename: sourceFilename,
+        csv_text: buildCsvText(csvCases),
       });
       if (serviceIdRef.current !== serviceId) return;
       setSummary(created);
@@ -129,7 +123,8 @@ export default function TestRunsPage() {
       const nextResults = await fetchTestRunResults(serviceId, created.test_run_id);
       if (serviceIdRef.current !== serviceId) return;
       setResults(nextResults);
-      message.success('Test run created.');
+      setCurrentStep(2);
+      message.success('Test Run을 생성했습니다.');
     } finally {
       setLoading(false);
     }
@@ -175,7 +170,9 @@ export default function TestRunsPage() {
       render: (_, row) => (
         <Space direction="vertical" size={0}>
           <span>{row.actual_decision}</span>
-          <span className="muted-small">{row.actual_intent ?? row.actual_route_key ?? 'none'}</span>
+          <span className="muted-small">
+            {row.actual_intent ?? row.actual_route_key ?? 'none'}
+          </span>
         </Space>
       ),
     },
@@ -184,7 +181,8 @@ export default function TestRunsPage() {
       dataIndex: 'confidence',
       search: false,
       width: 112,
-      renderText: (value) => (value === null || value === undefined ? 'none' : Number(value).toFixed(3)),
+      renderText: (value) =>
+        value === null || value === undefined ? 'none' : Number(value).toFixed(3),
     },
     {
       title: 'Result',
@@ -208,109 +206,215 @@ export default function TestRunsPage() {
 
   return (
     <AdminShell title="Test Runs">
-      <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        <FutureFeatureNotice
-          compact
-          title="CSV export"
-          backendRequirement="Phase 2 backend export contracts are required before this console can generate downloadable result files."
-        />
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {ready ? (
           <>
             {canRun ? (
-              <Card title="Create test run">
-                <Form
-                  form={createForm}
-                  layout="vertical"
-                  onFinish={handleCreate}
-                  initialValues={{ source_filename: 'test-cases.csv' }}
-                >
-                  <Alert
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: 12 }}
-                    message="Test run은 릴리즈 전에 실행하는 검증입니다."
-                    description="테스트 정책과 검증 대상 버전을 준비한 뒤 CSV 테스트를 실행하세요. 통과한 test run은 Release 화면에서 후보로 선택할 수 있습니다."
-                  />
-                  <Form.Item name="policy_version" hidden>
-                    <Input />
-                  </Form.Item>
-                  <Form.Item name="intent_catalog_version" hidden>
-                    <Input />
-                  </Form.Item>
+              <div className="ds-page-card steps-form-page-card">
+                <Space direction="vertical" size={16} style={{ width: '100%' }}>
                   <Steps
-                    current={0}
-                    items={[{ title: 'Intent Catalog 선택' }, { title: '테스트 정책' }]}
-                    style={{ marginBottom: 20 }}
+                    current={currentStep}
+                    items={[
+                      { title: 'Intent Catalog 선택' },
+                      { title: '테스트 설정' },
+                      { title: '테스트 결과 확인' },
+                    ]}
                   />
-                  <CatalogVersionStep
-                    serviceId={session.serviceId}
-                    value={selectedCatalogVersion}
-                    onChange={(nextCatalogVersion) => {
-                      setSelectedCatalogVersion(nextCatalogVersion);
-                      setCatalogVersion(nextCatalogVersion?.intent_catalog_version);
-                      createForm.setFieldsValue({
-                        intent_catalog_version: nextCatalogVersion?.intent_catalog_version,
-                      });
-                    }}
-                  />
-                  <TestPolicyPanel
-                    serviceId={session.serviceId}
-                    policy={policy}
-                    onPolicyCreated={handlePolicyCreated}
-                  />
-                  <Space wrap align="start" size={12} style={{ marginTop: 16 }}>
-                    <Form.Item
-                      name="source_filename"
-                      label={helpLabel('CSV filename', testRunHelp.sourceFilename)}
-                      rules={[{ required: true, whitespace: true, message: 'Filename is required.' }]}
+                  {currentStep === 0 ? (
+                    <CatalogVersionStep
+                      serviceId={session.serviceId}
+                      value={selectedCatalogVersion}
+                      onChange={(nextCatalogVersion) => {
+                        setSelectedCatalogVersion(nextCatalogVersion);
+                        setCatalogVersion(nextCatalogVersion?.intent_catalog_version);
+                        createForm.setFieldsValue({
+                          intent_catalog_version: nextCatalogVersion?.intent_catalog_version,
+                        });
+                      }}
+                    />
+                  ) : null}
+                  {currentStep === 1 ? (
+                    <Form
+                      form={createForm}
+                      layout="vertical"
+                      initialValues={{ source_filename: 'test-cases.csv' }}
                     >
-                      <Input placeholder="test-cases.csv" style={{ width: 220 }} />
-                    </Form.Item>
-                    <Form.Item label="CSV example">
-                      <Button
-                        onClick={() => createForm.setFieldsValue({ csv_text: csvTemplate })}
+                      <Form.Item name="policy_version" hidden>
+                        <Input />
+                      </Form.Item>
+                      <Form.Item name="intent_catalog_version" hidden>
+                        <Input />
+                      </Form.Item>
+                      <Form.Item
+                        name="source_filename"
+                        label="CSV 파일명"
+                        rules={[
+                          {
+                            required: true,
+                            whitespace: true,
+                            message: 'CSV 파일명을 입력하세요.',
+                          },
+                        ]}
                       >
-                        CSV 예시 채우기
-                      </Button>
-                    </Form.Item>
-                  </Space>
-                  <Form.Item
-                    name="csv_text"
-                    label={helpLabel('CSV text', testRunHelp.csvText)}
-                    rules={[{ required: true, whitespace: true, message: 'CSV text is required.' }]}
-                  >
-                    <Input.TextArea rows={8} placeholder={csvTemplate} />
-                  </Form.Item>
+                        <Input placeholder="test-cases.csv" style={{ width: 220 }} />
+                      </Form.Item>
+                      <TestPolicyPanel
+                        serviceId={session.serviceId}
+                        policy={policy}
+                        onPolicyCreated={(nextPolicy) => {
+                          setPolicy(nextPolicy);
+                          createForm.setFieldsValue({
+                            policy_version: nextPolicy.policy_version,
+                          });
+                        }}
+                      />
+                      <div style={{ marginTop: 16 }}>
+                        <CsvCasesGrid
+                          cases={csvCases}
+                          sourceFilename={
+                            createForm.getFieldValue('source_filename') || 'test-cases.csv'
+                          }
+                          onImport={() => setCsvImportOpen(true)}
+                          onExport={() =>
+                            downloadCsvFile(
+                              createForm.getFieldValue('source_filename') || 'test-cases.csv',
+                              csvCases,
+                            )
+                          }
+                        />
+                      </div>
+                    </Form>
+                  ) : null}
+                  {currentStep === 2 ? (
+                    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                      {summary ? (
+                        <section>
+                          <Typography.Title level={5} style={{ marginTop: 0 }}>
+                            테스트 요약
+                          </Typography.Title>
+                          <Alert
+                            type={summary.gate_passed ? 'success' : 'warning'}
+                            showIcon
+                            style={{ marginBottom: 12 }}
+                            message={
+                              summary.gate_passed
+                                ? 'Release 생성에 사용할 test_run_id가 준비되었습니다.'
+                                : 'Release 생성 전에 blocked 사유를 해결해야 합니다.'
+                            }
+                            description="Release에는 이 test_run_id와 테스트에 사용한 version 값을 그대로 입력합니다."
+                          />
+                          <Descriptions bordered size="small" column={{ xs: 1, md: 2, xl: 3 }}>
+                            <Descriptions.Item label="Test Run">
+                              <Typography.Text code>{summary.test_run_id}</Typography.Text>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Dataset">
+                              {summary.test_dataset_version}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="정책 기준">
+                              {summary.threshold_preset} / {summary.threshold_value}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Pass rate">
+                              {formatRate(summary.pass_rate)}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Review rate">
+                              {formatRate(summary.review_rate)}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Risk pass">
+                              {formatRate(summary.risk_pass_rate)}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Gate">
+                              <Tag color={summary.gate_passed ? 'success' : 'error'}>
+                                {summary.gate_passed ? '통과' : '차단'}
+                              </Tag>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="차단 사유">
+                              {summary.block_reasons.length
+                                ? summary.block_reasons.join(', ')
+                                : '없음'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="권장 조치">
+                              {summary.recommendations.length
+                                ? summary.recommendations.join(', ')
+                                : '없음'}
+                            </Descriptions.Item>
+                          </Descriptions>
+                          {summary.gate_passed && summary.risk_pass_rate === 1 ? (
+                            <WorkflowNextActionBar
+                              title="Release 후보 준비 완료"
+                              description="이 test run으로 Release 화면에서 후보를 선택할 수 있습니다."
+                              primaryLabel="Release 화면으로 이동"
+                              onPrimary={() => history.push('/releases')}
+                            />
+                          ) : null}
+                        </section>
+                      ) : (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="조회된 Test Run이 없습니다."
+                        />
+                      )}
+                      <ProTable<API.TestRunResult>
+                        rowKey="case_id"
+                        columns={columns}
+                        dataSource={results}
+                        search={false}
+                        pagination={false}
+                        options={{ density: true, fullScreen: false, reload: false, setting: true }}
+                        locale={{
+                          emptyText: (
+                            <Empty
+                              image={Empty.PRESENTED_IMAGE_SIMPLE}
+                              description="조회된 Test Run 결과가 없습니다."
+                            />
+                          ),
+                        }}
+                      />
+                    </Space>
+                  ) : null}
                   <Space wrap>
                     <Button
-                      type="primary"
-                      htmlType="submit"
-                      loading={loading}
-                      disabled={!policy?.policy_version || !catalogVersion}
+                      disabled={currentStep === 0}
+                      onClick={() => setCurrentStep((step) => Math.max(step - 1, 0))}
                     >
-                      Test run 생성
+                      이전
                     </Button>
-                    {!policy?.policy_version || !catalogVersion ? (
-                      <Typography.Text type="secondary">
-                        테스트 정책과 Catalog 버전이 필요합니다.
-                      </Typography.Text>
+                    {currentStep < 1 ? (
+                      <Button
+                        type="primary"
+                        disabled={!catalogVersion}
+                        onClick={() => setCurrentStep(1)}
+                      >
+                        다음
+                      </Button>
+                    ) : null}
+                    {currentStep === 1 ? (
+                      <Button
+                        type="primary"
+                        loading={loading}
+                        disabled={!policy?.policy_version || !catalogVersion || !csvCases.length}
+                        onClick={handleCreate}
+                      >
+                        Test Run 생성
+                      </Button>
                     ) : null}
                   </Space>
-                </Form>
-              </Card>
+                </Space>
+              </div>
             ) : (
               <Alert
                 type="info"
                 showIcon
-                message="Test run actions require catalog access"
-                description="Create and fetch actions are available to system_admin, service_owner, and service_developer roles for the selected service."
+                message="Test Run 작업 권한이 필요합니다."
+                description="선택한 서비스의 system_admin, service_owner, service_developer 역할만 Test Run 생성과 조회를 사용할 수 있습니다."
               />
             )}
-            <Card title="Fetch test run">
+            <Card title="Test Run 결과 조회">
               <Form form={lookupForm} layout="inline" onFinish={handleLookup}>
                 <Form.Item
                   name="test_run_id"
-                  rules={[{ required: true, whitespace: true, message: 'Test run id is required.' }]}
+                  rules={[
+                    { required: true, whitespace: true, message: 'test_run_id를 입력하세요.' },
+                  ]}
                 >
                   <Input placeholder="tr_..." style={{ width: 260 }} disabled={!canRun} />
                 </Form.Item>
@@ -319,71 +423,15 @@ export default function TestRunsPage() {
                 </Button>
               </Form>
             </Card>
-            {summary ? (
-              <Card title="Summary">
-                <Alert
-                  type={summary.gate_passed ? 'success' : 'warning'}
-                  showIcon
-                  style={{ marginBottom: 12 }}
-                  message={
-                    summary.gate_passed
-                      ? 'Release 생성에 사용할 test_run_id가 준비되었습니다.'
-                      : 'Release 생성 전에 blocked 사유를 해결해야 합니다.'
-                  }
-                  description="Release에는 이 test_run_id와 테스트에 사용한 version 값을 그대로 입력합니다."
-                />
-                <Descriptions bordered size="small" column={{ xs: 1, md: 2, xl: 3 }}>
-                  <Descriptions.Item label="Test run">
-                    <Typography.Text code>{summary.test_run_id}</Typography.Text>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Dataset">
-                    {summary.test_dataset_version}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Threshold">
-                    {summary.threshold_preset} / {summary.threshold_value}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Pass rate">
-                    {formatRate(summary.pass_rate)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Review rate">
-                    {formatRate(summary.review_rate)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Risk pass">
-                    {formatRate(summary.risk_pass_rate)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Gate">
-                    <Tag color={summary.gate_passed ? 'green' : 'red'}>
-                      {summary.gate_passed ? 'passed' : 'blocked'}
-                    </Tag>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Block reasons">
-                    {summary.block_reasons.length ? summary.block_reasons.join(', ') : 'none'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Recommendations">
-                    {summary.recommendations.length ? summary.recommendations.join(', ') : 'none'}
-                  </Descriptions.Item>
-                </Descriptions>
-                {summary.gate_passed && summary.risk_pass_rate === 1 ? (
-                  <WorkflowNextActionBar
-                    title="Release candidate ready"
-                    description="이 test run으로 Release 화면에서 후보를 선택할 수 있습니다."
-                    primaryLabel="Release 화면으로 이동"
-                    onPrimary={() => history.push('/releases')}
-                  />
-                ) : null}
-              </Card>
-            ) : null}
-            <ProTable<API.TestRunResult>
-              rowKey="case_id"
-              columns={columns}
-              dataSource={results}
-              search={false}
-              pagination={false}
-              options={{ density: true, fullScreen: false, reload: false, setting: true }}
-              locale={{
-                emptyText: (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No test run results loaded" />
-                ),
+            <CsvImportModal
+              open={csvImportOpen}
+              initialCsvText={csvText}
+              onCancel={() => setCsvImportOpen(false)}
+              onSave={(nextCases, nextCsvText) => {
+                setCsvCases(nextCases);
+                setCsvText(nextCsvText);
+                setCsvImportOpen(false);
+                message.success('CSV 데이터를 적용했습니다.');
               }}
             />
           </>
