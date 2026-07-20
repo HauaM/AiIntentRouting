@@ -97,6 +97,10 @@ class ThresholdConfig:
     max_clarify_candidates: int = MAX_CLARIFY_CANDIDATES
 
     def __post_init__(self) -> None:
+        if self.preset == "custom":
+            if self.threshold is None:
+                raise ValueError("custom threshold config requires threshold")
+            return
         preset = (
             self.preset
             if isinstance(self.preset, ThresholdPreset)

@@ -77,7 +77,6 @@ export default function TestRunsPage() {
     lookupForm.resetFields();
     createForm.resetFields();
     setBundle({ threshold_preset: 'balanced' });
-    createForm.setFieldsValue({ threshold_preset: 'balanced' });
   }, [createForm, lookupForm, session.serviceId]);
 
   const handleBundleChange = (nextBundle: ValidationBundle) => {
@@ -85,7 +84,6 @@ export default function TestRunsPage() {
     createForm.setFieldsValue({
       policy_version: nextBundle.policy_version,
       intent_catalog_version: nextBundle.intent_catalog_version,
-      threshold_preset: nextBundle.threshold_preset,
     });
   };
 
@@ -110,7 +108,6 @@ export default function TestRunsPage() {
       const created = await createTestRun(serviceId, {
         policy_version: values.policy_version.trim(),
         intent_catalog_version: values.intent_catalog_version.trim(),
-        threshold_preset: values.threshold_preset,
         source_filename: values.source_filename.trim(),
         csv_text: values.csv_text.trim(),
       });
@@ -213,7 +210,7 @@ export default function TestRunsPage() {
                   form={createForm}
                   layout="vertical"
                   onFinish={handleCreate}
-                  initialValues={{ threshold_preset: 'balanced', source_filename: 'test-cases.csv' }}
+                  initialValues={{ source_filename: 'test-cases.csv' }}
                 >
                   <Alert
                     type="info"
@@ -226,9 +223,6 @@ export default function TestRunsPage() {
                     <Input />
                   </Form.Item>
                   <Form.Item name="intent_catalog_version" hidden>
-                    <Input />
-                  </Form.Item>
-                  <Form.Item name="threshold_preset" hidden>
                     <Input />
                   </Form.Item>
                   <ValidationBundlePanel

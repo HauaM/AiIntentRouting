@@ -24,6 +24,12 @@ from intent_routing.routing.scoring import (
 )
 
 
+def test_custom_threshold_config_uses_explicit_threshold() -> None:
+    config = ThresholdConfig(preset="custom", threshold=0.72)
+
+    assert config.resolved_threshold == pytest.approx(0.72)
+
+
 def test_confident_when_score_over_threshold_and_margin_wide() -> None:
     result = DecisionComposer(
         ThresholdConfig(preset="balanced", threshold=0.8, clarify_margin=0.08)
