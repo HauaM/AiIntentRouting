@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Select, Space, Tag, Typography } from 'antd';
 import { VersionChip } from '@/components/VersionChip';
 import { listCatalogVersions } from '@/services/adminServices';
@@ -36,6 +36,13 @@ export function CatalogVersionStep({
   const [loading, setLoading] = useState(false);
   const [versionMode, setVersionMode] = useState<'active' | 'all'>('active');
   const [versions, setVersions] = useState<API.CatalogVersionListItem[]>([]);
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+  const versionRequestRef = useRef(0);
+  const latestSelectionRequestedRef = useRef(false);
+
+  valueRef.current = value;
+  onChangeRef.current = onChange;
 
   const selectedValue = value?.intent_catalog_version;
   const selectedVersion = useMemo(
@@ -50,27 +57,48 @@ export function CatalogVersionStep({
       selectedVersion.reproducibility_status !== 'complete'
     : false;
 
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    listCatalogVersions(serviceId, {
-      limit: CATALOG_VERSION_LIMIT,
-      status: versionMode === 'active' ? 'active' : undefined,
-    })
-      .then((nextVersions) => {
-        if (!alive) return;
+  const loadVersions = useCallback(
+    async (nextVersionMode: 'active' | 'all', selectLatest = false) => {
+      const requestId = versionRequestRef.current + 1;
+      versionRequestRef.current = requestId;
+      setLoading(true);
+      try {
+        const nextVersions = await listCatalogVersions(serviceId, {
+          limit: CATALOG_VERSION_LIMIT,
+          status: nextVersionMode === 'active' ? 'active' : undefined,
+        });
+        if (versionRequestRef.current !== requestId) return;
         setVersions(nextVersions);
-        if (!value && versionMode === 'active') {
-          onChange(nextVersions[0]);
+        if (selectLatest || (!valueRef.current && nextVersionMode === 'active')) {
+          onChangeRef.current(nextVersions[0]);
         }
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
+      } finally {
+        if (versionRequestRef.current === requestId) setLoading(false);
+      }
+    },
+    [serviceId],
+  );
+
+  useEffect(() => {
+    const selectLatest = latestSelectionRequestedRef.current;
+    latestSelectionRequestedRef.current = false;
+    void loadVersions(versionMode, selectLatest);
+  }, [loadVersions, versionMode]);
+
+  const handleLoadLatest = () => {
+    if (versionMode === 'active') {
+      void loadVersions('active', true);
+      return;
+    }
+    latestSelectionRequestedRef.current = true;
+    setVersionMode('active');
+  };
+
+  useEffect(() => {
     return () => {
-      alive = false;
+      versionRequestRef.current += 1;
     };
-  }, [onChange, serviceId, value, versionMode]);
+  }, []);
 
   return (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -99,7 +127,7 @@ export function CatalogVersionStep({
       <Space wrap>
         <Button
           loading={loading && versionMode === 'active'}
-          onClick={() => setVersionMode('active')}
+          onClick={handleLoadLatest}
         >
           최신 Catalog 버전
         </Button>

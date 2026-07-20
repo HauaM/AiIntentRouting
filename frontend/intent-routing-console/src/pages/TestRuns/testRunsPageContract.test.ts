@@ -73,11 +73,19 @@ it('localizes result and lookup labels while preserving technical identifiers', 
   expect(page).toContain("pass: { text: '통과' }");
   expect(page).toContain("fail: { text: '실패' }");
   expect(page).toContain("review: { text: '검토' }");
-  expect(page).toContain('{resultLabel[row.result] ?? row.result}');
+  expect(page).toContain('resultLabel[normalizedResult] ?? row.result');
   expect(page).toContain("message.success('테스트 실행 결과를 불러왔습니다.')");
   expect(page).toContain('<Typography.Text code>test_run_id</Typography.Text>');
   expect(page).toContain('기존 테스트 실행 결과 조회');
   expect(page).not.toContain('Test Run 결과를 불러왔습니다.');
+});
+
+it('normalizes uppercase backend result values before rendering semantic labels and colors', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain('const normalizedResult = row.result.toLowerCase();');
+  expect(page).toContain("resultColor[normalizedResult] ?? 'default'");
+  expect(page).toContain('resultLabel[normalizedResult] ?? row.result');
 });
 
 it('localizes test run summary state and gate labels', () => {
@@ -96,6 +104,27 @@ it('handles create and lookup request failures with clear messages', () => {
   expect(page).toContain("message.error('테스트 실행 생성에 실패했습니다.')");
   expect(page).toContain("message.error('테스트 실행은 생성되었지만 결과를 불러오지 못했습니다.')");
   expect(page).toContain("message.error('테스트 실행 결과를 불러오지 못했습니다.')");
+});
+
+it('keeps a successfully created run summary visible when its results request fails', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain(
+    'setSummary(created);\n      lookupForm.setFieldsValue({ test_run_id: created.test_run_id });\n      setCurrentStep(2);\n      const nextResults = await fetchTestRunResults',
+  );
+});
+
+it('clears prior run data and only allows the latest run request to update the results step', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain('const runRequestGenerationRef = useRef(0);');
+  expect(page).toContain('const beginRunRequest = () => {');
+  expect(page).toContain('setSummary(undefined);');
+  expect(page).toContain('setResults([]);');
+  expect(page).toContain('runRequestGenerationRef.current === requestGeneration');
+  expect(page).toContain('const requestGeneration = beginRunRequest();');
+  expect(page).toContain('if (!isCurrentRunRequest(requestGeneration, serviceId)) return false;');
+  expect(page).toContain('if (!isCurrentRunRequest(requestGeneration, serviceId)) return;');
 });
 
 it('wires diagnostics to the selected test run in the results step', () => {

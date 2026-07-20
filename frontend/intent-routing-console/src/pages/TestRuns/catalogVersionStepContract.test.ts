@@ -11,9 +11,19 @@ describe('CatalogVersionStep contract', () => {
     const source = read('CatalogVersionStep.tsx');
 
     expect(source).toContain('listCatalogVersions(serviceId');
-    expect(source).toContain("versionMode === 'active' ? 'active' : undefined");
-    expect(source).toContain('onChange(nextVersions[0])');
+    expect(source).toContain('void loadVersions(versionMode, selectLatest);');
+    expect(source).toContain('onChangeRef.current(nextVersions[0]);');
     expect(source).toContain('최신 Catalog 버전');
+  });
+
+  it('explicitly reloads active versions and selects the newest one on demand', () => {
+    const source = read('CatalogVersionStep.tsx');
+
+    expect(source).toContain("const loadVersions = useCallback(");
+    expect(source).toContain("status: nextVersionMode === 'active' ? 'active' : undefined");
+    expect(source).toContain('selectLatest || (!valueRef.current && nextVersionMode === \'active\')');
+    expect(source).toContain("void loadVersions('active', true);");
+    expect(source).toContain('onChangeRef.current(nextVersions[0]);');
   });
 
   it('allows loading older catalog versions without manual ID typing', () => {
@@ -21,7 +31,7 @@ describe('CatalogVersionStep contract', () => {
 
     expect(source).toContain('전체 버전 불러오기');
     expect(source).toContain('setVersionMode');
-    expect(source).toContain('status: versionMode ===');
+    expect(source).toContain("status: nextVersionMode === 'active' ? 'active' : undefined");
     expect(source).toContain('reproducibility_status');
     expect(source).toContain('선택한 Catalog 버전 상태를 확인하세요');
     expect(source).toContain('<Select');

@@ -74,11 +74,13 @@ export default function TestRunsPage() {
   const [selectedCatalogVersion, setSelectedCatalogVersion] =
     useState<API.CatalogVersionListItem>();
   const serviceIdRef = useRef(session.serviceId);
+  const runRequestGenerationRef = useRef(0);
   const ready = isAdminSessionReady(session);
   const canRun = canEditCatalog(session);
 
   useEffect(() => {
     serviceIdRef.current = session.serviceId;
+    runRequestGenerationRef.current += 1;
     setSummary(undefined);
     setResults([]);
     setPolicy(undefined);
@@ -92,10 +94,25 @@ export default function TestRunsPage() {
     createForm.resetFields();
   }, [createForm, lookupForm, session.serviceId]);
 
-  const loadRun = async (testRunId: string, serviceId = session.serviceId) => {
+  const beginRunRequest = () => {
+    runRequestGenerationRef.current += 1;
+    setSummary(undefined);
+    setResults([]);
+    return runRequestGenerationRef.current;
+  };
+
+  const isCurrentRunRequest = (requestGeneration: number, serviceId: string) =>
+    serviceIdRef.current === serviceId &&
+    runRequestGenerationRef.current === requestGeneration;
+
+  const loadRun = async (
+    testRunId: string,
+    serviceId: string,
+    requestGeneration: number,
+  ) => {
     const nextSummary = await fetchTestRun(serviceId, testRunId);
     const nextResults = await fetchTestRunResults(serviceId, testRunId);
-    if (serviceIdRef.current !== serviceId) return false;
+    if (!isCurrentRunRequest(requestGeneration, serviceId)) return false;
     setSummary(nextSummary);
     setResults(nextResults);
     setCurrentStep(2);
@@ -116,6 +133,7 @@ export default function TestRunsPage() {
     const sourceFilename =
       createForm.getFieldValue('source_filename')?.trim() || 'test-cases.csv';
     let testRunCreated = false;
+    const requestGeneration = beginRunRequest();
     setLoading(true);
     try {
       const created = await createTestRun(serviceId, {
@@ -125,34 +143,39 @@ export default function TestRunsPage() {
         csv_text: buildCsvText(csvCases),
       });
       testRunCreated = true;
-      if (serviceIdRef.current !== serviceId) return;
+      if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
       setSummary(created);
       lookupForm.setFieldsValue({ test_run_id: created.test_run_id });
-      const nextResults = await fetchTestRunResults(serviceId, created.test_run_id);
-      if (serviceIdRef.current !== serviceId) return;
-      setResults(nextResults);
       setCurrentStep(2);
+      const nextResults = await fetchTestRunResults(serviceId, created.test_run_id);
+      if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
+      setResults(nextResults);
       message.success('테스트 실행을 생성했습니다.');
     } catch {
+      if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
       if (testRunCreated) {
         message.error('테스트 실행은 생성되었지만 결과를 불러오지 못했습니다.');
       } else {
         message.error('테스트 실행 생성에 실패했습니다.');
       }
     } finally {
-      setLoading(false);
+      if (isCurrentRunRequest(requestGeneration, serviceId)) setLoading(false);
     }
   };
 
   const handleLookup = async (values: { test_run_id: string }) => {
+    const serviceId = session.serviceId;
+    const requestGeneration = beginRunRequest();
     setLoading(true);
     try {
-      const loaded = await loadRun(values.test_run_id.trim(), session.serviceId);
+      const loaded = await loadRun(values.test_run_id.trim(), serviceId, requestGeneration);
       if (loaded) message.success('테스트 실행 결과를 불러왔습니다.');
     } catch {
-      message.error('테스트 실행 결과를 불러오지 못했습니다.');
+      if (isCurrentRunRequest(requestGeneration, serviceId)) {
+        message.error('테스트 실행 결과를 불러오지 못했습니다.');
+      }
     } finally {
-      setLoading(false);
+      if (isCurrentRunRequest(requestGeneration, serviceId)) setLoading(false);
     }
   };
 
@@ -210,11 +233,14 @@ export default function TestRunsPage() {
         review: { text: '검토' },
       },
       width: 104,
-      render: (_, row) => (
-        <Tag color={resultColor[row.result] ?? 'default'}>
-          {resultLabel[row.result] ?? row.result}
-        </Tag>
-      ),
+      render: (_, row) => {
+        const normalizedResult = row.result.toLowerCase();
+        return (
+          <Tag color={resultColor[normalizedResult] ?? 'default'}>
+            {resultLabel[normalizedResult] ?? row.result}
+          </Tag>
+        );
+      },
     },
     {
       title: '사유',
