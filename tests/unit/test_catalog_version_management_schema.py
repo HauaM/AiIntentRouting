@@ -4,6 +4,7 @@ from pathlib import Path
 def test_catalog_version_management_migration_defines_lifecycle_and_embeddings() -> None:
     migration = Path("alembic/versions/0009_catalog_version_management.py").read_text()
 
+    assert 'down_revision: str | None = "0008_app_admin_rbac"' in migration
     assert "display_version" in migration
     assert "description" in migration
     assert "status" in migration

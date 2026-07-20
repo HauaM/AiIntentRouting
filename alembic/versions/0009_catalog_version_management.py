@@ -1,7 +1,7 @@
 """catalog version management
 
 Revision ID: 0009_catalog_version_mgmt
-Revises: 0008_application_admin_approval_rbac
+Revises: 0008_app_admin_rbac
 Create Date: 2026-07-20
 """
 
@@ -13,7 +13,7 @@ from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
 from alembic import op
 
 revision: str = "0009_catalog_version_mgmt"
-down_revision: str | None = "0008_application_admin_approval_rbac"
+down_revision: str | None = "0008_app_admin_rbac"
 branch_labels: str | None = None
 depends_on: str | None = None
 
