@@ -1942,7 +1942,7 @@ class IntentRoutingRepository:
 
         selected_vector_index = None
         if vector_index_version is not None:
-            selected_vector_index = self.session.scalar(
+            selected_vector_index_statement = (
                 select(models.VectorIndexVersion)
                 .where(models.VectorIndexVersion.service_id == service_id)
                 .where(
@@ -1951,6 +1951,11 @@ class IntentRoutingRepository:
                 )
                 .where(models.VectorIndexVersion.vector_index_version == vector_index_version)
             )
+            if model_version is not None:
+                selected_vector_index_statement = selected_vector_index_statement.where(
+                    models.VectorIndexVersion.model_version == model_version
+                )
+            selected_vector_index = self.session.scalar(selected_vector_index_statement)
         selected_vector_index_ready = (
             selected_vector_index.status == "ready"
             if selected_vector_index is not None
