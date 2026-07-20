@@ -291,6 +291,8 @@ export default function IntentsPage() {
       setCatalogPageState({ mode: 'version', version: created });
       message.success('Catalog 버전이 등록되었습니다.');
       setCatalogVersionCreateOpen(false);
+      refreshCatalog();
+      if (selected?.intent_id) await loadSelectedExamples(selected.intent_id);
       if (catalogVersionLoadOpen) await reloadCatalogVersionRows();
     } catch (error) {
       message.error(getOperationErrorMessage(error));
