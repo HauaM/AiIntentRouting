@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const source = () => readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.tsx'), 'utf8');
+const styleSource = () =>
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../global.less'), 'utf8');
 
 describe('Intents page contract', () => {
   it('uses neutral next-step copy and named detail sections', () => {
@@ -50,5 +52,14 @@ describe('Intents page contract', () => {
     expect(text).toContain('수정/삭제 시 승인된 Example의 embedding도 함께 갱신 또는 제거됩니다.');
     expect(text).not.toContain('현재 백엔드는 Example 추가와 승인만 제공합니다.');
     expect(text).not.toContain('편집/삭제/반려는 Phase 2 항목입니다.');
+  });
+
+  it('uses shadowless detail drawer action buttons', () => {
+    const text = source();
+    const styles = styleSource();
+
+    expect(text).toContain('className="intent-detail-actions"');
+    expect(styles).toContain('.intent-detail-actions .ant-btn');
+    expect(styles).toContain('box-shadow: none;');
   });
 });

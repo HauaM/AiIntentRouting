@@ -486,7 +486,7 @@ export default function IntentsPage() {
         onClose={closeDetailDrawer}
         extra={
           catalogEditable && selected ? (
-            <Space>
+            <Space className="intent-detail-actions">
               <Button onClick={() => openEditIntent(selected)}>편집</Button>
               <ConfirmActionButton
                 danger
