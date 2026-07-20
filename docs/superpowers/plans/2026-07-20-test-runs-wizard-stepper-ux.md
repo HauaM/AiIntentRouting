@@ -897,14 +897,6 @@ describe('CsvCasesGrid contract', () => {
     expect(grid).toContain('ellipsis');
     expect(grid).toContain('<Tooltip');
   });
-
-  it('keeps CSV TextArea out of the main Test Runs page', () => {
-    const page = read('index.tsx');
-
-    expect(page).not.toContain('name="csv_text"');
-    expect(page).not.toContain('CSV text');
-    expect(page).not.toContain('Input.TextArea rows={8}');
-  });
 });
 ```
 
@@ -916,7 +908,7 @@ Run from `frontend/intent-routing-console`:
 ./node_modules/.bin/vitest run src/pages/TestRuns/csvImportModalContract.test.ts src/pages/TestRuns/csvCasesGridContract.test.ts
 ```
 
-Expected: FAIL because the new components do not exist and `index.tsx` still has the main-page CSV textarea.
+Expected: FAIL because the new components do not exist.
 
 - [ ] **Step 3: Create `CsvImportModal.tsx`**
 
@@ -1155,7 +1147,7 @@ Run from `frontend/intent-routing-console`:
 ./node_modules/.bin/vitest run src/pages/TestRuns/csvImportModalContract.test.ts src/pages/TestRuns/csvCasesGridContract.test.ts
 ```
 
-Expected: The modal contract passes. The grid contract may still fail until Task 4 removes the main-page textarea.
+Expected: PASS. The main-page textarea removal is verified by Task 4 page contracts.
 
 - [ ] **Step 6: Commit the standalone components**
 
