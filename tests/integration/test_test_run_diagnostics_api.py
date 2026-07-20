@@ -26,6 +26,11 @@ def _admin_headers() -> dict[str, str]:
     }
 
 
+@pytest.fixture(autouse=True)
+def admin_bootstrap_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+
+
 @pytest.fixture
 def client(db_session: Session) -> Iterator[TestClient]:
     app = create_app()
