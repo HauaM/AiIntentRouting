@@ -26,9 +26,9 @@ import {
   fetchTestRunResults,
 } from '@/services/adminServices';
 import {
-  ValidationBundlePanel,
-  type ValidationBundle,
-} from './ValidationBundlePanel';
+  TestPolicyPanel,
+} from './TestPolicyPanel';
+import { ValidationVersionsPanel } from './ValidationVersionsPanel';
 
 const formatRate = (value: number | null | undefined) => {
   if (value === null || value === undefined) return 'none';
@@ -63,9 +63,8 @@ export default function TestRunsPage() {
   const [summary, setSummary] = useState<API.TestRunSummary>();
   const [results, setResults] = useState<API.TestRunResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [bundle, setBundle] = useState<ValidationBundle>({
-    threshold_preset: 'balanced',
-  });
+  const [policy, setPolicy] = useState<API.PolicyVersion>();
+  const [catalogVersion, setCatalogVersion] = useState<string>();
   const serviceIdRef = useRef(session.serviceId);
   const ready = isAdminSessionReady(session);
   const canRun = canEditCatalog(session);
@@ -76,15 +75,24 @@ export default function TestRunsPage() {
     setResults([]);
     lookupForm.resetFields();
     createForm.resetFields();
-    setBundle({ threshold_preset: 'balanced' });
+    setPolicy(undefined);
+    setCatalogVersion(undefined);
   }, [createForm, lookupForm, session.serviceId]);
 
-  const handleBundleChange = (nextBundle: ValidationBundle) => {
-    setBundle(nextBundle);
+  const handleVersionsChange = (next: {
+    policy?: API.PolicyVersion;
+    catalogVersion?: string;
+  }) => {
+    setPolicy(next.policy);
+    setCatalogVersion(next.catalogVersion);
     createForm.setFieldsValue({
-      policy_version: nextBundle.policy_version,
-      intent_catalog_version: nextBundle.intent_catalog_version,
+      policy_version: next.policy?.policy_version,
+      intent_catalog_version: next.catalogVersion,
     });
+  };
+
+  const handlePolicyCreated = (nextPolicy: API.PolicyVersion) => {
+    handleVersionsChange({ policy: nextPolicy, catalogVersion });
   };
 
   const loadRun = async (testRunId: string, serviceId = session.serviceId) => {
@@ -99,8 +107,8 @@ export default function TestRunsPage() {
 
   const handleCreate = async (values: API.TestRunCreateRequest) => {
     const serviceId = session.serviceId;
-    if (!bundle.policy_version || !bundle.intent_catalog_version) {
-      message.error('Validation bundle을 먼저 불러오거나 생성하세요.');
+    if (!policy?.policy_version || !catalogVersion) {
+      message.error('테스트 정책과 Catalog 버전을 먼저 준비하세요.');
       return;
     }
     setLoading(true);
@@ -217,7 +225,7 @@ export default function TestRunsPage() {
                     showIcon
                     style={{ marginBottom: 12 }}
                     message="Test run은 릴리즈 전에 실행하는 검증입니다."
-                    description="Validation bundle을 불러오거나 생성한 뒤 CSV 테스트를 실행하세요. 통과한 test run은 Release 화면에서 후보로 선택할 수 있습니다."
+                    description="테스트 정책과 검증 대상 버전을 준비한 뒤 CSV 테스트를 실행하세요. 통과한 test run은 Release 화면에서 후보로 선택할 수 있습니다."
                   />
                   <Form.Item name="policy_version" hidden>
                     <Input />
@@ -225,11 +233,19 @@ export default function TestRunsPage() {
                   <Form.Item name="intent_catalog_version" hidden>
                     <Input />
                   </Form.Item>
-                  <ValidationBundlePanel
+                  <TestPolicyPanel
                     serviceId={session.serviceId}
-                    value={bundle}
-                    onChange={handleBundleChange}
+                    policy={policy}
+                    onPolicyCreated={handlePolicyCreated}
                   />
+                  <div style={{ marginTop: 20 }}>
+                    <ValidationVersionsPanel
+                      serviceId={session.serviceId}
+                      policy={policy}
+                      catalogVersion={catalogVersion}
+                      onChange={handleVersionsChange}
+                    />
+                  </div>
                   <Space wrap align="start" size={12} style={{ marginTop: 16 }}>
                     <Form.Item
                       name="source_filename"
@@ -258,13 +274,13 @@ export default function TestRunsPage() {
                       type="primary"
                       htmlType="submit"
                       loading={loading}
-                      disabled={!bundle.policy_version || !bundle.intent_catalog_version}
+                      disabled={!policy?.policy_version || !catalogVersion}
                     >
                       Test run 생성
                     </Button>
-                    {!bundle.policy_version || !bundle.intent_catalog_version ? (
+                    {!policy?.policy_version || !catalogVersion ? (
                       <Typography.Text type="secondary">
-                        Validation bundle이 필요합니다.
+                        테스트 정책과 Catalog 버전이 필요합니다.
                       </Typography.Text>
                     ) : null}
                   </Space>
