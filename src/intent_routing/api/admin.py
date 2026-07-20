@@ -4763,6 +4763,7 @@ def create_intent(
     _require_service_catalog_access(context, service_id)
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     _ensure_service_exists(repository, service_id)
     try:
         intent = repository.create_intent(
@@ -4871,6 +4872,7 @@ def patch_intent(
 ) -> IntentResponse:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     intent = repository.get_intent(service_id, intent_id)
     if intent is None:
         _raise_not_found("Intent does not exist.")
@@ -4904,6 +4906,7 @@ def delete_intent(
 ) -> None:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     intent = repository.get_intent(service_id, intent_id)
     if intent is None:
         _raise_not_found("Intent does not exist.")
@@ -4945,6 +4948,7 @@ def create_example(
     _require_service_catalog_access(context, service_id)
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     if repository.get_intent(service_id, intent_id) is None:
         _raise_not_found("Intent does not exist.")
 
@@ -5248,6 +5252,7 @@ def load_catalog_version_to_draft(
 ) -> CatalogVersionResponse:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     version = repository.get_catalog_version(service_id, intent_catalog_version)
     if version is None:
         _raise_not_found("Catalog version does not exist.")
@@ -5376,6 +5381,7 @@ def approve_example(
 ) -> ExampleResponse:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     example = repository.get_example(service_id, example_id)
     if example is None:
         _raise_not_found("Example does not exist.")
@@ -5415,6 +5421,7 @@ def patch_example(
 ) -> ExampleResponse:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     example = repository.get_example(service_id, example_id)
     if example is None:
         _raise_not_found("Example does not exist.")
@@ -5481,6 +5488,7 @@ def delete_example(
 ) -> None:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     example = repository.get_example(service_id, example_id)
     if example is None:
         _raise_not_found("Example does not exist.")

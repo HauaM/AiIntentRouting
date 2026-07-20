@@ -394,6 +394,82 @@ def test_catalog_version_deactivation_acquires_catalog_version_lock(
     assert acquired_lock_keys == [f"catalog-version:{service_id}"]
 
 
+def test_editable_catalog_writes_acquire_catalog_version_lock(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    service_id: str,
+) -> None:
+    existing_intent_id = _create_intent(client, service_id, status="draft")
+    acquired_lock_keys: list[str] = []
+
+    def capture_lock(self: IntentRoutingRepository, lock_key: str) -> None:
+        del self
+        acquired_lock_keys.append(lock_key)
+
+    monkeypatch.setattr(IntentRoutingRepository, "acquire_advisory_xact_lock", capture_lock)
+
+    created_intent = client.post(
+        f"/admin/v1/services/{service_id}/intents",
+        headers=_admin_headers(),
+        json={
+            "intent_id": f"intent-{uuid4().hex}",
+            "domain": "it",
+            "display_name": "Lock target intent",
+            "description": "Exercise the catalog write lock.",
+            "route_key": "it.catalog.version.lock_target",
+            "include_keywords": ["catalog"],
+            "exclude_keywords": [],
+        },
+    )
+    assert created_intent.status_code == 201
+
+    patched_intent = client.patch(
+        f"/admin/v1/services/{service_id}/intents/{existing_intent_id}",
+        headers=_admin_headers(),
+        json={"display_name": "Locked catalog version intent"},
+    )
+    assert patched_intent.status_code == 200
+
+    created_example = client.post(
+        f"/admin/v1/services/{service_id}/intents/{existing_intent_id}/examples",
+        headers=_admin_headers(),
+        json={
+            "example_type": "positive",
+            "text_raw": "Catalog write lock example text",
+            "source": "catalog-version-test",
+            "test_case_id": None,
+        },
+    )
+    assert created_example.status_code == 201
+    example_id = created_example.json()["example_id"]
+
+    approved_example = client.patch(
+        f"/admin/v1/services/{service_id}/examples/{example_id}:approve",
+        headers=_admin_headers(),
+    )
+    assert approved_example.status_code == 200
+
+    patched_example = client.patch(
+        f"/admin/v1/services/{service_id}/examples/{example_id}",
+        headers=_admin_headers(),
+        json={"source": "catalog-version-lock-test"},
+    )
+    assert patched_example.status_code == 200
+
+    deleted_example = client.delete(
+        f"/admin/v1/services/{service_id}/examples/{example_id}",
+        headers=_admin_headers(),
+    )
+    assert deleted_example.status_code == 204
+
+    deleted_intent = client.delete(
+        f"/admin/v1/services/{service_id}/intents/{created_intent.json()['intent_id']}",
+        headers=_admin_headers(),
+    )
+    assert deleted_intent.status_code == 204
+    assert acquired_lock_keys == [f"catalog-version:{service_id}"] * 7
+
+
 def test_catalog_version_load_to_draft_restores_editable_snapshot(
     client: TestClient,
     db_session: Session,
