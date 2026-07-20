@@ -759,7 +759,7 @@ class PolicyVersionCreateRequest(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_threshold_contract(self) -> "PolicyVersionCreateRequest":
+    def validate_threshold_contract(self) -> PolicyVersionCreateRequest:
         if self.threshold_preset == "custom":
             if self.threshold_value is None:
                 raise ValueError(
