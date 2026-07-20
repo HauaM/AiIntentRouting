@@ -455,6 +455,16 @@ export async function fetchTestRunResults(serviceId: string, testRunId: string) 
   );
 }
 
+export async function fetchTestRunDiagnostics(serviceId: string, testRunId: string) {
+  return request<API.TestRunDiagnostics>(
+    servicePath(
+      serviceId,
+      `/test-runs/${encodeURIComponent(testRunId)}/diagnostics`,
+    ),
+    { method: 'GET' },
+  );
+}
+
 export async function listReleases(serviceId: string, environment?: string) {
   return request<API.Release[]>(servicePath(serviceId, '/releases'), {
     method: 'GET',

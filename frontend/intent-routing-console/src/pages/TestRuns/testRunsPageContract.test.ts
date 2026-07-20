@@ -98,10 +98,10 @@ it('handles create and lookup request failures with clear messages', () => {
   expect(page).toContain("message.error('테스트 실행 결과를 불러오지 못했습니다.')");
 });
 
-it('shows the pre-merge diagnostics dependency shell without backend wiring', () => {
+it('wires diagnostics to the selected test run in the results step', () => {
   const page = read('index.tsx');
 
   expect(page).toContain('<TestRunDiagnosticsPanel');
-  expect(page).not.toContain('fetchTestRunDiagnostics');
-  expect(page).not.toContain('/diagnostics');
+  expect(page).toContain('serviceId={session.serviceId}');
+  expect(page).toContain('testRunId={summary?.test_run_id}');
 });

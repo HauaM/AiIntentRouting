@@ -6,14 +6,23 @@ import { describe, expect, it } from 'vitest';
 const read = (file: string) =>
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), file), 'utf8');
 
-describe('TestRunDiagnosticsPanel pre-merge contract', () => {
-  it('renders a dependency notice instead of fake diagnostics before backend merge', () => {
+describe('TestRunDiagnosticsPanel contract after backend merge', () => {
+  it('loads backend diagnostics for the selected test run', () => {
     const source = read('TestRunDiagnosticsPanel.tsx');
 
-    expect(source).toContain('FutureFeatureNotice');
-    expect(source).toContain('backend diagnostics');
-    expect(source).toContain('2026-07-20-test-run-diagnostics-ux.md');
-    expect(source).not.toContain('fetchTestRunDiagnostics');
-    expect(source).not.toContain('/diagnostics');
+    expect(source).toContain('fetchTestRunDiagnostics');
+    expect(source).toContain('primary_issue');
+    expect(source).toContain('catalog_version');
+    expect(source).toContain('result_counts');
+    expect(source).not.toContain('FutureFeatureNotice');
+  });
+
+  it('maps stable issue codes to Korean UI copy in the frontend', () => {
+    const source = read('TestRunDiagnosticsPanel.tsx');
+
+    expect(source).toContain('catalog_version_not_active');
+    expect(source).toContain('catalog_version_not_reproducible');
+    expect(source).toContain('fallback_failures_dominant');
+    expect(source).toContain('intent_mismatch_exists');
   });
 });

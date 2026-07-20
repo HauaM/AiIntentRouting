@@ -380,7 +380,10 @@ export default function TestRunsPage() {
                             description="조회된 테스트 실행이 없습니다."
                         />
                       )}
-                      <TestRunDiagnosticsPanel />
+                      <TestRunDiagnosticsPanel
+                        serviceId={session.serviceId}
+                        testRunId={summary?.test_run_id}
+                      />
                       <ProTable<API.TestRunResult>
                         rowKey="case_id"
                         columns={columns}

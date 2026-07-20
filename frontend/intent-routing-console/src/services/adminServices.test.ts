@@ -21,6 +21,7 @@ import {
   fetchCatalogVersionDiff,
   fetchRuntimeSetupGuidance,
   fetchTestRun,
+  fetchTestRunDiagnostics,
   fetchTestRunResults,
   grantServiceRole,
   listApiKeys,
@@ -240,6 +241,15 @@ describe('admin service Phase 1 write flow requests', () => {
     expect(requestMock).toHaveBeenNthCalledWith(
       3,
       '/services/svc%2Fadmin/test-runs/run%2Fa/results',
+      { method: 'GET' },
+    );
+  });
+
+  it('fetches test run diagnostics', async () => {
+    await fetchTestRunDiagnostics('svc/admin', 'run/a');
+
+    expect(requestMock).toHaveBeenCalledWith(
+      '/services/svc%2Fadmin/test-runs/run%2Fa/diagnostics',
       { method: 'GET' },
     );
   });
