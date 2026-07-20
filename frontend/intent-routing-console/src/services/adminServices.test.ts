@@ -200,10 +200,15 @@ describe('admin service Phase 1 write flow requests', () => {
   });
 
   it('creates catalog versions', async () => {
-    await createCatalogVersion('svc/admin');
+    const payload: API.CatalogVersionCreateRequest = {
+      description: 'Catalog baseline for regression tests',
+    };
+
+    await createCatalogVersion('svc/admin', payload);
 
     expect(requestMock).toHaveBeenCalledWith('/services/svc%2Fadmin/catalog-versions', {
       method: 'POST',
+      data: payload,
     });
   });
 
@@ -575,7 +580,7 @@ describe('admin service Phase 1 write flow requests', () => {
     });
     expect(requestMock).toHaveBeenCalledWith('/services/svc%2Fadmin/catalog-versions', {
       method: 'GET',
-      params: { limit: 50 },
+      params: { limit: 50, status: undefined },
     });
     expect(requestMock).toHaveBeenCalledWith('/services/svc%2Fadmin/test-runs', {
       method: 'GET',
@@ -602,6 +607,15 @@ describe('admin service Phase 1 write flow requests', () => {
         status: undefined,
         limit: 50,
       },
+    });
+  });
+
+  it('lists active catalog versions with explicit lifecycle filters', async () => {
+    await listCatalogVersions('svc/admin', { limit: 100, status: 'active' });
+
+    expect(requestMock).toHaveBeenCalledWith('/services/svc%2Fadmin/catalog-versions', {
+      method: 'GET',
+      params: { limit: 100, status: 'active' },
     });
   });
 

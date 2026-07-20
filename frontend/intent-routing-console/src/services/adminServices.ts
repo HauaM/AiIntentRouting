@@ -344,18 +344,28 @@ export async function listPolicyVersions(serviceId: string, limit = 50) {
   });
 }
 
-export async function createCatalogVersion(serviceId: string) {
+export async function createCatalogVersion(
+  serviceId: string,
+  payload: API.CatalogVersionCreateRequest,
+) {
   return request<API.CatalogVersion>(servicePath(serviceId, '/catalog-versions'), {
     method: 'POST',
+    data: payload,
   });
 }
 
-export async function listCatalogVersions(serviceId: string, limit = 50) {
+export async function listCatalogVersions(
+  serviceId: string,
+  params: { limit?: number; status?: API.CatalogVersionStatus } = {},
+) {
   return request<API.CatalogVersionListItem[]>(
     servicePath(serviceId, '/catalog-versions'),
     {
       method: 'GET',
-      params: { limit },
+      params: {
+        limit: params.limit ?? 50,
+        status: params.status,
+      },
     },
   );
 }
