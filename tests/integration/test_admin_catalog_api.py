@@ -854,7 +854,7 @@ def test_patch_approved_example_reencrypts_text_and_regenerates_embedding(
     assert body["embedding"] != original_embedding
     assert persisted is not None
     assert persisted.embedding is not None
-    assert persisted.embedding != original_embedding
+    assert list(persisted.embedding) != original_embedding
     assert replacement_text.encode("utf-8") not in persisted.text_raw_ciphertext
     audit_log = db_session.scalar(
         select(models.AuditLog).where(
