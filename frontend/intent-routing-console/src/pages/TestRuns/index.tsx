@@ -26,6 +26,7 @@ import {
 import { CatalogVersionStep } from './CatalogVersionStep';
 import { CsvCasesGrid } from './CsvCasesGrid';
 import { CsvImportModal } from './CsvImportModal';
+import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
 import { TestPolicyPanel } from './TestPolicyPanel';
 import {
   buildCsvText,
@@ -379,6 +380,7 @@ export default function TestRunsPage() {
                             description="조회된 테스트 실행이 없습니다."
                         />
                       )}
+                      <TestRunDiagnosticsPanel />
                       <ProTable<API.TestRunResult>
                         rowKey="case_id"
                         columns={columns}
