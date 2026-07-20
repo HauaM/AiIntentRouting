@@ -11,16 +11,31 @@ type CsvCasesGridProps = {
 
 const expectedIntentRequired = new Set(['positive', 'confusing']);
 
+const caseTypeLabels: Record<CsvCaseDraft['case_type'], string> = {
+  positive: '정상',
+  confusing: '혼동',
+  clarify: '명확화',
+  risk: '위험',
+  off_topic: '주제 외',
+  fallback: '폴백',
+};
+
 const columns: ColumnsType<CsvCaseDraft> = [
   {
-    title: 'Case',
+    title: '케이스 ID',
     dataIndex: 'case_id',
     width: 140,
     ellipsis: true,
-    render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
+    render: (value: string) => (
+      <Tooltip title={value}>
+        <Typography.Text code ellipsis>
+          {value}
+        </Typography.Text>
+      </Tooltip>
+    ),
   },
   {
-    title: 'Query',
+    title: '질의',
     dataIndex: 'query',
     ellipsis: true,
     render: (value: string) => (
@@ -30,28 +45,35 @@ const columns: ColumnsType<CsvCaseDraft> = [
     ),
   },
   {
-    title: 'Expected intent',
+    title: '기대 인텐트',
     dataIndex: 'expected_intent',
     width: 180,
     ellipsis: true,
     render: (value: string, row) =>
       expectedIntentRequired.has(row.case_type) ? (
-        <Typography.Text>{value}</Typography.Text>
+        <Tooltip title={value}>
+          <Typography.Text ellipsis>{value}</Typography.Text>
+        </Tooltip>
       ) : (
         <Typography.Text type="secondary">없음</Typography.Text>
       ),
   },
   {
-    title: 'Case type',
+    title: '케이스 유형',
     dataIndex: 'case_type',
     width: 132,
-    render: (value: string) => <Tag>{value}</Tag>,
+    render: (value: CsvCaseDraft['case_type']) => <Tag>{caseTypeLabels[value]}</Tag>,
   },
   {
-    title: 'Memo',
+    title: '메모',
     dataIndex: 'memo',
     width: 220,
     ellipsis: true,
+    render: (value: string) => (
+      <Tooltip title={value}>
+        <Typography.Text ellipsis>{value}</Typography.Text>
+      </Tooltip>
+    ),
   },
 ];
 
