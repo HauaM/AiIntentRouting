@@ -58,6 +58,31 @@ def test_seed_pilot_runs_csv_gate_with_balanced_threshold_for_strict_catalog(
     assert "strict" not in state["test_runs"]
 
 
+def test_seed_pilot_creates_catalog_version_with_description(
+    tmp_path: Path,
+) -> None:
+    catalog_path = _write_catalog(tmp_path, threshold_preset="balanced")
+    csv_path = _write_csv(tmp_path)
+    http_client = _FakeHttpClient(gate_passed=True)
+
+    seed_module.seed_pilot(
+        base_url="http://testserver",
+        admin_token="local-admin-token",
+        catalog_path=catalog_path,
+        csv_path=csv_path,
+        http_client=http_client,
+    )
+
+    catalog_version_request = next(
+        request
+        for request in http_client.requests
+        if request["path"].endswith("/catalog-versions")
+    )
+    assert catalog_version_request["json"] == {
+        "description": "Pilot catalog version seed"
+    }
+
+
 def test_seed_pilot_fails_when_balanced_gate_fails_for_strict_catalog(
     tmp_path: Path,
 ) -> None:

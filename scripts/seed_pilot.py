@@ -146,7 +146,10 @@ def _seed_pilot_with_api(
             },
         },
     )
-    catalog_version = api.post(f"/admin/v1/services/{service_id}/catalog-versions")
+    catalog_version = api.post(
+        f"/admin/v1/services/{service_id}/catalog-versions",
+        json={"description": "Pilot catalog version seed"},
+    )
     test_run = api.post(
         f"/admin/v1/services/{service_id}/test-runs",
         json={
