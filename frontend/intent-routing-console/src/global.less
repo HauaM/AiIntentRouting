@@ -519,6 +519,12 @@ body {
   }
 }
 
+@media (max-width: 900px) {
+  .test-run-step-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
   .release-candidate-row,
   .release-form-grid {
@@ -537,10 +543,6 @@ body {
   .release-candidate-load-action .ant-btn,
   .release-form-actions .ant-btn {
     width: 100%;
-  }
-
-  .test-run-step-grid {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .release-confirmation-grid {
