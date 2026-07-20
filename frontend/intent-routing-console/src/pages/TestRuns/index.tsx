@@ -320,7 +320,7 @@ export default function TestRunsPage() {
                                 ? <>
                                     Release 생성에 사용할 <Typography.Text code>test_run_id</Typography.Text>가 준비되었습니다.
                                   </>
-                                : 'Release 생성 전에 blocked 사유를 해결해야 합니다.'
+                                : 'Release 생성 전에 차단 사유를 해결해야 합니다.'
                             }
                             description={
                               <>
@@ -348,7 +348,7 @@ export default function TestRunsPage() {
                             <Descriptions.Item label="위험 통과율">
                               {formatRate(summary.risk_pass_rate)}
                             </Descriptions.Item>
-                            <Descriptions.Item label="Gate">
+                            <Descriptions.Item label="검증 게이트">
                               <Tag color={summary.gate_passed ? 'success' : 'error'}>
                                 {summary.gate_passed ? '통과' : '차단'}
                               </Tag>

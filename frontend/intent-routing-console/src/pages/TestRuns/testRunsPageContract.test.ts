@@ -80,6 +80,15 @@ it('localizes result and lookup labels while preserving technical identifiers', 
   expect(page).not.toContain('Test Run 결과를 불러왔습니다.');
 });
 
+it('localizes test run summary state and gate labels', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain("'Release 생성 전에 차단 사유를 해결해야 합니다.'");
+  expect(page).toContain('label="검증 게이트"');
+  expect(page).not.toContain('blocked 사유');
+  expect(page).not.toContain('label="Gate"');
+});
+
 it('handles create and lookup request failures with clear messages', () => {
   const page = read('index.tsx');
 
