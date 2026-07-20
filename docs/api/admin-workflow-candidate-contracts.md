@@ -50,17 +50,31 @@ Lists catalog versions available to the selected Service.
 Query:
 
 - `limit`: integer, 1 to 100, default 50.
+- `status`: optional `active` or `inactive`. When omitted, both active and
+  inactive versions are returned.
 
 Response: `CatalogVersionListItemResponse[]`.
 
 Each item includes:
 
 - `intent_catalog_version`
+- `display_version`
 - `service_id`
+- `model_version`
+- `vector_index_version`
+- `description`
+- `status`
+- `reproducibility_status`
+- `released`
+- `release_count`
+- `source_catalog_version`
 - `intent_count`
-- `approved_example_count`
+- `example_count`
+- `embedding_count`
 - `created_by`
 - `created_at`
+- `activated_at`
+- `deactivated_at`
 
 Authorization: catalog access for the Service.
 
@@ -84,6 +98,8 @@ Each item includes:
 - `source_filename`
 - `policy_version`
 - `intent_catalog_version`
+- `model_version`
+- `vector_index_version`
 - `threshold_preset`
 - `threshold_value`
 - `pass_rate`
