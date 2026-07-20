@@ -390,6 +390,7 @@ def test_catalog_snapshot_includes_active_intents_and_approved_examples(
     response = client.post(
         f"/admin/v1/services/{service_id}/catalog-versions",
         headers=_admin_headers(),
+        json={"description": "Release flow catalog version"},
     )
 
     body = response.json()
@@ -1821,6 +1822,7 @@ def _create_catalog_version(client: TestClient, service_id: str) -> str:
     response = client.post(
         f"/admin/v1/services/{service_id}/catalog-versions",
         headers=_admin_headers(),
+        json={"description": "Release flow catalog version"},
     )
     assert response.status_code == 201
     return str(response.json()["intent_catalog_version"])
