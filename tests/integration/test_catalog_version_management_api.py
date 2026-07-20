@@ -222,6 +222,48 @@ def test_catalog_version_responses_use_newest_persisted_ready_vector_index(
     assert listed.json()[0]["vector_index_version"] == newest_vector_index
 
 
+def test_ready_vector_index_version_can_filter_by_model_version(
+    client: TestClient,
+    db_session: Session,
+    service_id: str,
+) -> None:
+    intent_id = _create_intent(client, service_id, status="draft")
+    _create_example(client, service_id, intent_id, approved=False)
+    created = client.post(
+        f"/admin/v1/services/{service_id}/catalog-versions",
+        headers=_admin_headers(),
+        json={"description": "Filter ready vector indexes by model"},
+    )
+    assert created.status_code == 201
+    catalog_version = created.json()["intent_catalog_version"]
+    created_at = datetime.now(UTC)
+    repository = IntentRoutingRepository(db_session)
+    older_model_index = repository.create_vector_index_version(
+        vector_index_version=f"vec-{catalog_version}-model-a-1",
+        service_id=service_id,
+        intent_catalog_version=catalog_version,
+        model_version="model-a",
+        status="ready",
+        created_at=created_at + timedelta(seconds=1),
+    )
+    newest_model_index = repository.create_vector_index_version(
+        vector_index_version=f"vec-{catalog_version}-model-b-2",
+        service_id=service_id,
+        intent_catalog_version=catalog_version,
+        model_version="model-b",
+        status="ready",
+        created_at=created_at + timedelta(seconds=2),
+    )
+    db_session.commit()
+
+    assert repository.get_ready_vector_index_version(
+        service_id, catalog_version, "model-a"
+    ) is older_model_index
+    assert repository.get_ready_vector_index_version(
+        service_id, catalog_version
+    ) is newest_model_index
+
+
 def test_catalog_version_deactivation_clears_version_scoped_vectors(
     client: TestClient,
     db_session: Session,

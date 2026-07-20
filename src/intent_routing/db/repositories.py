@@ -1937,8 +1937,9 @@ class IntentRoutingRepository:
         self,
         service_id: str,
         intent_catalog_version: str,
+        model_version: str | None = None,
     ) -> models.VectorIndexVersion | None:
-        return self.session.scalar(
+        statement = (
             select(models.VectorIndexVersion)
             .where(models.VectorIndexVersion.service_id == service_id)
             .where(
@@ -1946,7 +1947,13 @@ class IntentRoutingRepository:
                 == intent_catalog_version
             )
             .where(models.VectorIndexVersion.status == "ready")
-            .order_by(
+        )
+        if model_version is not None:
+            statement = statement.where(
+                models.VectorIndexVersion.model_version == model_version
+            )
+        return self.session.scalar(
+            statement.order_by(
                 models.VectorIndexVersion.created_at.desc(),
                 models.VectorIndexVersion.vector_index_version.desc(),
             )
