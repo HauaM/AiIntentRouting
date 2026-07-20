@@ -523,6 +523,36 @@ declare namespace API {
     reason: string;
   };
 
+  type TestRunDiagnosticIssue = {
+    code: string;
+    severity: 'blocker' | 'warning' | 'recommendation' | string;
+    evidence: Record<string, unknown>;
+  };
+
+  type TestRunCatalogVersionDiagnostics = {
+    intent_catalog_version: string;
+    display_version: string | null;
+    status: string;
+    reproducibility_status: string;
+    intent_count: number;
+    example_count: number;
+    embedding_count: number;
+    test_run_model_version: string | null;
+    test_run_vector_index_version: string | null;
+    ready_vector_index_version: string | null;
+    ready_vector_index_model_version: string | null;
+    test_run_vector_index_ready: boolean | null;
+    test_run_vector_index_status: string | null;
+  };
+
+  type TestRunDiagnostics = {
+    primary_issue: TestRunDiagnosticIssue | null;
+    issues: TestRunDiagnosticIssue[];
+    catalog_version: TestRunCatalogVersionDiagnostics;
+    result_counts: Record<string, number>;
+    actual_decision_counts: Record<string, number>;
+  };
+
   type ReleaseCreateRequest = {
     environment: string;
     policy_version: string;

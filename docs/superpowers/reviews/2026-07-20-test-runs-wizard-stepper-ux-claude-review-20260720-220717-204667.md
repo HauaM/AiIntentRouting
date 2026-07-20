@@ -1,0 +1,11 @@
+I've completed the independent review and written it to `/Users/jaeyoon/.claude/plans/implementation-plan-review-mossy-cookie.md`. Summary of the most important findings:
+
+**Overall assessment: Review findings require consideration** (not blocking, not clean-pass).
+
+Key points:
+- **F-1 (Blocker, needs verification):** This session is currently on branch `codex/test-run-diagnostics`, which is 3 commits ahead of `main` and already contains the *complete* backend diagnostics implementation the wizard plan treats as an external, not-yet-merged dependency. Task 6's precondition check (`rg` for backend symbols) would pass right now on this branch even though those commits aren't on `main` yet. Whether this matters depends entirely on which branch the wizard implementation actually starts from — worth confirming before execution.
+- **F-2/F-3 (Minor):** The existing `ValidationVersionsPanel.tsx` already implements almost the same catalog-selection UI (Select/optionRender/VersionChip/status filtering) that the plan's new `CatalogVersionStep.tsx` recreates from scratch before deleting the old file. Not wrong, but worth a deliberate check on whether extraction would've been safer than a parallel rewrite, and whether the old component's combined policy+catalog "reload latest" button had behavior that isn't reproduced.
+- **Everything else validated cleanly**: the CSV parsing/validation rules match the backend `csv_runner.py` contract exactly, the deferred diagnostics types/issue-codes match the already-implemented backend (`diagnostics/models.py`, `diagnostics/test_runs.py`) field-for-field, and component prop assumptions (`FutureFeatureNotice`, `VersionChip`) are accurate.
+- **Verification gap (T-1):** the plan's only automated tests are source-string contract tests (`.toContain(...)`); the actual browser smoke test in Task 7 is marked optional — worth treating as required given this can't be caught by string-matching tests.
+
+The document includes full evidence, verification commands, and a decision-record template for the Coding Agent to accept/reject each finding — it's written as input for that agent's judgment, not a mandate.
