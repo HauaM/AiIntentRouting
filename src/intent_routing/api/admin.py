@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from io import StringIO
 from os import environ
-from typing import Annotated, Any, Literal, NoReturn
+from typing import Annotated, Any, Literal, NoReturn, cast
 from uuid import UUID, uuid4
 
 from cryptography.exceptions import InvalidTag
@@ -2266,9 +2266,9 @@ def _catalog_version_lifecycle_response(
         for intent in intents
         if isinstance(intent, Mapping) and isinstance(intent.get("examples", []), list)
     ) if isinstance(intents, list) else 0
-    model_version = get_embedding_provider().model_version
     vector = repository.get_ready_vector_index_version(
-        catalog_version.service_id, catalog_version.intent_catalog_version, model_version
+        catalog_version.service_id,
+        catalog_version.intent_catalog_version,
     )
     release_count = repository.catalog_version_release_count(
         catalog_version.service_id, catalog_version.intent_catalog_version
@@ -2277,10 +2277,10 @@ def _catalog_version_lifecycle_response(
         intent_catalog_version=catalog_version.intent_catalog_version,
         display_version=catalog_version.display_version or "",
         service_id=catalog_version.service_id,
-        model_version=model_version,
+        model_version=vector.model_version if vector is not None else "",
         vector_index_version=vector.vector_index_version if vector is not None else "",
         description=catalog_version.description or "",
-        status=catalog_version.status,
+        status=cast("Literal['active', 'inactive']", catalog_version.status),
         reproducibility_status=catalog_version.reproducibility_status,
         released=release_count > 0,
         release_count=release_count,
@@ -2299,8 +2299,11 @@ def _catalog_version_list_item_response(
     catalog_version: IntentCatalogVersion,
     repository: IntentRoutingRepository,
 ) -> CatalogVersionListItemResponse:
-    return CatalogVersionListItemResponse.model_validate(
-        _catalog_version_lifecycle_response(catalog_version, repository)
+    return CatalogVersionListItemResponse(
+        **_catalog_version_lifecycle_response(
+            catalog_version,
+            repository,
+        ).model_dump()
     )
 
 
@@ -5214,6 +5217,7 @@ def deactivate_catalog_version(
 ) -> CatalogVersionLifecycleResponse:
     _require_service_catalog_access(context, service_id)
     repository = IntentRoutingRepository(session)
+    repository.acquire_advisory_xact_lock(f"catalog-version:{service_id}")
     if repository.catalog_version_has_release_reference(service_id, intent_catalog_version):
         _raise_conflict("Catalog version is referenced by a Release.")
     now = datetime.now(UTC)
@@ -5250,6 +5254,24 @@ def load_catalog_version_to_draft(
     snapshot = version.snapshot or {}
     intents = snapshot.get("intents", []) if isinstance(snapshot, Mapping) else []
     now = datetime.now(UTC)
+    snapshot_intent_ids = {
+        item["intent_id"]
+        for item in intents
+        if isinstance(item, Mapping) and isinstance(item.get("intent_id"), str)
+    }
+    snapshot_example_ids = {
+        embedding.example_id
+        for embedding in repository.list_catalog_version_example_embeddings(
+            intent_catalog_version
+        )
+        if embedding.example_id is not None
+    }
+    for example in repository.list_examples_for_service(service_id):
+        if example.example_id not in snapshot_example_ids:
+            repository.delete_example(example)
+    for intent in repository.list_intents(service_id):
+        if intent.intent_id not in snapshot_intent_ids:
+            repository.delete_intent(intent)
     for item in intents if isinstance(intents, list) else []:
         if not isinstance(item, Mapping) or not isinstance(item.get("intent_id"), str):
             continue
@@ -5276,9 +5298,7 @@ def load_catalog_version_to_draft(
             )
         else:
             repository.update_intent(existing, **values)
-    for embedding in repository.list_catalog_version_example_embeddings(
-        intent_catalog_version
-    ):
+    for embedding in repository.list_catalog_version_example_embeddings(intent_catalog_version):
         if embedding.example_id is None:
             continue
         values = {
@@ -5301,11 +5321,11 @@ def load_catalog_version_to_draft(
             "created_by": context.actor_id,
             "created_at": now,
         }
-        existing = repository.get_example(service_id, embedding.example_id)
-        if existing is None:
+        existing_example = repository.get_example(service_id, embedding.example_id)
+        if existing_example is None:
             repository.create_example(example_id=embedding.example_id, **values)
         else:
-            repository.update_example(existing, **values)
+            repository.update_example(existing_example, **values)
     response = _catalog_version_response(version, repository)
     repository.insert_audit_log(
         event_type="catalog_version.loaded_to_draft",

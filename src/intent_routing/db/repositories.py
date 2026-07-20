@@ -1708,6 +1708,15 @@ class IntentRoutingRepository:
             )
         )
 
+    def list_examples_for_service(self, service_id: str) -> list[models.IntentExample]:
+        return list(
+            self.session.scalars(
+                select(models.IntentExample)
+                .where(models.IntentExample.service_id == service_id)
+                .order_by(models.IntentExample.created_at, models.IntentExample.example_id)
+            )
+        )
+
     def list_approved_examples(
         self,
         service_id: str,
@@ -1928,7 +1937,6 @@ class IntentRoutingRepository:
         self,
         service_id: str,
         intent_catalog_version: str,
-        model_version: str,
     ) -> models.VectorIndexVersion | None:
         return self.session.scalar(
             select(models.VectorIndexVersion)
@@ -1937,9 +1945,11 @@ class IntentRoutingRepository:
                 models.VectorIndexVersion.intent_catalog_version
                 == intent_catalog_version
             )
-            .where(models.VectorIndexVersion.model_version == model_version)
             .where(models.VectorIndexVersion.status == "ready")
-            .order_by(models.VectorIndexVersion.created_at.desc())
+            .order_by(
+                models.VectorIndexVersion.created_at.desc(),
+                models.VectorIndexVersion.vector_index_version.desc(),
+            )
         )
 
     def deactivate_catalog_version(

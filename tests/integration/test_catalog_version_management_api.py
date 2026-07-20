@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any, cast
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from intent_routing.api.admin import get_admin_session
+from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.embedding.provider import clear_embedding_provider_cache
 from intent_routing.main import create_app
@@ -172,6 +174,54 @@ def test_catalog_version_registration_assigns_display_version_and_embeddings(
     assert rows == 1
 
 
+def test_catalog_version_responses_use_newest_persisted_ready_vector_index(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    service_id: str,
+) -> None:
+    intent_id = _create_intent(client, service_id, status="draft")
+    _create_example(client, service_id, intent_id, approved=False)
+    created = client.post(
+        f"/admin/v1/services/{service_id}/catalog-versions",
+        headers=_admin_headers(),
+        json={"description": "Persisted vector response metadata"},
+    )
+    assert created.status_code == 201
+    catalog_version = created.json()["intent_catalog_version"]
+    created_at = datetime.now(UTC)
+    newest_vector_index = f"vec-{catalog_version}-persisted-model-v2-999"
+    IntentRoutingRepository(db_session).create_vector_index_version(
+        vector_index_version=newest_vector_index,
+        service_id=service_id,
+        intent_catalog_version=catalog_version,
+        model_version="persisted-model-v2",
+        status="ready",
+        created_at=created_at + timedelta(seconds=1),
+    )
+    db_session.commit()
+    monkeypatch.setattr(
+        "intent_routing.api.admin.get_embedding_provider",
+        lambda: SimpleNamespace(model_version="different-current-provider-model"),
+    )
+
+    detail = client.get(
+        f"/admin/v1/services/{service_id}/catalog-versions/{catalog_version}",
+        headers=_admin_headers(),
+    )
+    listed = client.get(
+        f"/admin/v1/services/{service_id}/catalog-versions",
+        headers=_admin_headers(),
+    )
+
+    assert detail.status_code == 200
+    assert detail.json()["model_version"] == "persisted-model-v2"
+    assert detail.json()["vector_index_version"] == newest_vector_index
+    assert listed.status_code == 200
+    assert listed.json()[0]["model_version"] == "persisted-model-v2"
+    assert listed.json()[0]["vector_index_version"] == newest_vector_index
+
+
 def test_catalog_version_deactivation_clears_version_scoped_vectors(
     client: TestClient,
     db_session: Session,
@@ -271,6 +321,37 @@ def test_catalog_version_deactivation_is_blocked_when_release_references_it(
     assert "Release" in response.text
 
 
+def test_catalog_version_deactivation_acquires_catalog_version_lock(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    service_id: str,
+) -> None:
+    intent_id = _create_intent(client, service_id, status="draft")
+    _create_example(client, service_id, intent_id, approved=False)
+    created = client.post(
+        f"/admin/v1/services/{service_id}/catalog-versions",
+        headers=_admin_headers(),
+        json={"description": "Lock catalog version deactivation"},
+    )
+    assert created.status_code == 201
+    acquired_lock_keys: list[str] = []
+
+    def capture_lock(self: IntentRoutingRepository, lock_key: str) -> None:
+        del self
+        acquired_lock_keys.append(lock_key)
+
+    monkeypatch.setattr(IntentRoutingRepository, "acquire_advisory_xact_lock", capture_lock)
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/catalog-versions/"
+        f"{created.json()['intent_catalog_version']}:deactivate",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 200
+    assert acquired_lock_keys == [f"catalog-version:{service_id}"]
+
+
 def test_catalog_version_load_to_draft_restores_editable_snapshot(
     client: TestClient,
     db_session: Session,
@@ -284,10 +365,18 @@ def test_catalog_version_load_to_draft_restores_editable_snapshot(
         json={"description": "Load catalog into draft"},
     )
     version = created.json()["intent_catalog_version"]
+    snapshot = created.json()["snapshot"]
     assert client.delete(
         f"/admin/v1/services/{service_id}/intents/{intent_id}",
         headers=_admin_headers(),
     ).status_code == 204
+    extra_intent_id = _create_intent(client, service_id, status="active")
+    extra_example_id = _create_example(
+        client,
+        service_id,
+        extra_intent_id,
+        approved=True,
+    )
 
     response = client.post(
         f"/admin/v1/services/{service_id}/catalog-versions/{version}:load-to-draft",
@@ -295,6 +384,10 @@ def test_catalog_version_load_to_draft_restores_editable_snapshot(
     )
 
     assert response.status_code == 200
+    persisted_version = db_session.get(models.IntentCatalogVersion, version)
+    assert persisted_version is not None
+    assert persisted_version.status == "active"
+    assert persisted_version.snapshot == snapshot
     intent = db_session.scalar(
         text(
             "select status from intents where service_id = :service_id "
@@ -316,6 +409,17 @@ def test_catalog_version_load_to_draft_restores_editable_snapshot(
     assert db_session.execute(
         text("select count(*) from audit_logs where event_type = 'catalog_version.loaded_to_draft'")
     ).scalar_one() >= 1
+    assert db_session.scalar(
+        text(
+            "select count(*) from intents where service_id = :service_id "
+            "and intent_id = :intent_id"
+        ),
+        {"service_id": service_id, "intent_id": extra_intent_id},
+    ) == 0
+    assert db_session.scalar(
+        text("select count(*) from intent_examples where example_id = :example_id"),
+        {"example_id": extra_example_id},
+    ) == 0
 
 
 def test_catalog_version_diff_reports_added_example(

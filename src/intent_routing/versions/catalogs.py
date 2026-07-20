@@ -179,7 +179,7 @@ def _catalog_snapshot(repository: IntentRoutingRepository, service_id: str) -> d
                 "display_name": intent.display_name,
                 "description": intent.description,
                 "route_key": intent.route_key,
-                "status": intent.status,
+                "status": "active",
                 "include_keywords": list(intent.include_keywords or []),
                 "exclude_keywords": list(intent.exclude_keywords or []),
                 "examples": [
@@ -187,7 +187,7 @@ def _catalog_snapshot(repository: IntentRoutingRepository, service_id: str) -> d
                         "example_id": str(example.example_id),
                         "example_type": example.example_type,
                         "text_masked": example.text_masked,
-                        "approved": example.approved,
+                        "approved": True,
                     }
                     for example in examples
                 ],
@@ -217,12 +217,12 @@ def _snapshot_items(snapshot: object) -> tuple[dict[str, object], dict[str, obje
     intents = snapshot.get("intents", [])
     if not isinstance(intents, list):
         return {}, {}
-    intent_items = {
+    intent_items: dict[str, object] = {
         str(item["intent_id"]): item
         for item in intents
         if isinstance(item, dict) and "intent_id" in item
     }
-    examples = {
+    examples: dict[str, object] = {
         str(example["example_id"]): example
         for item in intents
         if isinstance(item, dict) and isinstance(item.get("examples"), list)

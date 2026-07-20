@@ -74,6 +74,8 @@ def validate_release_inputs(
     catalog = repository.get_catalog_version(service_id, intent_catalog_version)
     if catalog is None:
         raise ReleaseDependencyNotFoundError("Catalog version does not exist.")
+    if catalog.status != "active":
+        raise ReleaseValidationError("Catalog version is inactive.")
 
     test_run = repository.get_test_run(test_run_id)
     if test_run is None or test_run.service_id != service_id:
@@ -117,6 +119,15 @@ def create_release(
     released_by: str,
     now: datetime,
 ) -> models.Release:
+    for lock_key in sorted(
+        [
+            f"catalog-version:{service_id}",
+            f"release-version:{service_id}:{now:%Y%m%d}",
+            f"vector-index-version:{intent_catalog_version}:{model_version}",
+        ]
+    ):
+        repository.acquire_advisory_xact_lock(lock_key)
+
     dependencies = validate_release_inputs(
         repository,
         service_id=service_id,
@@ -126,13 +137,6 @@ def create_release(
         test_run_id=test_run_id,
         rollback_target=rollback_target,
     )
-    for lock_key in sorted(
-        [
-            f"release-version:{service_id}:{now:%Y%m%d}",
-            f"vector-index-version:{intent_catalog_version}:{model_version}",
-        ]
-    ):
-        repository.acquire_advisory_xact_lock(lock_key)
 
     vector_index_version = vector_index_version_id(
         repository,

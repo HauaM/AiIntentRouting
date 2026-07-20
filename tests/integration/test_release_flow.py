@@ -357,7 +357,7 @@ def test_no_hnsw_indexes_exist(db_session: Session) -> None:
     assert hnsw_index_count == 0
 
 
-def test_catalog_snapshot_includes_active_intents_and_approved_examples(
+def test_catalog_snapshot_normalizes_current_editable_intents_and_examples(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -385,7 +385,12 @@ def test_catalog_snapshot_includes_active_intents_and_approved_examples(
     )
     approved_example = _create_example(client, service_id, "intent-active", "release me")
     _approve_example(client, service_id, approved_example["example_id"])
-    _create_example(client, service_id, "intent-active", "do not snapshot")
+    unapproved_example = _create_example(
+        client,
+        service_id,
+        "intent-active",
+        "do not snapshot",
+    )
 
     response = client.post(
         f"/admin/v1/services/{service_id}/catalog-versions",
@@ -398,29 +403,22 @@ def test_catalog_snapshot_includes_active_intents_and_approved_examples(
     assert body["intent_catalog_version"].startswith(f"cat-{service_id}-")
     assert body["service_id"] == service_id
     assert body["created_by"] == "admin-user"
-    assert body["snapshot"] == {
-        "service_id": service_id,
-        "intents": [
-            {
-                "intent_id": active_intent["intent_id"],
-                "domain": "it",
-                "display_name": "Intent intent-active",
-                "description": "Route release traffic.",
-                "route_key": "it.release.active",
-                "status": "active",
-                "include_keywords": ["release", "active"],
-                "exclude_keywords": ["billing"],
-                "examples": [
-                    {
-                        "example_id": approved_example["example_id"],
-                        "example_type": "positive",
-                        "text_masked": "release me",
-                        "approved": True,
-                    }
-                ],
-            }
-        ],
+    snapshot_intents = body["snapshot"]["intents"]
+    assert [intent["intent_id"] for intent in snapshot_intents] == [
+        active_intent["intent_id"],
+        "intent-draft",
+    ]
+    assert all(intent["status"] == "active" for intent in snapshot_intents)
+    snapshot_examples = [
+        example
+        for intent in snapshot_intents
+        for example in intent["examples"]
+    ]
+    assert {example["example_id"] for example in snapshot_examples} == {
+        approved_example["example_id"],
+        unapproved_example["example_id"],
     }
+    assert all(example["approved"] is True for example in snapshot_examples)
     persisted = db_session.get(models.IntentCatalogVersion, body["intent_catalog_version"])
     assert persisted is not None
     assert persisted.snapshot == body["snapshot"]
@@ -685,12 +683,47 @@ def test_release_creation_acquires_sequence_locks_in_deterministic_order(
     released_day = _date_segment(body["released_at"])
     expected_lock_keys = sorted(
         [
+            f"catalog-version:{service_id}",
             f"release-version:{service_id}:{released_day}",
             f"vector-index-version:{catalog_version}:emb-fake/v1",
         ]
     )
     assert response.status_code == 201
     assert acquired_lock_keys == expected_lock_keys
+
+
+def test_release_creation_rejects_inactive_catalog_version(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_id, policy_version, catalog_version, client = _release_setup(
+        db_session,
+        monkeypatch,
+    )
+    test_run_id = _seed_test_run(
+        db_session,
+        service_id=service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        gate_passed=True,
+        risk_pass_rate=Decimal("1.0"),
+    )
+    deactivated = client.post(
+        f"/admin/v1/services/{service_id}/catalog-versions/{catalog_version}:deactivate",
+        headers=_admin_headers(),
+    )
+    assert deactivated.status_code == 200
+
+    response = _create_release_response(
+        client,
+        service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        test_run_id=test_run_id,
+    )
+
+    assert response.status_code == 400
+    assert "inactive" in response.text
 
 
 def test_release_creation_strips_environment_whitespace(
