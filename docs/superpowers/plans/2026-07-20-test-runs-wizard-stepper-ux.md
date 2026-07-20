@@ -127,8 +127,8 @@ describe('CatalogVersionStep contract', () => {
     const source = read('CatalogVersionStep.tsx');
 
     expect(source).toContain('listCatalogVersions(serviceId');
-    expect(source).toContain("status: 'active'");
-    expect(source).toContain('onChange(versions[0])');
+    expect(source).toContain("versionMode === 'active' ? 'active' : undefined");
+    expect(source).toContain('onChange(nextVersions[0])');
     expect(source).toContain('최신 Catalog 버전');
   });
 
@@ -865,7 +865,7 @@ describe('CsvImportModal contract', () => {
 
     expect(modal).toContain('validationErrors');
     expect(modal).toContain('CSV 검증 오류');
-    expect(modal).toContain('errors.map');
+    expect(modal).toContain('validationErrors.map');
     expect(modal).toContain('저장');
   });
 });
