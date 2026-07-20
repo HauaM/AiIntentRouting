@@ -21,13 +21,18 @@ it('renders Test Runs as a three-step wizard in the required order', () => {
   expect(page).not.toContain('type="inner"');
 });
 
-it('keeps result lookup inside the single wizard panel without nested Cards', () => {
+it('shows previous test runs as a DB-backed combo in step one without nested Cards', () => {
   const page = read('index.tsx');
 
-  expect(page).toContain('<Form form={lookupForm}');
-  expect(page.indexOf('<Form form={lookupForm}')).toBeGreaterThan(
-    page.indexOf('ds-page-card steps-form-page-card'),
+  expect(page).toContain('<TestRunHistorySelect');
+  expect(page).toContain('onSelect={handleHistorySelect}');
+  expect(page).toContain('className="test-run-step-grid"');
+  expect(page.indexOf('<TestRunHistorySelect')).toBeGreaterThan(
+    page.indexOf('currentStep === 0'),
   );
+  expect(page).not.toContain('<Form form={lookupForm}');
+  expect(page).not.toContain('test_run_id를 입력하세요');
+  expect(page).not.toContain('placeholder="tr_..."');
   expect(page).not.toContain('<Card');
 });
 
@@ -75,8 +80,9 @@ it('localizes result and lookup labels while preserving technical identifiers', 
   expect(page).toContain("review: { text: '검토' }");
   expect(page).toContain('resultLabel[normalizedResult] ?? row.result');
   expect(page).toContain("message.success('테스트 실행 결과를 불러왔습니다.')");
-  expect(page).toContain('<Typography.Text code>test_run_id</Typography.Text>');
-  expect(page).toContain('기존 테스트 실행 결과 조회');
+  expect(page).toContain('<TestRunHistorySelect');
+  expect(page).toContain('기존 테스트 실행 결과');
+  expect(page).not.toContain('<Typography.Text code>test_run_id</Typography.Text>로 이전 실행 결과를 조회할 수 있습니다.');
   expect(page).not.toContain('Test Run 결과를 불러왔습니다.');
 });
 
@@ -97,7 +103,7 @@ it('localizes test run summary state and gate labels', () => {
   expect(page).not.toContain('label="Gate"');
 });
 
-it('handles create and lookup request failures with clear messages', () => {
+it('handles create and history request failures with clear messages', () => {
   const page = read('index.tsx');
 
   expect((page.match(/catch/g) ?? []).length).toBeGreaterThanOrEqual(2);
@@ -110,7 +116,7 @@ it('keeps a successfully created run summary visible when its results request fa
   const page = read('index.tsx');
 
   expect(page).toContain(
-    'setSummary(created);\n      lookupForm.setFieldsValue({ test_run_id: created.test_run_id });\n      setCurrentStep(2);\n      const nextResults = await fetchTestRunResults',
+    'setSummary(created);\n      setCurrentStep(2);\n      const nextResults = await fetchTestRunResults',
   );
 });
 

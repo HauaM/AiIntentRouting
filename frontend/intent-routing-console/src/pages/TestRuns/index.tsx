@@ -27,6 +27,7 @@ import { CatalogVersionStep } from './CatalogVersionStep';
 import { CsvCasesGrid } from './CsvCasesGrid';
 import { CsvImportModal } from './CsvImportModal';
 import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
+import { TestRunHistorySelect } from './TestRunHistorySelect';
 import { TestPolicyPanel } from './TestPolicyPanel';
 import {
   buildCsvText,
@@ -61,7 +62,6 @@ const csvTemplate = [
 export default function TestRunsPage() {
   const { session } = useModel('adminSession');
   const [createForm] = Form.useForm<API.TestRunCreateRequest>();
-  const [lookupForm] = Form.useForm<{ test_run_id: string }>();
   const [summary, setSummary] = useState<API.TestRunSummary>();
   const [results, setResults] = useState<API.TestRunResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -91,9 +91,8 @@ export default function TestRunsPage() {
     setCsvText(csvTemplate);
     setCsvImportOpen(false);
     setCurrentStep(0);
-    lookupForm.resetFields();
     createForm.resetFields();
-  }, [createForm, lookupForm, session.serviceId]);
+  }, [createForm, session.serviceId]);
 
   const beginRunRequest = () => {
     runRequestGenerationRef.current += 1;
@@ -117,7 +116,6 @@ export default function TestRunsPage() {
     setSummary(nextSummary);
     setResults(nextResults);
     setCurrentStep(2);
-    lookupForm.setFieldsValue({ test_run_id: testRunId });
     return true;
   };
 
@@ -146,7 +144,6 @@ export default function TestRunsPage() {
       testRunCreated = true;
       if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
       setSummary(created);
-      lookupForm.setFieldsValue({ test_run_id: created.test_run_id });
       setCurrentStep(2);
       const nextResults = await fetchTestRunResults(serviceId, created.test_run_id);
       if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
@@ -164,12 +161,12 @@ export default function TestRunsPage() {
     }
   };
 
-  const handleLookup = async (values: { test_run_id: string }) => {
+  const handleHistorySelect = async (testRunId: string) => {
     const serviceId = session.serviceId;
     const requestGeneration = beginRunRequest();
     setLoading(true);
     try {
-      const loaded = await loadRun(values.test_run_id.trim(), serviceId, requestGeneration);
+      const loaded = await loadRun(testRunId, serviceId, requestGeneration);
       if (loaded) message.success('테스트 실행 결과를 불러왔습니다.');
     } catch {
       if (isCurrentRunRequest(requestGeneration, serviceId)) {
@@ -268,18 +265,29 @@ export default function TestRunsPage() {
                     ]}
                   />
                   {currentStep === 0 ? (
-                    <CatalogVersionStep
-                      key={session.serviceId}
-                      serviceId={session.serviceId}
-                      value={selectedCatalogVersion}
-                      onChange={(nextCatalogVersion) => {
-                        setSelectedCatalogVersion(nextCatalogVersion);
-                        setCatalogVersion(nextCatalogVersion?.intent_catalog_version);
-                        createForm.setFieldsValue({
-                          intent_catalog_version: nextCatalogVersion?.intent_catalog_version,
-                        });
-                      }}
-                    />
+                    <div className="test-run-step-grid">
+                      <CatalogVersionStep
+                        key={session.serviceId}
+                        serviceId={session.serviceId}
+                        value={selectedCatalogVersion}
+                        onChange={(nextCatalogVersion) => {
+                          setSelectedCatalogVersion(nextCatalogVersion);
+                          setCatalogVersion(nextCatalogVersion?.intent_catalog_version);
+                          createForm.setFieldsValue({
+                            intent_catalog_version: nextCatalogVersion?.intent_catalog_version,
+                          });
+                        }}
+                      />
+                      <div aria-label="기존 테스트 실행 결과">
+                        <TestRunHistorySelect
+                          serviceId={session.serviceId}
+                          value={summary?.test_run_id}
+                          disabled={!canRun}
+                          loading={loading}
+                          onSelect={handleHistorySelect}
+                        />
+                      </div>
+                    </div>
                   ) : null}
                   {currentStep === 1 ? (
                     <Form
@@ -430,27 +438,6 @@ export default function TestRunsPage() {
                       />
                     </Space>
                   ) : null}
-                  <section>
-                    <Typography.Title level={5} style={{ margin: 0 }}>
-                      기존 테스트 실행 결과 조회
-                    </Typography.Title>
-                    <Typography.Text type="secondary">
-                      <Typography.Text code>test_run_id</Typography.Text>로 이전 실행 결과를 조회할 수 있습니다.
-                    </Typography.Text>
-                    <Form form={lookupForm} layout="inline" onFinish={handleLookup}>
-                      <Form.Item
-                        name="test_run_id"
-                        rules={[
-                          { required: true, whitespace: true, message: 'test_run_id를 입력하세요.' },
-                        ]}
-                      >
-                        <Input placeholder="tr_..." style={{ width: 260 }} disabled={!canRun} />
-                      </Form.Item>
-                      <Button htmlType="submit" loading={loading} disabled={!canRun}>
-                        결과 조회
-                      </Button>
-                    </Form>
-                  </section>
                   <Space wrap>
                     <Button
                       disabled={currentStep === 0}
