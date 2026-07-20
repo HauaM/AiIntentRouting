@@ -55,7 +55,6 @@ type ExampleFormValues = {
   positive_text_raw?: string;
   negative_text_raw?: string;
   source: string;
-  test_case_id?: string;
 };
 
 const statusOptions = [
@@ -78,7 +77,6 @@ const intentHelp = {
   positiveExamples: '이 Intent에 해당하는 문장을 한 줄에 하나씩 입력합니다.',
   negativeExamples: '이 Intent로 분류되면 안 되는 헷갈리는 문장을 한 줄에 하나씩 입력합니다.',
   source: '이 예시가 어디서 왔는지 남기는 값입니다. 예: admin_ui, ticket_sample, qa_seed',
-  testCaseId: '선택 항목입니다. 별도 테스트 케이스와 연결할 때만 입력합니다.',
 };
 
 const helpLabel = (label: string, help: string) => (
@@ -88,11 +86,6 @@ const helpLabel = (label: string, help: string) => (
 const normalizeTags = (values?: string[]) =>
   Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
 
-const trimOptional = (value?: string) => {
-  const trimmed = value?.trim();
-  return trimmed || null;
-};
-
 const splitExampleLines = (value?: string) =>
   (value ?? '')
     .split(/\r?\n/)
@@ -101,7 +94,6 @@ const splitExampleLines = (value?: string) =>
 
 const buildExampleCreateRequests = (values: ExampleFormValues): API.ExampleCreateRequest[] => {
   const source = values.source.trim();
-  const test_case_id = trimOptional(values.test_case_id);
   const toRequest = (
     example_type: API.ExampleCreateRequest['example_type'],
     text_raw: string,
@@ -109,7 +101,6 @@ const buildExampleCreateRequests = (values: ExampleFormValues): API.ExampleCreat
     example_type,
     text_raw,
     source,
-    test_case_id,
   });
 
   return [
@@ -303,7 +294,6 @@ export default function IntentsPage() {
       example_type: example.example_type as ExampleFormValues['example_type'],
       text_raw: '',
       source: example.source,
-      test_case_id: example.test_case_id ?? undefined,
     });
     setExampleDrawerOpen(true);
   }, [exampleForm]);
@@ -328,7 +318,6 @@ export default function IntentsPage() {
       const payload: API.ExamplePatchRequest = {
         example_type: values.example_type,
         source: values.source.trim(),
-        test_case_id: trimOptional(values.test_case_id),
       };
       const textRaw = values.text_raw?.trim();
       if (textRaw) {
@@ -762,12 +751,6 @@ export default function IntentsPage() {
             label={helpLabel('Source', intentHelp.source)}
             name="source"
             rules={[{ required: true, whitespace: true, message: 'Source를 입력하세요.' }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label={helpLabel('Test case ID', intentHelp.testCaseId)}
-            name="test_case_id"
           >
             <Input />
           </Form.Item>

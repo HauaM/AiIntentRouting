@@ -39,6 +39,14 @@ describe('Intents page contract', () => {
     expect(text).toContain("exampleFormMode === 'edit'");
   });
 
+  it('does not expose or submit a manual test case identifier for examples', () => {
+    const text = source();
+
+    expect(text).not.toContain('Test case ID');
+    expect(text).not.toContain('testCaseId');
+    expect(text).not.toContain('test_case_id');
+  });
+
   it('supports intent delete and example edit/delete actions', () => {
     const text = source();
 
