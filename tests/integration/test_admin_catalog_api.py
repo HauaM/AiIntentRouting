@@ -806,6 +806,171 @@ def test_approve_negative_example_generates_1024_dimension_embedding(
     assert len(persisted.embedding) == 1024
 
 
+def test_patch_approved_example_reencrypts_text_and_regenerates_embedding(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    client = _client(db_session)
+    service_id = f"svc-catalog-{uuid4().hex}"
+    _create_service(client, service_id)
+    intent = _create_intent(client, service_id)
+    create_response = client.post(
+        f"/admin/v1/services/{service_id}/intents/{intent['intent_id']}/examples",
+        headers=_admin_headers(),
+        json=_example_payload("api timeout 문의"),
+    )
+    example_id = create_response.json()["example_id"]
+    approve_response = client.patch(
+        f"/admin/v1/services/{service_id}/examples/{example_id}:approve",
+        headers=_admin_headers(),
+    )
+    assert approve_response.status_code == 200
+    original_embedding = approve_response.json()["embedding"]
+    replacement_text = "비밀번호 재설정이 필요합니다"
+
+    patch_response = client.patch(
+        f"/admin/v1/services/{service_id}/examples/{example_id}",
+        headers=_admin_headers(),
+        json={
+            "example_type": "negative",
+            "text_raw": replacement_text,
+            "source": "admin-edit",
+            "test_case_id": "case-42",
+        },
+    )
+
+    body = patch_response.json()
+    persisted = db_session.get(models.IntentExample, example_id)
+    assert patch_response.status_code == 200
+    assert body["example_type"] == "negative"
+    assert body["source"] == "admin-edit"
+    assert body["test_case_id"] == "case-42"
+    assert body["text_masked"] == replacement_text
+    assert body["approved"] is True
+    assert body["embedding"] is not None
+    assert body["embedding"] != original_embedding
+    assert persisted is not None
+    assert persisted.embedding is not None
+    assert list(persisted.embedding) != original_embedding
+    assert replacement_text.encode("utf-8") not in persisted.text_raw_ciphertext
+    audit_log = db_session.scalar(
+        select(models.AuditLog).where(
+            models.AuditLog.event_type == "example.updated",
+            models.AuditLog.target_id == example_id,
+        )
+    )
+    assert audit_log is not None
+    assert audit_log.before_state is not None
+    assert audit_log.after_state is not None
+    assert audit_log.before_state["embedding"] == {
+        "dimension": 1024,
+        "stored": True,
+    }
+    assert audit_log.after_state["embedding"] == {
+        "dimension": 1024,
+        "stored": True,
+    }
+    assert replacement_text not in json.dumps(audit_log.after_state, sort_keys=True)
+
+
+def test_delete_example_removes_embedding_row_and_records_audit_log(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    client = _client(db_session)
+    service_id = f"svc-catalog-{uuid4().hex}"
+    _create_service(client, service_id)
+    intent = _create_intent(client, service_id)
+    create_response = client.post(
+        f"/admin/v1/services/{service_id}/intents/{intent['intent_id']}/examples",
+        headers=_admin_headers(),
+        json=_example_payload("api timeout 문의"),
+    )
+    example_id = create_response.json()["example_id"]
+    approve_response = client.patch(
+        f"/admin/v1/services/{service_id}/examples/{example_id}:approve",
+        headers=_admin_headers(),
+    )
+    assert approve_response.status_code == 200
+    assert db_session.get(models.IntentExample, example_id) is not None
+
+    delete_response = client.delete(
+        f"/admin/v1/services/{service_id}/examples/{example_id}",
+        headers=_admin_headers(),
+    )
+
+    assert delete_response.status_code == 204
+    assert db_session.get(models.IntentExample, example_id) is None
+    audit_log = db_session.scalar(
+        select(models.AuditLog).where(
+            models.AuditLog.event_type == "example.deleted",
+            models.AuditLog.target_id == example_id,
+        )
+    )
+    assert audit_log is not None
+    assert audit_log.before_state is not None
+    assert audit_log.before_state["embedding"] == {
+        "dimension": 1024,
+        "stored": True,
+    }
+    assert audit_log.after_state is None
+
+
+def test_delete_intent_removes_examples_embeddings_and_records_audit_log(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    client = _client(db_session)
+    service_id = f"svc-catalog-{uuid4().hex}"
+    _create_service(client, service_id)
+    intent = _create_intent(client, service_id)
+    create_response = client.post(
+        f"/admin/v1/services/{service_id}/intents/{intent['intent_id']}/examples",
+        headers=_admin_headers(),
+        json=_example_payload("api timeout 문의"),
+    )
+    example_id = create_response.json()["example_id"]
+    approve_response = client.patch(
+        f"/admin/v1/services/{service_id}/examples/{example_id}:approve",
+        headers=_admin_headers(),
+    )
+    assert approve_response.status_code == 200
+
+    delete_response = client.delete(
+        f"/admin/v1/services/{service_id}/intents/{intent['intent_id']}",
+        headers=_admin_headers(),
+    )
+
+    assert delete_response.status_code == 204
+    assert db_session.scalar(
+        select(models.Intent).where(
+            models.Intent.service_id == service_id,
+            models.Intent.intent_id == intent["intent_id"],
+        )
+    ) is None
+    assert db_session.get(models.IntentExample, example_id) is None
+    audit_log = db_session.scalar(
+        select(models.AuditLog).where(
+            models.AuditLog.event_type == "intent.deleted",
+            models.AuditLog.target_id == intent["intent_id"],
+        )
+    )
+    assert audit_log is not None
+    assert audit_log.before_state is not None
+    assert audit_log.before_state["example_count"] == 1
+    assert audit_log.before_state["embedded_example_count"] == 1
+    assert audit_log.after_state is None
+
+
 def test_exact_search_returns_top_examples_ordered_by_cosine_similarity(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,

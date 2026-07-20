@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { MoreOutlined } from '@ant-design/icons';
 import { history, useModel } from '@umijs/max';
 import type { TableProps } from 'antd';
 import {
   Alert,
   Button,
   Descriptions,
+  Dropdown,
   Drawer,
   Empty,
   Form,
   Input,
+  Modal,
   Select,
   Space,
   Table,
@@ -28,11 +31,15 @@ import {
   approveExample,
   createExample,
   createIntent,
+  deleteExample,
+  deleteIntent,
   listExamples,
+  patchExample,
   patchIntent,
 } from '@/services/adminServices';
 
 type IntentFormMode = 'create' | 'edit';
+type ExampleFormMode = 'create' | 'edit';
 
 type IntentFormValues = {
   intent_id: string;
@@ -46,21 +53,17 @@ type IntentFormValues = {
 };
 
 type ExampleFormValues = {
-  example_type: 'positive' | 'negative';
-  text_raw: string;
+  example_type?: 'positive' | 'negative';
+  text_raw?: string;
+  positive_text_raw?: string;
+  negative_text_raw?: string;
   source: string;
-  test_case_id?: string;
 };
 
 const statusOptions = [
   { label: 'Draft', value: 'draft' },
   { label: 'Active', value: 'active' },
   { label: 'Deprecated', value: 'deprecated' },
-];
-
-const exampleTypeOptions = [
-  { label: 'Positive', value: 'positive' },
-  { label: 'Negative', value: 'negative' },
 ];
 
 const routeKeyPattern = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){2,3}$/;
@@ -74,10 +77,9 @@ const intentHelp = {
   routeKey: '다운스트림 시스템으로 넘길 라우팅 키입니다. 점(.)으로 구분된 3~4개 소문자 segment를 사용합니다. 예: it.password_reset.self_service',
   includeKeywords: '이 Intent 판단에 도움이 되는 단어를 입력합니다. 쉼표로 여러 개를 추가할 수 있습니다.',
   excludeKeywords: '이 Intent가 아니라고 판단할 때 도움이 되는 단어를 입력합니다.',
-  exampleType: 'Positive는 해당 Intent에 맞는 문장, Negative는 해당 Intent로 분류되면 안 되는 문장입니다.',
-  rawText: '사용자가 실제로 입력할 법한 문장을 넣습니다. 저장 후 화면에는 마스킹된 텍스트가 표시됩니다.',
+  positiveExamples: '이 Intent에 해당하는 문장을 한 줄에 하나씩 입력합니다.',
+  negativeExamples: '이 Intent로 분류되면 안 되는 헷갈리는 문장을 한 줄에 하나씩 입력합니다.',
   source: '이 예시가 어디서 왔는지 남기는 값입니다. 예: admin_ui, ticket_sample, qa_seed',
-  testCaseId: '선택 항목입니다. 별도 테스트 케이스와 연결할 때만 입력합니다.',
 };
 
 const helpLabel = (label: string, help: string) => (
@@ -87,9 +89,31 @@ const helpLabel = (label: string, help: string) => (
 const normalizeTags = (values?: string[]) =>
   Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
 
-const trimOptional = (value?: string) => {
-  const trimmed = value?.trim();
-  return trimmed || null;
+const splitExampleLines = (value?: string) =>
+  (value ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+const buildExampleCreateRequests = (values: ExampleFormValues): API.ExampleCreateRequest[] => {
+  const source = values.source.trim();
+  const toRequest = (
+    example_type: API.ExampleCreateRequest['example_type'],
+    text_raw: string,
+  ): API.ExampleCreateRequest => ({
+    example_type,
+    text_raw,
+    source,
+  });
+
+  return [
+    ...splitExampleLines(values.positive_text_raw).map((text) =>
+      toRequest('positive', text),
+    ),
+    ...splitExampleLines(values.negative_text_raw).map((text) =>
+      toRequest('negative', text),
+    ),
+  ];
 };
 
 const validateRouteKey = (_: unknown, value?: string) => {
@@ -119,6 +143,8 @@ export default function IntentsPage() {
   const [editingIntent, setEditingIntent] = useState<API.Intent>();
   const [intentSaving, setIntentSaving] = useState(false);
   const [exampleDrawerOpen, setExampleDrawerOpen] = useState(false);
+  const [exampleFormMode, setExampleFormMode] = useState<ExampleFormMode>('create');
+  const [editingExample, setEditingExample] = useState<API.Example>();
   const [exampleSaving, setExampleSaving] = useState(false);
   const [intentForm] = Form.useForm<IntentFormValues>();
   const [exampleForm] = Form.useForm<ExampleFormValues>();
@@ -133,6 +159,8 @@ export default function IntentsPage() {
     setIntentDrawerOpen(false);
     setEditingIntent(undefined);
     setExampleDrawerOpen(false);
+    setEditingExample(undefined);
+    setExampleFormMode('create');
     intentForm.resetFields();
     exampleForm.resetFields();
   }, [exampleForm, intentForm, session.serviceId]);
@@ -236,14 +264,47 @@ export default function IntentsPage() {
     }
   };
 
+  const handleDeleteIntent = async (intent: API.Intent) => {
+    const serviceId = session.serviceId;
+    await deleteIntent(serviceId, intent.intent_id);
+    if (serviceIdRef.current !== serviceId) return;
+    setSelected((current) =>
+      current?.intent_id === intent.intent_id ? undefined : current,
+    );
+    setExamples((current) =>
+      selected?.intent_id === intent.intent_id ? [] : current,
+    );
+    refreshCatalog();
+  };
+
   const openExampleDrawer = () => {
+    setEditingExample(undefined);
+    setExampleFormMode('create');
     exampleForm.resetFields();
-    exampleForm.setFieldsValue({ example_type: 'positive', source: 'admin_ui' });
+    exampleForm.setFieldsValue({
+      positive_text_raw: '',
+      negative_text_raw: '',
+      source: 'admin_ui',
+    });
     setExampleDrawerOpen(true);
   };
 
+  const openEditExample = useCallback((example: API.Example) => {
+    setEditingExample(example);
+    setExampleFormMode('edit');
+    exampleForm.resetFields();
+    exampleForm.setFieldsValue({
+      example_type: example.example_type as ExampleFormValues['example_type'],
+      text_raw: '',
+      source: example.source,
+    });
+    setExampleDrawerOpen(true);
+  }, [exampleForm]);
+
   const closeExampleDrawer = () => {
     setExampleDrawerOpen(false);
+    setEditingExample(undefined);
+    setExampleFormMode('create');
     exampleForm.resetFields();
   };
 
@@ -256,16 +317,47 @@ export default function IntentsPage() {
     if (!selected) return;
     const serviceId = session.serviceId;
     const intentId = selected.intent_id;
+    if (exampleFormMode === 'edit' && editingExample) {
+      const payload: API.ExamplePatchRequest = {
+        example_type: values.example_type,
+        source: values.source.trim(),
+      };
+      const textRaw = values.text_raw?.trim();
+      if (textRaw) {
+        payload.text_raw = textRaw;
+      }
+      setExampleSaving(true);
+      try {
+        await patchExample(serviceId, editingExample.example_id, payload);
+        if (serviceIdRef.current !== serviceId) return;
+        message.success('Example이 저장되었습니다.');
+        closeExampleDrawer();
+        await loadSelectedExamples(intentId);
+      } finally {
+        setExampleSaving(false);
+      }
+      return;
+    }
+
+    const requests = buildExampleCreateRequests(values);
+    if (!requests.length) {
+      message.warning('Positive 또는 Negative example을 한 줄 이상 입력하세요.');
+      return;
+    }
+
+    const positiveCount = requests.filter(
+      (request) => request.example_type === 'positive',
+    ).length;
+    const negativeCount = requests.length - positiveCount;
     setExampleSaving(true);
     try {
-      await createExample(serviceId, intentId, {
-        example_type: values.example_type,
-        text_raw: values.text_raw.trim(),
-        source: values.source.trim(),
-        test_case_id: trimOptional(values.test_case_id),
-      });
+      await Promise.all(
+        requests.map((request) => createExample(serviceId, intentId, request)),
+      );
       if (serviceIdRef.current !== serviceId) return;
-      message.success('Example이 추가되었습니다.');
+      message.success(
+        `Example ${requests.length}건이 추가되었습니다. Positive ${positiveCount}건, Negative ${negativeCount}건`,
+      );
       closeExampleDrawer();
       await loadSelectedExamples(intentId);
     } finally {
@@ -273,12 +365,47 @@ export default function IntentsPage() {
     }
   };
 
+  const confirmApproveExample = useCallback(
+    (example: API.Example) => {
+      Modal.confirm({
+        title: 'Example 승인',
+        content: `${example.example_id} example을 승인합니다.`,
+        okText: '승인',
+        cancelText: '취소',
+        async onOk() {
+          await approveExample(example.service_id, example.example_id);
+          message.success('처리되었습니다.');
+          await loadSelectedExamples(example.intent_id);
+        },
+      });
+    },
+    [loadSelectedExamples],
+  );
+
+  const confirmDeleteExample = useCallback(
+    (example: API.Example) => {
+      Modal.confirm({
+        title: 'Example 삭제',
+        content: `${example.example_id} example과 embedding을 삭제합니다.`,
+        okText: '삭제',
+        cancelText: '취소',
+        okButtonProps: { danger: true },
+        async onOk() {
+          await deleteExample(example.service_id, example.example_id);
+          message.success('처리되었습니다.');
+          await loadSelectedExamples(example.intent_id);
+        },
+      });
+    },
+    [loadSelectedExamples],
+  );
+
   const exampleColumns = useMemo<TableProps<API.Example>['columns']>(() => {
     const columns: TableProps<API.Example>['columns'] = [
       {
         title: 'Type',
         dataIndex: 'example_type',
-        width: 96,
+        width: 80,
         render: (value: string) => (
           <Tag color={value === 'positive' ? 'green' : 'default'}>{value}</Tag>
         ),
@@ -286,17 +413,20 @@ export default function IntentsPage() {
       {
         title: 'Text',
         dataIndex: 'text_masked',
-        render: (value: string) => <Typography.Text>{value}</Typography.Text>,
+        width: 220,
+        render: (value: string) => (
+          <Typography.Text className="intent-example-text">{value}</Typography.Text>
+        ),
       },
       {
         title: 'Source',
         dataIndex: 'source',
-        width: 120,
+        width: 88,
       },
       {
         title: 'Status',
         dataIndex: 'approved',
-        width: 96,
+        width: 72,
         render: (approved: boolean) =>
           approved ? <Tag color="green">승인됨</Tag> : <Tag color="orange">대기</Tag>,
       },
@@ -305,28 +435,57 @@ export default function IntentsPage() {
     if (catalogEditable) {
       columns.push({
         title: '',
-        width: 96,
-        render: (_, row) =>
-          row.approved ? null : (
-            <ConfirmActionButton
-              type="link"
+        width: 52,
+        align: 'right',
+        render: (_, row) => (
+          <Dropdown
+            menu={{
+              items: [
+                row.approved
+                  ? null
+                  : {
+                      key: 'approve',
+                      label: '승인',
+                    },
+                {
+                  key: 'edit',
+                  label: '편집',
+                },
+                {
+                  key: 'delete',
+                  label: '삭제',
+                  danger: true,
+                },
+              ].filter(Boolean),
+              onClick: ({ key }) => {
+                if (key === 'approve') {
+                  confirmApproveExample(row);
+                  return;
+                }
+                if (key === 'edit') {
+                  openEditExample(row);
+                  return;
+                }
+                if (key === 'delete') {
+                  confirmDeleteExample(row);
+                }
+              },
+            }}
+            trigger={['click']}
+          >
+            <Button
+              aria-label="Example actions"
+              icon={<MoreOutlined />}
               size="small"
-              title="Example 승인"
-              content={`${row.example_id} example을 승인합니다.`}
-              okText="승인"
-              onConfirm={async () => {
-                await approveExample(row.service_id, row.example_id);
-              }}
-              onSuccess={() => loadSelectedExamples(row.intent_id)}
-            >
-              승인
-            </ConfirmActionButton>
-          ),
+              type="text"
+            />
+          </Dropdown>
+        ),
       });
     }
 
     return columns;
-  }, [catalogEditable, loadSelectedExamples, session.serviceId]);
+  }, [catalogEditable, confirmApproveExample, confirmDeleteExample, openEditExample]);
 
   return (
     <AdminShell title="Intent Catalog">
@@ -346,6 +505,7 @@ export default function IntentsPage() {
             onSelectIntent={setSelected}
             onCreateIntent={openCreateIntent}
             onEditIntent={openEditIntent}
+            onDeleteIntent={handleDeleteIntent}
           />
         </Space>
       ) : (
@@ -365,7 +525,19 @@ export default function IntentsPage() {
         onClose={closeDetailDrawer}
         extra={
           catalogEditable && selected ? (
-            <Button onClick={() => openEditIntent(selected)}>편집</Button>
+            <Space className="intent-detail-actions">
+              <Button onClick={() => openEditIntent(selected)}>편집</Button>
+              <ConfirmActionButton
+                danger
+                title="Intent 삭제"
+                content={`${selected.intent_id} Intent와 연결된 Example/embedding을 삭제합니다.`}
+                okText="삭제"
+                onConfirm={() => handleDeleteIntent(selected)}
+                onSuccess={closeDetailDrawer}
+              >
+                삭제
+              </ConfirmActionButton>
+            </Space>
           ) : null
         }
       >
@@ -427,7 +599,7 @@ export default function IntentsPage() {
             </section>
 
             <section className="intent-detail-section">
-              <Space align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
+              <div className="intent-detail-examples-header">
                 <Typography.Title level={5} style={{ margin: 0 }}>
                   Examples
                 </Typography.Title>
@@ -436,23 +608,26 @@ export default function IntentsPage() {
                     Example 추가
                   </Button>
                 ) : null}
-              </Space>
+              </div>
               <Alert
                 type="info"
                 showIcon
                 message="Example은 사용자가 실제로 입력할 법한 예시 문장입니다."
-                description="현재 백엔드는 Example 추가와 승인만 제공합니다. 편집/삭제/반려는 Phase 2 항목입니다."
+                description="수정/삭제 시 승인된 Example의 embedding도 함께 갱신 또는 제거됩니다."
               />
-              <Table<API.Example>
-                rowKey="example_id"
-                size="small"
-                loading={examplesLoading}
-                dataSource={examples}
-                columns={exampleColumns}
-                pagination={false}
-                scroll={{ x: 560 }}
-                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-              />
+              <div className="intent-examples-table">
+                <Table<API.Example>
+                  rowKey="example_id"
+                  size="small"
+                  loading={examplesLoading}
+                  dataSource={examples}
+                  columns={exampleColumns}
+                  pagination={false}
+                  scroll={{ x: 512 }}
+                  tableLayout="fixed"
+                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+                />
+              </div>
             </section>
           </Space>
         ) : null}
@@ -551,7 +726,13 @@ export default function IntentsPage() {
         </Form>
       </Drawer>
       <Drawer
-        title={selected ? `${selected.intent_id} Example 추가` : 'Example 추가'}
+        title={
+          exampleFormMode === 'edit'
+            ? 'Example 편집'
+            : selected
+              ? `${selected.intent_id} Example 추가`
+              : 'Example 추가'
+        }
         width={560}
         open={exampleDrawerOpen}
         onClose={closeExampleDrawer}
@@ -572,30 +753,57 @@ export default function IntentsPage() {
           requiredMark={false}
           onFinish={handleExampleSubmit}
         >
-          <Form.Item
-            label={helpLabel('Type', intentHelp.exampleType)}
-            name="example_type"
-            rules={[{ required: true, message: 'Type을 선택하세요.' }]}
-          >
-            <Select options={exampleTypeOptions} />
-          </Form.Item>
-          <Form.Item
-            label={helpLabel('Raw text', intentHelp.rawText)}
-            name="text_raw"
-            rules={[{ required: true, whitespace: true, message: 'Example 문장을 입력하세요.' }]}
-          >
-            <Input.TextArea rows={4} />
-          </Form.Item>
+          {exampleFormMode === 'create' ? (
+            <>
+              <Form.Item
+                label={helpLabel('Positive examples', intentHelp.positiveExamples)}
+                name="positive_text_raw"
+              >
+                <Input.TextArea
+                  rows={6}
+                  placeholder={'비밀번호를 재설정하고 싶어요\n로그인이 안 돼서 비밀번호 초기화가 필요합니다'}
+                />
+              </Form.Item>
+              <Form.Item
+                label={helpLabel('Negative examples', intentHelp.negativeExamples)}
+                name="negative_text_raw"
+              >
+                <Input.TextArea
+                  rows={6}
+                  placeholder={'비밀번호 정책을 바꾸고 싶어요\n계정 잠금 해제 절차를 알려주세요'}
+                />
+              </Form.Item>
+            </>
+          ) : (
+            <>
+              <Form.Item
+                label="Type"
+                name="example_type"
+                rules={[{ required: true, message: 'Type을 선택하세요.' }]}
+              >
+                <Select
+                  options={[
+                    { label: 'Positive', value: 'positive' },
+                    { label: 'Negative', value: 'negative' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item
+                label="Text raw"
+                name="text_raw"
+                extra="문장을 변경할 때만 새 raw text를 입력하세요. 승인된 Example은 저장 시 embedding이 다시 생성됩니다."
+              >
+                <Input.TextArea
+                  rows={4}
+                  placeholder={editingExample?.text_masked ?? '새 example 문장을 입력하세요.'}
+                />
+              </Form.Item>
+            </>
+          )}
           <Form.Item
             label={helpLabel('Source', intentHelp.source)}
             name="source"
             rules={[{ required: true, whitespace: true, message: 'Source를 입력하세요.' }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label={helpLabel('Test case ID', intentHelp.testCaseId)}
-            name="test_case_id"
           >
             <Input />
           </Form.Item>

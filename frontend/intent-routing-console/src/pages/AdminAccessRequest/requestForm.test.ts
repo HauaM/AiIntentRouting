@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { toAdminAccessRequestCreateRequest } from './requestForm';
+import {
+  adminAccessRequestErrorMessage,
+  toAdminAccessRequestCreateRequest,
+} from './requestForm';
 
 const requestPageSource = () =>
   readFileSync(
@@ -31,6 +34,7 @@ describe('admin access request form helpers', () => {
         department_id: ' dept-001 ',
         email: ' Admin.User@Example.com ',
         password: 'secret-passphrase',
+        password_confirm: 'secret-passphrase',
         access_reason: ' Need Admin UI access for onboarding ',
       }),
     ).toEqual({
@@ -63,5 +67,31 @@ describe('admin access request form helpers', () => {
     expect(source).toContain('Alert');
     expect(source).not.toContain("validateStatus={error ? 'error' : undefined}");
     expect(source).not.toContain('help={error}');
+  });
+
+  it('requires matching password confirmation and a trimmed ten-character reason', () => {
+    const source = requestPageSource();
+
+    expect(source).toContain('name="password_confirm"');
+    expect(source).toContain("dependencies={['password']}");
+    expect(source).toContain("getFieldValue('password')");
+    expect(source).toContain('value.trim().length >= 10');
+  });
+
+  it('shows the first useful FastAPI validation detail', () => {
+    expect(
+      adminAccessRequestErrorMessage({
+        response: {
+          data: {
+            detail: [
+              {
+                loc: ['body', 'access_reason'],
+                msg: 'String should have at least 10 characters',
+              },
+            ],
+          },
+        },
+      }),
+    ).toBe('access_reason: String should have at least 10 characters');
   });
 });

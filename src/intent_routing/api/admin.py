@@ -685,6 +685,22 @@ class ExampleCreateRequest(BaseModel):
     test_case_id: str | None = None
 
 
+class ExamplePatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    example_type: ExampleType | None = None
+    text_raw: str | None = Field(default=None, min_length=1)
+    source: str | None = Field(default=None, min_length=1)
+    test_case_id: str | None = None
+
+    @field_validator("example_type", "text_raw", "source", mode="before")
+    @classmethod
+    def patch_fields_must_not_be_null(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("example patch fields must not be null")
+        return value
+
+
 class ExampleResponse(BaseModel):
     example_id: UUID
     service_id: str
@@ -2455,6 +2471,37 @@ def _example_text_for_embedding(example: IntentExample) -> str:
     raise ValueError("EMBED_EXAMPLES_FROM must be one of: masked, raw.")
 
 
+def _example_embedding(
+    service: Service,
+    example: IntentExample,
+) -> list[float]:
+    try:
+        provider = get_embedding_provider()
+        embedding_text = _example_text_for_embedding(example)
+        embeddings = provider.embed_texts(
+            [embedding_text],
+            max_tokens=service.max_input_tokens,
+        )
+        if len(embeddings) != 1:
+            raise ValueError("embedding provider returned the wrong result count")
+        embedding = embeddings[0]
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorEnvelope(
+                trace_id=_trace_id(),
+                error=ErrorInfo(
+                    code=ErrorCode.INTERNAL_ERROR,
+                    message="Embedding generation failed.",
+                    retryable=False,
+                ),
+            ).model_dump(mode="json", exclude_none=True),
+        ) from exc
+    if len(embedding) != 1024:
+        _raise_internal_error("Embedding generation failed.")
+    return embedding
+
+
 def _ensure_service_exists(
     repository: IntentRoutingRepository,
     service_id: str,
@@ -2529,6 +2576,18 @@ def _example_after_state(example: IntentExample) -> dict[str, object]:
             "dimension": len(example.embedding),
             "stored": True,
         }
+    return state
+
+
+def _intent_delete_before_state(
+    intent: Intent,
+    examples: list[IntentExample],
+) -> dict[str, object]:
+    state = _intent_response(intent).model_dump(mode="json", exclude_none=True)
+    state["example_count"] = len(examples)
+    state["embedded_example_count"] = sum(
+        1 for example in examples if example.embedding is not None
+    )
     return state
 
 
@@ -4748,6 +4807,44 @@ def patch_intent(
     return _intent_response(intent)
 
 
+@router.delete(
+    "/services/{service_id}/intents/{intent_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_intent(
+    service_id: str,
+    intent_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> None:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    intent = repository.get_intent(service_id, intent_id)
+    if intent is None:
+        _raise_not_found("Intent does not exist.")
+
+    now = datetime.now(UTC)
+    examples = repository.list_examples(service_id, intent_id)
+    before_state = _intent_delete_before_state(intent, examples)
+    for example in examples:
+        repository.delete_example(example)
+    repository.delete_intent(intent)
+    repository.insert_audit_log(
+        event_type="intent.deleted",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="intent",
+        target_id=intent_id,
+        view_reason=None,
+        source_ip=None,
+        before_state=before_state,
+        after_state=None,
+        created_at=now,
+    )
+    session.commit()
+
+
 @router.post(
     "/services/{service_id}/intents/{intent_id}/examples",
     response_model=ExampleResponse,
@@ -5000,30 +5097,7 @@ def approve_example(
     if service is None:
         _raise_not_found("Service does not exist.")
     before_state = _example_after_state(example)
-    try:
-        provider = get_embedding_provider()
-        embedding_text = _example_text_for_embedding(example)
-        embeddings = provider.embed_texts(
-            [embedding_text],
-            max_tokens=service.max_input_tokens,
-        )
-        if len(embeddings) != 1:
-            raise ValueError("embedding provider returned the wrong result count")
-        embedding = embeddings[0]
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=ErrorEnvelope(
-                trace_id=_trace_id(),
-                error=ErrorInfo(
-                    code=ErrorCode.INTERNAL_ERROR,
-                    message="Embedding generation failed.",
-                    retryable=False,
-                ),
-            ).model_dump(mode="json", exclude_none=True),
-        ) from exc
-    if len(embedding) != 1024:
-        _raise_internal_error("Embedding generation failed.")
+    embedding = _example_embedding(service, example)
     example = repository.approve_example(example, embedding=embedding)
     repository.insert_audit_log(
         event_type="example.approved",
@@ -5040,6 +5114,106 @@ def approve_example(
     )
     session.commit()
     return _example_response(example)
+
+
+@router.patch(
+    "/services/{service_id}/examples/{example_id}",
+    response_model=ExampleResponse,
+)
+def patch_example(
+    service_id: str,
+    example_id: UUID,
+    request: ExamplePatchRequest,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ExampleResponse:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    example = repository.get_example(service_id, example_id)
+    if example is None:
+        _raise_not_found("Example does not exist.")
+    service = repository.get_service(service_id)
+    if service is None:
+        _raise_not_found("Service does not exist.")
+
+    before_state = _example_after_state(example)
+    updates: dict[str, object | None] = {}
+    if "example_type" in request.model_fields_set and request.example_type is not None:
+        updates["example_type"] = request.example_type.value
+    if "source" in request.model_fields_set:
+        updates["source"] = request.source
+    if "test_case_id" in request.model_fields_set:
+        updates["test_case_id"] = request.test_case_id
+    if "text_raw" in request.model_fields_set and request.text_raw is not None:
+        encrypted_raw_text = _raw_text_keyring().encrypt_text(request.text_raw)
+        updates.update(
+            {
+                "text_raw_ciphertext": encrypted_raw_text.ciphertext,
+                "text_raw_encrypted_dek": encrypted_raw_text.encrypted_dek,
+                "text_raw_encrypted_dek_iv": encrypted_raw_text.encrypted_dek_iv,
+                "text_raw_encrypted_dek_auth_tag": encrypted_raw_text.encrypted_dek_auth_tag,
+                "text_raw_key_id": encrypted_raw_text.key_id,
+                "text_raw_iv": encrypted_raw_text.iv,
+                "text_raw_auth_tag": encrypted_raw_text.auth_tag,
+                "text_raw_algorithm": encrypted_raw_text.algorithm,
+                "text_masked": mask_pii(request.text_raw),
+            }
+        )
+
+    example = repository.update_example(example, **updates)
+    if example.approved:
+        example = repository.update_example(
+            example,
+            embedding=_example_embedding(service, example),
+        )
+    repository.insert_audit_log(
+        event_type="example.updated",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="intent_example",
+        target_id=str(example.example_id),
+        view_reason=None,
+        source_ip=None,
+        before_state=before_state,
+        after_state=_example_after_state(example),
+        created_at=datetime.now(UTC),
+    )
+    session.commit()
+    return _example_response(example)
+
+
+@router.delete(
+    "/services/{service_id}/examples/{example_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_example(
+    service_id: str,
+    example_id: UUID,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> None:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    example = repository.get_example(service_id, example_id)
+    if example is None:
+        _raise_not_found("Example does not exist.")
+    before_state = _example_after_state(example)
+    repository.delete_example(example)
+    repository.insert_audit_log(
+        event_type="example.deleted",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="intent_example",
+        target_id=str(example_id),
+        view_reason=None,
+        source_ip=None,
+        before_state=before_state,
+        after_state=None,
+        created_at=datetime.now(UTC),
+    )
+    session.commit()
 
 
 @router.post(

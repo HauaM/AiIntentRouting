@@ -19,6 +19,8 @@ describe('IntentCatalogTable contract', () => {
     expect(text).toContain('copyable: true');
     expect(text).toContain('search={false}');
     expect(text).toContain('scroll={{ x:');
+    expect(text).toContain('onDeleteIntent');
+    expect(text).toContain('삭제');
     expect(text).not.toContain('const statusColor');
   });
 });

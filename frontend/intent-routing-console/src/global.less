@@ -233,6 +233,59 @@ body {
 .intent-detail-section {
   display: grid;
   gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.intent-detail-examples-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.intent-detail-actions {
+  align-items: center;
+}
+
+.intent-detail-actions .ant-btn,
+.intent-detail-actions .ant-btn:hover,
+.intent-detail-actions .ant-btn:focus,
+.intent-detail-actions .ant-btn:active {
+  box-shadow: none;
+}
+
+.intent-detail-actions .ant-btn:focus-visible {
+  outline: 2px solid rgb(29 90 150 / 30%);
+  outline-offset: 2px;
+}
+
+.intent-example-text {
+  display: block;
+  line-height: 1.6;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: keep-all;
+}
+
+.intent-examples-table {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.intent-examples-table .ant-table-wrapper,
+.intent-examples-table .ant-table-container {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.intent-examples-table .ant-table-cell {
+  vertical-align: top;
 }
 
 .intent-keyword-groups {

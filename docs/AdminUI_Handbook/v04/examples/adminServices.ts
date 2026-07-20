@@ -81,6 +81,29 @@ export async function approveExample(serviceId: string, exampleId: string) {
   });
 }
 
+export async function patchExample(
+  serviceId: string,
+  exampleId: string,
+  payload: API.ExamplePatchRequest,
+) {
+  return request<API.Example>(`/services/${serviceId}/examples/${exampleId}`, {
+    method: 'PATCH',
+    data: payload,
+  });
+}
+
+export async function deleteExample(serviceId: string, exampleId: string) {
+  return request<void>(`/services/${serviceId}/examples/${exampleId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function deleteIntent(serviceId: string, intentId: string) {
+  return request<void>(`/services/${serviceId}/intents/${intentId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function activateRelease(serviceId: string, releaseVersion: string) {
   return request<API.Release>(
     `/services/${serviceId}/releases/${releaseVersion}:activate`,

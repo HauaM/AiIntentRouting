@@ -1,6 +1,7 @@
 import { ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Button, Space, Tag } from 'antd';
 import { useRef } from 'react';
+import { ConfirmActionButton } from './ConfirmActionButton';
 import { listIntents } from './adminServices';
 
 const statusColor: Record<string, string> = {
@@ -15,6 +16,7 @@ type IntentCatalogTableProps = {
   onSelectIntent: (intent: API.Intent) => void;
   onCreateIntent?: () => void;
   onEditIntent?: (intent: API.Intent) => void;
+  onDeleteIntent?: (intent: API.Intent) => Promise<void>;
 };
 
 export function IntentCatalogTable({
@@ -23,6 +25,7 @@ export function IntentCatalogTable({
   onSelectIntent,
   onCreateIntent,
   onEditIntent,
+  onDeleteIntent,
 }: IntentCatalogTableProps) {
   const actionRef = useRef<ActionType>();
 
@@ -59,7 +62,7 @@ export function IntentCatalogTable({
     {
       title: '',
       valueType: 'option',
-      width: 120,
+      width: 176,
       render: (_, row) => [
         <Button key="detail" type="link" size="small" onClick={() => onSelectIntent(row)}>
           상세
@@ -68,6 +71,20 @@ export function IntentCatalogTable({
           <Button key="edit" type="link" size="small" onClick={() => onEditIntent?.(row)}>
             편집
           </Button>
+        ) : null,
+        canEditCatalog ? (
+          <ConfirmActionButton
+            key="delete"
+            danger
+            type="link"
+            size="small"
+            title="Intent 삭제"
+            content={`${row.intent_id} Intent와 연결된 Example/embedding을 삭제합니다.`}
+            okText="삭제"
+            onConfirm={() => onDeleteIntent?.(row) ?? Promise.resolve()}
+          >
+            삭제
+          </ConfirmActionButton>
         ) : null,
       ],
     },
@@ -94,4 +111,3 @@ export function IntentCatalogTable({
     />
   );
 }
-
