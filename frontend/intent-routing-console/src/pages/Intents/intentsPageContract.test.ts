@@ -21,7 +21,9 @@ describe('Intents page contract', () => {
     expect(text).toContain("selected.updated_at ?? '없음'");
     expect(text).toContain('<StatusTag status={selected.status}');
     expect(text).toContain('className="intent-detail-examples-header"');
-    expect(text).toContain('scroll={{ x: true }}');
+    expect(text).toContain('scroll={{ x: 512 }}');
+    expect(text).not.toContain('scroll={{ x: true }}');
+    expect(text).not.toContain('scroll={{ x: 720 }}');
     expect(text).not.toContain('scroll={{ x: 560 }}');
     expect(text).not.toContain('width={620}');
   });
@@ -69,5 +71,26 @@ describe('Intents page contract', () => {
     expect(text).toContain('className="intent-detail-actions"');
     expect(styles).toContain('.intent-detail-actions .ant-btn');
     expect(styles).toContain('box-shadow: none;');
+  });
+
+  it('keeps example text readable without widening the detail drawer', () => {
+    const text = source();
+    const styles = styleSource();
+
+    expect(text).toContain('Dropdown');
+    expect(text).toContain('MoreOutlined');
+    expect(text).toContain('className="intent-examples-table"');
+    expect(text).toContain("className=\"intent-example-text\"");
+    expect(text).toContain("width: 220");
+    expect(text).toContain("scroll={{ x: 512 }}");
+    expect(text).not.toContain("scroll={{ x: true }}");
+    expect(text).not.toContain("scroll={{ x: 720 }}");
+    expect(text).not.toContain("width: 136");
+    expect(text).not.toContain("width: 176");
+    expect(styles).toContain('.intent-examples-table');
+    expect(styles).toContain('overflow-x: hidden;');
+    expect(styles).toContain('.intent-example-text');
+    expect(styles).toContain('word-break: keep-all;');
+    expect(styles).toContain('overflow-wrap: anywhere;');
   });
 });

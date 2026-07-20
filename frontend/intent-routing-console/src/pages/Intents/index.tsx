@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { MoreOutlined } from '@ant-design/icons';
 import { history, useModel } from '@umijs/max';
 import type { TableProps } from 'antd';
 import {
   Alert,
   Button,
   Descriptions,
+  Dropdown,
   Drawer,
   Empty,
   Form,
   Input,
+  Modal,
   Select,
   Space,
   Table,
@@ -362,12 +365,47 @@ export default function IntentsPage() {
     }
   };
 
+  const confirmApproveExample = useCallback(
+    (example: API.Example) => {
+      Modal.confirm({
+        title: 'Example 승인',
+        content: `${example.example_id} example을 승인합니다.`,
+        okText: '승인',
+        cancelText: '취소',
+        async onOk() {
+          await approveExample(example.service_id, example.example_id);
+          message.success('처리되었습니다.');
+          await loadSelectedExamples(example.intent_id);
+        },
+      });
+    },
+    [loadSelectedExamples],
+  );
+
+  const confirmDeleteExample = useCallback(
+    (example: API.Example) => {
+      Modal.confirm({
+        title: 'Example 삭제',
+        content: `${example.example_id} example과 embedding을 삭제합니다.`,
+        okText: '삭제',
+        cancelText: '취소',
+        okButtonProps: { danger: true },
+        async onOk() {
+          await deleteExample(example.service_id, example.example_id);
+          message.success('처리되었습니다.');
+          await loadSelectedExamples(example.intent_id);
+        },
+      });
+    },
+    [loadSelectedExamples],
+  );
+
   const exampleColumns = useMemo<TableProps<API.Example>['columns']>(() => {
     const columns: TableProps<API.Example>['columns'] = [
       {
         title: 'Type',
         dataIndex: 'example_type',
-        width: 96,
+        width: 80,
         render: (value: string) => (
           <Tag color={value === 'positive' ? 'green' : 'default'}>{value}</Tag>
         ),
@@ -375,17 +413,20 @@ export default function IntentsPage() {
       {
         title: 'Text',
         dataIndex: 'text_masked',
-        render: (value: string) => <Typography.Text>{value}</Typography.Text>,
+        width: 220,
+        render: (value: string) => (
+          <Typography.Text className="intent-example-text">{value}</Typography.Text>
+        ),
       },
       {
         title: 'Source',
         dataIndex: 'source',
-        width: 120,
+        width: 88,
       },
       {
         title: 'Status',
         dataIndex: 'approved',
-        width: 96,
+        width: 72,
         render: (approved: boolean) =>
           approved ? <Tag color="green">승인됨</Tag> : <Tag color="orange">대기</Tag>,
       },
@@ -394,48 +435,57 @@ export default function IntentsPage() {
     if (catalogEditable) {
       columns.push({
         title: '',
-        width: 176,
+        width: 52,
+        align: 'right',
         render: (_, row) => (
-          <Space size={4}>
-            {row.approved ? null : (
-              <ConfirmActionButton
-                type="link"
-                size="small"
-                title="Example 승인"
-                content={`${row.example_id} example을 승인합니다.`}
-                okText="승인"
-                onConfirm={async () => {
-                  await approveExample(row.service_id, row.example_id);
-                }}
-                onSuccess={() => loadSelectedExamples(row.intent_id)}
-              >
-                승인
-              </ConfirmActionButton>
-            )}
-            <Button type="link" size="small" onClick={() => openEditExample(row)}>
-              편집
-            </Button>
-            <ConfirmActionButton
-              danger
-              type="link"
+          <Dropdown
+            menu={{
+              items: [
+                row.approved
+                  ? null
+                  : {
+                      key: 'approve',
+                      label: '승인',
+                    },
+                {
+                  key: 'edit',
+                  label: '편집',
+                },
+                {
+                  key: 'delete',
+                  label: '삭제',
+                  danger: true,
+                },
+              ].filter(Boolean),
+              onClick: ({ key }) => {
+                if (key === 'approve') {
+                  confirmApproveExample(row);
+                  return;
+                }
+                if (key === 'edit') {
+                  openEditExample(row);
+                  return;
+                }
+                if (key === 'delete') {
+                  confirmDeleteExample(row);
+                }
+              },
+            }}
+            trigger={['click']}
+          >
+            <Button
+              aria-label="Example actions"
+              icon={<MoreOutlined />}
               size="small"
-              title="Example 삭제"
-              content={`${row.example_id} example과 embedding을 삭제합니다.`}
-              okText="삭제"
-              onConfirm={async () => {
-                await deleteExample(row.service_id, row.example_id);
-              }}
-              onSuccess={() => loadSelectedExamples(row.intent_id)}
-            >
-              삭제
-            </ConfirmActionButton>
-          </Space>
+              type="text"
+            />
+          </Dropdown>
         ),
       });
     }
 
     return columns;
-  }, [catalogEditable, loadSelectedExamples, openEditExample]);
+  }, [catalogEditable, confirmApproveExample, confirmDeleteExample, openEditExample]);
 
   return (
     <AdminShell title="Intent Catalog">
@@ -565,16 +615,19 @@ export default function IntentsPage() {
                 message="Example은 사용자가 실제로 입력할 법한 예시 문장입니다."
                 description="수정/삭제 시 승인된 Example의 embedding도 함께 갱신 또는 제거됩니다."
               />
-              <Table<API.Example>
-                rowKey="example_id"
-                size="small"
-                loading={examplesLoading}
-                dataSource={examples}
-                columns={exampleColumns}
-                pagination={false}
-                scroll={{ x: true }}
-                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-              />
+              <div className="intent-examples-table">
+                <Table<API.Example>
+                  rowKey="example_id"
+                  size="small"
+                  loading={examplesLoading}
+                  dataSource={examples}
+                  columns={exampleColumns}
+                  pagination={false}
+                  scroll={{ x: 512 }}
+                  tableLayout="fixed"
+                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+                />
+              </div>
             </section>
           </Space>
         ) : null}
