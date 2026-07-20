@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const source = () => readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.tsx'), 'utf8');
+const panelSource = () =>
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'CatalogVersionPanel.tsx'), 'utf8');
 const styleSource = () =>
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../global.less'), 'utf8');
 
@@ -51,33 +53,68 @@ describe('Intents page contract', () => {
 
   it('loads catalog version history only when history exists and shows page state', () => {
     const text = source();
+    const panelText = panelSource();
 
     expect(text).toContain('loadLatestCatalogVersionState');
     expect(text).toContain('listCatalogVersions(session.serviceId, { limit: 1 })');
     expect(text).toContain('setCatalogHistoryExists(Boolean(latestVersion))');
-    expect(text).toContain('catalogHistoryExists ? (');
+    expect(text).toContain('<CatalogVersionPanel');
     expect(text).toContain('catalogPageState');
-    expect(text).toContain("catalogPageState.mode === 'draft'");
+    expect(panelText).toContain("state?.mode === 'draft'");
     expect(text).toContain('Catalog version 불러오기');
-    expect(text).toContain('버전 상태');
-    expect(text).toContain('수정된 초안');
+    expect(panelText).toContain('버전 상태');
+    expect(panelText).toContain('수정된 초안');
   });
 
-  it('opens a compact all-history catalog version loader without status filtering', () => {
+  it('manages the catalog version lifecycle directly from the Intents page', () => {
     const text = source();
 
     expect(text).toContain('openCatalogVersionLoadModal');
-    expect(text).toContain('listCatalogVersions(session.serviceId, { limit: 100 })');
+    expect(text).toContain('listCatalogVersions(serviceId, { limit: 100 })');
+    expect(text).toContain('CatalogVersionHistoryModal');
     expect(text).toContain('catalogVersionLoadOpen');
     expect(text).toContain('catalogVersionSelection');
+    expect(text).toContain('createCatalogVersion(session.serviceId');
+    expect(text).toContain('fetchCatalogVersionDiff(');
+    expect(text).toContain('deactivateCatalogVersion(');
     expect(text).toContain('loadCatalogVersionToDraft');
     expect(text).toContain('confirmLoadCatalogVersionToDraft');
     expect(text).toContain("setCatalogPageState({ mode: 'draft', sourceVersion: loaded })");
+    expect(text).toContain('CatalogVersionCreateModal');
+    expect(text).toContain('CatalogVersionDiffDrawer');
+    expect(text).toContain('Catalog 버전 등록');
+  });
+
+  it('opens a full lifecycle catalog version grid without status filtering', () => {
+    const text = source();
+    const historyModalSource = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'CatalogVersionHistoryModal.tsx'),
+      'utf8',
+    );
+
+    expect(text).toContain('openCatalogVersionLoadModal');
+    expect(text).toContain('listCatalogVersions(serviceId, { limit: 100 })');
+    expect(historyModalSource).toContain('display_version');
+    expect(historyModalSource).toContain('description');
+    expect(historyModalSource).toContain('status');
+    expect(historyModalSource).toContain('release_count');
+    expect(historyModalSource).toContain('intent_count');
+    expect(historyModalSource).toContain('example_count');
+    expect(historyModalSource).toContain('embedding_count');
+    expect(historyModalSource).toContain('created_at');
+    expect(historyModalSource).toContain('scroll={{ x: 1280, y: 360 }}');
+    expect(historyModalSource).toContain('draft로 불러오기');
+    expect(historyModalSource).toContain('비활성화');
+    expect(historyModalSource).toContain('MoreOutlined');
+  });
+
+  it('does not keep manual catalog version id input or standalone page-only lifecycle controls', () => {
+    const text = source();
+
+    expect(text).not.toContain('name="intent_catalog_version"');
+    expect(text).not.toContain("name='intent_catalog_version'");
+    expect(text).not.toContain('CatalogVersionsPage');
     expect(text).toContain('display_version');
-    expect(text).toContain('created_at');
-    expect(text).toContain('release_count');
-    expect(text).toContain('status');
-    expect(text).toContain('description');
   });
 
   it('marks catalog page state as draft after editable catalog mutations', () => {

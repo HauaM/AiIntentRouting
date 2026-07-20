@@ -29,22 +29,30 @@ import { WorkflowNextActionBar } from '@/components/WorkflowNextActionBar';
 import { canEditCatalog, isAdminSessionReady } from '@/models/adminSession';
 import {
   approveExample,
+  createCatalogVersion,
   createExample,
   createIntent,
+  deactivateCatalogVersion,
   deleteExample,
   deleteIntent,
+  fetchCatalogVersionDiff,
   listCatalogVersions,
   listExamples,
   loadCatalogVersionToDraft,
   patchExample,
   patchIntent,
 } from '@/services/adminServices';
+import { CatalogVersionCreateModal } from './CatalogVersionCreateModal';
+import {
+  CatalogVersionDiffDrawer,
+  selectCatalogVersionDiffBaseline,
+} from './CatalogVersionDiffDrawer';
+import { CatalogVersionHistoryModal } from './CatalogVersionHistoryModal';
+import { CatalogVersionPanel } from './CatalogVersionPanel';
+import type { CatalogPageState } from './catalogVersionTypes';
 
 type IntentFormMode = 'create' | 'edit';
 type ExampleFormMode = 'create' | 'edit';
-type CatalogPageState =
-  | { mode: 'version'; version: API.CatalogVersionListItem }
-  | { mode: 'draft'; sourceVersion?: API.CatalogVersionListItem };
 
 type IntentFormValues = {
   intent_id: string;
@@ -70,11 +78,6 @@ const statusOptions = [
   { label: 'Active', value: 'active' },
   { label: 'Deprecated', value: 'deprecated' },
 ];
-
-const catalogVersionStatusColor: Record<API.CatalogVersionStatus, string> = {
-  active: 'success',
-  inactive: 'default',
-};
 
 const routeKeyPattern = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){2,3}$/;
 const routeKeyEnvironmentSegments = new Set(['dev', 'staging', 'prod', 'production']);
@@ -105,8 +108,8 @@ const splitExampleLines = (value?: string) =>
     .map((line) => line.trim())
     .filter(Boolean);
 
-const formatCatalogDate = (value?: string | null) =>
-  value ? new Date(value).toLocaleString('ko-KR') : '-';
+const getOperationErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : '요청 처리 중 오류가 발생했습니다.';
 
 const buildExampleCreateRequests = (values: ExampleFormValues): API.ExampleCreateRequest[] => {
   const source = values.source.trim();
@@ -167,6 +170,15 @@ export default function IntentsPage() {
   const [catalogVersionSelection, setCatalogVersionSelection] =
     useState<API.CatalogVersionListItem>();
   const [catalogVersionLoadingToDraft, setCatalogVersionLoadingToDraft] = useState(false);
+  const [catalogVersionCreateOpen, setCatalogVersionCreateOpen] = useState(false);
+  const [catalogVersionCreating, setCatalogVersionCreating] = useState(false);
+  const [catalogVersionDiffOpen, setCatalogVersionDiffOpen] = useState(false);
+  const [catalogVersionDiffLoading, setCatalogVersionDiffLoading] = useState(false);
+  const [catalogVersionDiffTarget, setCatalogVersionDiffTarget] =
+    useState<API.CatalogVersionListItem>();
+  const [catalogVersionDiffBaseline, setCatalogVersionDiffBaseline] =
+    useState<API.CatalogVersionListItem>();
+  const [catalogVersionDiff, setCatalogVersionDiff] = useState<API.CatalogVersionDiff>();
   const [intentForm] = Form.useForm<IntentFormValues>();
   const [exampleForm] = Form.useForm<ExampleFormValues>();
   const serviceIdRef = useRef(session.serviceId);
@@ -187,6 +199,11 @@ export default function IntentsPage() {
     setCatalogVersionLoadOpen(false);
     setCatalogVersionRows([]);
     setCatalogVersionSelection(undefined);
+    setCatalogVersionCreateOpen(false);
+    setCatalogVersionDiffOpen(false);
+    setCatalogVersionDiffTarget(undefined);
+    setCatalogVersionDiffBaseline(undefined);
+    setCatalogVersionDiff(undefined);
     intentForm.resetFields();
     exampleForm.resetFields();
   }, [exampleForm, intentForm, session.serviceId]);
@@ -244,22 +261,74 @@ export default function IntentsPage() {
 
   const refreshCatalog = () => setCatalogReloadKey((current) => current + 1);
 
+  const reloadCatalogVersionRows = useCallback(async () => {
+    if (!ready) return [];
+    const serviceId = session.serviceId;
+    setCatalogVersionLoading(true);
+    try {
+      const rows = await listCatalogVersions(serviceId, { limit: 100 });
+      if (serviceIdRef.current !== serviceId) return [];
+      setCatalogVersionRows(rows);
+      return rows;
+    } finally {
+      if (serviceIdRef.current === serviceId) setCatalogVersionLoading(false);
+    }
+  }, [ready, session.serviceId]);
+
   const openCatalogVersionLoadModal = async () => {
     setCatalogVersionLoadOpen(true);
-    setCatalogVersionLoading(true);
     setCatalogVersionSelection(undefined);
+    await reloadCatalogVersionRows();
+  };
+
+  const handleCreateCatalogVersion = async (description: string) => {
+    const serviceId = session.serviceId;
+    setCatalogVersionCreating(true);
     try {
-      const rows = await listCatalogVersions(session.serviceId, { limit: 100 });
-      if (serviceIdRef.current !== session.serviceId) return;
-      setCatalogVersionRows(rows);
+      const created = await createCatalogVersion(session.serviceId, { description });
+      if (serviceIdRef.current !== serviceId) return;
+      setCatalogHistoryExists(true);
+      setCatalogPageState({ mode: 'version', version: created });
+      message.success('Catalog 버전이 등록되었습니다.');
+      setCatalogVersionCreateOpen(false);
+      if (catalogVersionLoadOpen) await reloadCatalogVersionRows();
+    } catch (error) {
+      message.error(getOperationErrorMessage(error));
+      throw error;
     } finally {
-      setCatalogVersionLoading(false);
+      if (serviceIdRef.current === serviceId) setCatalogVersionCreating(false);
     }
   };
 
-  const confirmLoadCatalogVersionToDraft = () => {
-    if (!catalogVersionSelection) return;
-    const target = catalogVersionSelection;
+  const openCatalogVersionDiff = async (row: API.CatalogVersionListItem) => {
+    const serviceId = session.serviceId;
+    const rows = catalogVersionRows.length
+      ? catalogVersionRows
+      : await reloadCatalogVersionRows();
+    const baseline = selectCatalogVersionDiffBaseline(rows, row);
+    setCatalogVersionDiffTarget(row);
+    setCatalogVersionDiffBaseline(baseline);
+    setCatalogVersionDiff(undefined);
+    setCatalogVersionDiffOpen(true);
+    setCatalogVersionDiffLoading(true);
+    try {
+      const result = await fetchCatalogVersionDiff(
+        serviceId,
+        row.intent_catalog_version,
+        { compare_to: baseline?.intent_catalog_version },
+      );
+      if (serviceIdRef.current !== serviceId) return;
+      setCatalogVersionDiff(result);
+    } catch (error) {
+      message.error(getOperationErrorMessage(error));
+    } finally {
+      if (serviceIdRef.current === serviceId) setCatalogVersionDiffLoading(false);
+    }
+  };
+
+  const confirmLoadCatalogVersionToDraft = (version = catalogVersionSelection) => {
+    if (!version) return;
+    const target = version;
     Modal.confirm({
       title: `${target.display_version}을 초안으로 불러올까요?`,
       content: '현재 Intent Catalog 초안이 선택한 catalog version snapshot으로 갱신됩니다.',
@@ -283,6 +352,29 @@ export default function IntentsPage() {
           message.success('Catalog version을 초안으로 불러왔습니다.');
         } finally {
           setCatalogVersionLoadingToDraft(false);
+        }
+      },
+    });
+  };
+
+  const confirmDeactivateCatalogVersion = (version: API.CatalogVersionListItem) => {
+    const serviceId = session.serviceId;
+    Modal.confirm({
+      title: `${version.display_version}을 비활성화할까요?`,
+      content: '비활성화하면 해당 버전의 embedding이 해제되어 테스트/런타임 후보로 사용할 수 없습니다.',
+      okText: '비활성화',
+      cancelText: '취소',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await deactivateCatalogVersion(serviceId, version.intent_catalog_version);
+          if (serviceIdRef.current !== serviceId) return;
+          message.success('Catalog 버전이 비활성화되었습니다.');
+          await loadLatestCatalogVersionState();
+          if (catalogVersionLoadOpen) await reloadCatalogVersionRows();
+        } catch (error) {
+          message.error(getOperationErrorMessage(error));
+          throw error;
         }
       },
     });
@@ -509,50 +601,6 @@ export default function IntentsPage() {
     catalogPageState?.mode === 'draft'
       ? catalogPageState.sourceVersion
       : catalogPageState?.version;
-  const catalogPageDraft = catalogPageState && catalogPageState.mode === 'draft';
-
-  const catalogVersionLoadColumns = useMemo<TableProps<API.CatalogVersionListItem>['columns']>(
-    () => [
-      {
-        title: 'Version',
-        dataIndex: 'display_version',
-        width: 96,
-        render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
-      },
-      {
-        title: 'Created',
-        dataIndex: 'created_at',
-        width: 160,
-        render: (value: string) => formatCatalogDate(value),
-      },
-      {
-        title: 'Release',
-        dataIndex: 'release_count',
-        width: 112,
-        render: (_, row) =>
-          row.released || row.release_count > 0 ? (
-            <Tag color="processing">released {row.release_count}</Tag>
-          ) : (
-            <Tag>unreleased</Tag>
-          ),
-      },
-      {
-        title: 'Status',
-        dataIndex: 'status',
-        width: 88,
-        render: (value: API.CatalogVersionStatus) => (
-          <Tag color={catalogVersionStatusColor[value]}>{value}</Tag>
-        ),
-      },
-      {
-        title: 'Description',
-        dataIndex: 'description',
-        ellipsis: true,
-        width: 260,
-      },
-    ],
-    [],
-  );
 
   const exampleColumns = useMemo<TableProps<API.Example>['columns']>(() => {
     const columns: TableProps<API.Example>['columns'] = [
@@ -652,61 +700,29 @@ export default function IntentsPage() {
             onPrimary={() => history.push('/test-runs')}
             disabled={!catalogEditable}
           />
-          {catalogHistoryExists ? (
-            <Alert
-              type={catalogPageDraft ? 'warning' : 'info'}
-              showIcon
-              message={
-                catalogPageDraft
-                  ? '버전 상태: 수정된 초안'
-                  : `버전 상태: ${catalogStateVersion?.display_version ?? '확인 중'}`
-              }
-              description={
-                <Descriptions size="small" column={4}>
-                  <Descriptions.Item label="Version">
-                    {catalogStateVersion?.display_version ?? '-'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Status">
-                    {catalogPageDraft ? (
-                      <Tag color="warning">초안</Tag>
-                    ) : catalogStateVersion ? (
-                      <Tag color={catalogVersionStatusColor[catalogStateVersion.status]}>
-                        {catalogStateVersion.status}
-                      </Tag>
-                    ) : (
-                      '-'
-                    )}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Release">
-                    {catalogStateVersion ? (
-                      catalogStateVersion.released || catalogStateVersion.release_count > 0 ? (
-                        <Tag color="processing">
-                          released {catalogStateVersion.release_count}
-                        </Tag>
-                      ) : (
-                        <Tag>unreleased</Tag>
-                      )
-                    ) : (
-                      '-'
-                    )}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Created">
-                    {formatCatalogDate(catalogStateVersion?.created_at)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Description" span={4}>
-                    <Typography.Text ellipsis>
-                      {catalogStateVersion?.description ?? '-'}
-                    </Typography.Text>
-                  </Descriptions.Item>
-                </Descriptions>
-              }
-              action={
-                <Button size="small" onClick={openCatalogVersionLoadModal}>
-                  Catalog version 불러오기
-                </Button>
-              }
-            />
+          {!catalogHistoryExists && catalogEditable ? (
+            <Space wrap>
+              <Button type="primary" onClick={() => setCatalogVersionCreateOpen(true)}>
+                Catalog 버전 등록
+              </Button>
+              <Button onClick={openCatalogVersionLoadModal}>
+                Catalog version 불러오기
+              </Button>
+            </Space>
           ) : null}
+          <CatalogVersionPanel
+            state={catalogPageState}
+            historyExists={catalogHistoryExists}
+            canManage={catalogEditable}
+            onCreate={() => setCatalogVersionCreateOpen(true)}
+            onOpenHistory={openCatalogVersionLoadModal}
+            onCompareCurrent={() => {
+              if (catalogStateVersion) void openCatalogVersionDiff(catalogStateVersion);
+            }}
+            onDeactivateCurrent={() => {
+              if (catalogStateVersion) confirmDeactivateCatalogVersion(catalogStateVersion);
+            }}
+          />
           <IntentCatalogTable
             key={`${session.serviceId}:${catalogReloadKey}`}
             serviceId={session.serviceId}
@@ -720,48 +736,34 @@ export default function IntentsPage() {
       ) : (
         <AdminSessionRequired />
       )}
-      <Modal
-        title="Catalog version 불러오기"
+      <CatalogVersionCreateModal
+        open={catalogVersionCreateOpen}
+        loading={catalogVersionCreating}
+        onCancel={() => setCatalogVersionCreateOpen(false)}
+        onCreate={handleCreateCatalogVersion}
+      />
+      <CatalogVersionHistoryModal
         open={catalogVersionLoadOpen}
-        width={760}
-        centered
-        okText="선택한 버전 불러오기"
-        cancelText="취소"
-        okButtonProps={{ disabled: !catalogVersionSelection }}
-        confirmLoading={catalogVersionLoadingToDraft}
-        onOk={confirmLoadCatalogVersionToDraft}
+        rows={catalogVersionRows}
+        loading={catalogVersionLoading}
+        loadingToDraft={catalogVersionLoadingToDraft}
+        selectedVersion={catalogVersionSelection}
+        canManage={catalogEditable}
         onCancel={() => setCatalogVersionLoadOpen(false)}
-      >
-        <Table<API.CatalogVersionListItem>
-          rowKey="intent_catalog_version"
-          size="small"
-          loading={catalogVersionLoading}
-          columns={catalogVersionLoadColumns}
-          dataSource={catalogVersionRows}
-          pagination={false}
-          scroll={{ x: 716, y: 360 }}
-          rowSelection={{
-            type: 'radio',
-            selectedRowKeys: catalogVersionSelection
-              ? [catalogVersionSelection.intent_catalog_version]
-              : [],
-            onChange: (_, selectedRows) => {
-              setCatalogVersionSelection(selectedRows[0]);
-            },
-          }}
-          onRow={(row) => ({
-            onClick: () => setCatalogVersionSelection(row),
-          })}
-          locale={{
-            emptyText: (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="불러올 Catalog version이 없습니다."
-              />
-            ),
-          }}
-        />
-      </Modal>
+        onSelect={setCatalogVersionSelection}
+        onLoadSelected={() => confirmLoadCatalogVersionToDraft()}
+        onCompare={openCatalogVersionDiff}
+        onLoadToDraft={confirmLoadCatalogVersionToDraft}
+        onDeactivate={confirmDeactivateCatalogVersion}
+      />
+      <CatalogVersionDiffDrawer
+        open={catalogVersionDiffOpen}
+        loading={catalogVersionDiffLoading}
+        target={catalogVersionDiffTarget}
+        baseline={catalogVersionDiffBaseline}
+        diff={catalogVersionDiff}
+        onClose={() => setCatalogVersionDiffOpen(false)}
+      />
       <Drawer
         title={
           selected ? (
