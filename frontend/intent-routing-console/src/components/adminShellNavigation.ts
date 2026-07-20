@@ -4,6 +4,7 @@ export type AdminShellRouteIcon =
   | 'organizationDirectory'
   | 'permissionManagement'
   | 'intentCatalog'
+  | 'catalogVersions'
   | 'releases'
   | 'testRuns'
   | 'apiKeys'
@@ -33,6 +34,7 @@ export const ADMIN_SHELL_ROUTE_SPECS: AdminShellRouteSpec[] = [
     systemAdminOnly: true,
   },
   { path: '/intents', name: 'Intent Catalog', icon: 'intentCatalog' },
+  { path: '/catalog-versions', name: 'Catalog 버전관리', icon: 'catalogVersions' },
   { path: '/releases', name: 'Releases', icon: 'releases' },
   { path: '/test-runs', name: 'Test Runs', icon: 'testRuns' },
   { path: '/api-keys', name: 'API Keys', icon: 'apiKeys' },

@@ -370,6 +370,56 @@ export async function listCatalogVersions(
   );
 }
 
+export async function fetchCatalogVersion(serviceId: string, catalogVersion: string) {
+  return request<API.CatalogVersion>(
+    servicePath(serviceId, `/catalog-versions/${encodeURIComponent(catalogVersion)}`),
+    { method: 'GET' },
+  );
+}
+
+export async function fetchCatalogVersionDiff(
+  serviceId: string,
+  catalogVersion: string,
+  params: { compare_to?: string | null } = {},
+) {
+  return request<API.CatalogVersionDiff>(
+    servicePath(
+      serviceId,
+      `/catalog-versions/${encodeURIComponent(catalogVersion)}/diff`,
+    ),
+    {
+      method: 'GET',
+      params: { compare_to: params.compare_to || undefined },
+    },
+  );
+}
+
+export async function deactivateCatalogVersion(
+  serviceId: string,
+  catalogVersion: string,
+) {
+  return request<API.CatalogVersionLifecycle>(
+    servicePath(
+      serviceId,
+      `/catalog-versions/${encodeURIComponent(catalogVersion)}:deactivate`,
+    ),
+    { method: 'POST' },
+  );
+}
+
+export async function loadCatalogVersionToDraft(
+  serviceId: string,
+  catalogVersion: string,
+) {
+  return request<API.CatalogVersion>(
+    servicePath(
+      serviceId,
+      `/catalog-versions/${encodeURIComponent(catalogVersion)}:load-to-draft`,
+    ),
+    { method: 'POST' },
+  );
+}
+
 export async function createTestRun(serviceId: string, payload: API.TestRunCreateRequest) {
   return request<API.TestRunSummary>(servicePath(serviceId, '/test-runs'), {
     method: 'POST',

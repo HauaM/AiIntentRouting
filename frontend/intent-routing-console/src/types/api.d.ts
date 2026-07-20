@@ -466,6 +466,18 @@ declare namespace API {
 
   type CatalogVersionListItem = CatalogVersionLifecycle;
 
+  type CatalogVersionDiff = {
+    service_id: string;
+    from_version: string | null;
+    to_version: string;
+    added_intents: string[];
+    removed_intents: string[];
+    changed_intents: string[];
+    added_examples: string[];
+    removed_examples: string[];
+    changed_examples: string[];
+  };
+
   type TestRunCreateRequest = {
     policy_version: string;
     intent_catalog_version: string;
