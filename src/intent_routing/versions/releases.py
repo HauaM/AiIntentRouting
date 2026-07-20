@@ -136,6 +136,21 @@ def create_release(
         raise ReleaseValidationError(
             "Catalog version does not have a ready vector index for the requested model."
         )
+    if (
+        dependencies.test_run.model_version is not None
+        and dependencies.test_run.model_version != vector_index.model_version
+    ):
+        raise ReleaseValidationError(
+            "Test run model version does not match the selected catalog vector index."
+        )
+    if (
+        dependencies.test_run.vector_index_version is not None
+        and dependencies.test_run.vector_index_version
+        != vector_index.vector_index_version
+    ):
+        raise ReleaseValidationError(
+            "Test run vector index version does not match the selected catalog vector index."
+        )
     return repository.create_release(
         release_version=release_version_id(
             repository,

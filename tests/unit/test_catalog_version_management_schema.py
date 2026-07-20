@@ -30,3 +30,21 @@ def test_catalog_version_management_models_are_declared() -> None:
     assert "status" in models
     assert "class CatalogVersionExampleEmbedding" in models
     assert '__tablename__ = "catalog_version_example_embeddings"' in models
+
+
+def test_test_runs_vector_metadata_migration_is_declared() -> None:
+    migration = Path("alembic/versions/0010_test_run_vector_metadata.py").read_text()
+
+    assert 'down_revision: str | None = "0009_catalog_version_mgmt"' in migration
+    assert (
+        'op.add_column("test_runs", sa.Column("model_version", sa.Text(), nullable=True))'
+        in migration
+    )
+    assert (
+        'op.add_column("test_runs", sa.Column("vector_index_version", sa.Text(), nullable=True))'
+        in migration
+    )
+
+    downgrade = migration.split("def downgrade() -> None:", 1)[1]
+    assert 'op.drop_column("test_runs", "vector_index_version")' in downgrade
+    assert 'op.drop_column("test_runs", "model_version")' in downgrade

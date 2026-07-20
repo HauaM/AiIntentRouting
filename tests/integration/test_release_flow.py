@@ -667,6 +667,42 @@ def test_release_creation_rejects_when_provider_model_has_no_ready_catalog_index
     assert "ready vector index" in response.json()["error"]["message"].casefold()
 
 
+def test_release_creation_rejects_test_run_vector_metadata_mismatch(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_id, policy_version, catalog_version, client = _release_setup(
+        db_session,
+        monkeypatch,
+    )
+    monkeypatch.setattr(
+        "intent_routing.api.admin.get_embedding_provider",
+        lambda: _ReleaseEmbeddingProvider("emb-fake-v1"),
+    )
+    test_run_id = _seed_test_run(
+        db_session,
+        service_id=service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        gate_passed=True,
+        risk_pass_rate=Decimal("1.0"),
+        model_version="emb-fake-v1",
+        vector_index_version=f"vec-{catalog_version}-emb-fake-v1-stale",
+    )
+
+    response = _create_release_response(
+        client,
+        service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        test_run_id=test_run_id,
+    )
+
+    assert response.status_code == 400
+    assert "test run" in response.json()["error"]["message"].casefold()
+    assert "vector index" in response.json()["error"]["message"].casefold()
+
+
 def test_release_creation_acquires_sequence_locks_in_deterministic_order(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -2145,6 +2181,8 @@ def _seed_test_run(
     intent_catalog_version: str,
     gate_passed: bool,
     risk_pass_rate: Decimal,
+    model_version: str | None = None,
+    vector_index_version: str | None = None,
 ) -> str:
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(db_session)
@@ -2160,22 +2198,27 @@ def _seed_test_run(
             "created_at": now,
         }
     )
+    test_run_values = {
+        "test_run_id": test_run_id,
+        "service_id": service_id,
+        "test_dataset_version": dataset_version,
+        "policy_version": policy_version,
+        "intent_catalog_version": intent_catalog_version,
+        "threshold_preset": "balanced",
+        "threshold_value": Decimal("0.8"),
+        "pass_rate": Decimal("1.0"),
+        "review_rate": Decimal("0.0"),
+        "risk_pass_rate": risk_pass_rate,
+        "gate_passed": gate_passed,
+        "created_by": "release-flow-test",
+        "created_at": now,
+    }
+    if model_version is not None:
+        test_run_values["model_version"] = model_version
+    if vector_index_version is not None:
+        test_run_values["vector_index_version"] = vector_index_version
     repository.create_test_run_with_results(
-        {
-            "test_run_id": test_run_id,
-            "service_id": service_id,
-            "test_dataset_version": dataset_version,
-            "policy_version": policy_version,
-            "intent_catalog_version": intent_catalog_version,
-            "threshold_preset": "balanced",
-            "threshold_value": Decimal("0.8"),
-            "pass_rate": Decimal("1.0"),
-            "review_rate": Decimal("0.0"),
-            "risk_pass_rate": risk_pass_rate,
-            "gate_passed": gate_passed,
-            "created_by": "release-flow-test",
-            "created_at": now,
-        },
+        test_run_values,
         [],
     )
     db_session.commit()

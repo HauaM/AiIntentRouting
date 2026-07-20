@@ -917,6 +917,60 @@ def test_intent_route_uses_release_catalog_version_and_model_for_semantic_search
     }
 
 
+def test_intent_route_provider_release_model_mismatch_returns_service_unavailable(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch, raise_server_exceptions=False)
+    runtime_module = import_module("intent_routing.api.runtime")
+
+    class MismatchedProvider:
+        model_version = "emb-fake-v2"
+        dimension = 1024
+
+        def embed_texts(self, texts: list[str], *, max_tokens: int) -> list[list[float]]:
+            del max_tokens
+            return [[1.0] + [0.0] * 1023 for _ in texts]
+
+    def search_should_not_run(
+        self: IntentRoutingRepository,
+        intent_catalog_version: str,
+        model_version: str,
+        query_embedding: list[float],
+        limit: int,
+    ) -> list[object]:
+        del self, intent_catalog_version, model_version, query_embedding, limit
+        raise AssertionError("runtime must fail before vector search when models differ")
+
+    monkeypatch.setattr(runtime_module, "get_embedding_provider", MismatchedProvider)
+    monkeypatch.setattr(
+        IntentRoutingRepository,
+        "search_catalog_version_examples_by_embedding",
+        search_should_not_run,
+    )
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(secret, request_id="req-runtime-model-mismatch-1"),
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+
+    body = response.json()
+    assert response.status_code == 503
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "EMBEDDING_MODEL_UNAVAILABLE"
+    assert body["error"]["layer"] == "embedding_layer"
+    assert body["release_version"] == RELEASE_VERSION
+
+    persisted = _runtime_log(db_session, body["trace_id"])
+    assert persisted is not None
+    assert persisted.request_id == "req-runtime-model-mismatch-1"
+    assert persisted.error_code == "EMBEDDING_MODEL_UNAVAILABLE"
+    assert persisted.error_layer == "embedding_layer"
+    assert persisted.http_status == 503
+
+
 def test_intent_route_embedding_unavailable_returns_service_unavailable_and_runtime_log(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,

@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 from uuid import uuid4
 
@@ -1575,6 +1576,8 @@ def test_post_test_run_persists_dataset_run_and_results(
     assert body["review_rate"] == pytest.approx(0.0)
     assert body["risk_pass_rate"] == pytest.approx(1.0)
     assert body["gate_passed"] is True
+    assert body["model_version"] == "emb-fake-v1"
+    assert body["vector_index_version"] == f"vec-{catalog_version}-emb-fake-v1-001"
     assert body["block_reasons"] == []
     assert body["recommendations"] == []
 
@@ -1594,9 +1597,49 @@ def test_post_test_run_persists_dataset_run_and_results(
     assert persisted_dataset.source_filename == "sprint0_cases.csv"
     assert persisted_run is not None
     assert persisted_run.threshold_value == Decimal("0.8")
+    assert persisted_run.model_version == "emb-fake-v1"
+    assert persisted_run.vector_index_version == f"vec-{catalog_version}-emb-fake-v1-001"
     assert len(persisted_cases) == 5
     assert len(persisted_results) == 5
     assert {result.result for result in persisted_results} == {"PASS"}
+
+
+def test_post_test_run_rejects_when_current_provider_model_has_no_ready_catalog_index(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    monkeypatch.setattr(
+        "intent_routing.testing.csv_runner.get_embedding_provider",
+        lambda: SimpleNamespace(
+            model_version="emb-fake-v2",
+            dimension=1024,
+            embed_texts=lambda texts, *, max_tokens: [[1.0] + [0.0] * 1023 for _ in texts],
+        ),
+    )
+    client = _client(db_session, raise_server_exceptions=False)
+    service_id = f"svc-test-run-{uuid4().hex}"
+    policy_version, catalog_version = _seed_csv_runner_state(
+        db_session,
+        client,
+        service_id,
+    )
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/test-runs",
+        headers=_admin_headers(),
+        json={
+            "policy_version": policy_version,
+            "intent_catalog_version": catalog_version,
+            "source_filename": "sprint0_cases.csv",
+            "csv_text": _sprint0_csv_text(),
+        },
+    )
+
+    assert response.status_code == 400
+    assert "ready vector index" in response.json()["error"]["message"].casefold()
 
 
 def test_post_test_run_uses_catalog_version_and_model_scoped_semantic_search(

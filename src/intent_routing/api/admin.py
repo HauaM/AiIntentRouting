@@ -858,6 +858,8 @@ class TestRunCreateRequest(BaseModel):
 class TestRunSummaryResponse(BaseModel):
     test_run_id: str
     test_dataset_version: str
+    model_version: str | None
+    vector_index_version: str | None
     threshold_preset: str
     threshold_value: float
     pass_rate: float
@@ -875,6 +877,8 @@ class TestRunListItemResponse(BaseModel):
     source_filename: str
     policy_version: str
     intent_catalog_version: str
+    model_version: str | None
+    vector_index_version: str | None
     threshold_preset: str
     threshold_value: float
     pass_rate: float
@@ -2311,6 +2315,8 @@ def _test_run_summary_response(summary: CsvTestRunSummary) -> TestRunSummaryResp
     return TestRunSummaryResponse(
         test_run_id=summary.test_run_id,
         test_dataset_version=summary.test_dataset_version,
+        model_version=summary.model_version,
+        vector_index_version=summary.vector_index_version,
         threshold_preset=summary.threshold_preset,
         threshold_value=summary.threshold_value,
         pass_rate=summary.pass_rate,
@@ -2335,6 +2341,8 @@ def _test_run_list_item_response(
         source_filename=dataset.source_filename,
         policy_version=test_run.policy_version,
         intent_catalog_version=test_run.intent_catalog_version,
+        model_version=test_run.model_version,
+        vector_index_version=test_run.vector_index_version,
         threshold_preset=test_run.threshold_preset,
         threshold_value=float(test_run.threshold_value),
         pass_rate=float(test_run.pass_rate),

@@ -61,6 +61,8 @@ class ParsedTestCase:
 class CsvTestRunSummary:
     test_run_id: str
     test_dataset_version: str
+    model_version: str | None
+    vector_index_version: str | None
     threshold_preset: str
     threshold_value: float
     pass_rate: float
@@ -136,12 +138,16 @@ def run_csv_tests(
     threshold_value = float(policy_version.threshold_value)
     dataset_version = _version_id("tds", service.service_id, now)
     test_run_id = _version_id("tr", service.service_id, now)
+    provider = get_embedding_provider()
     vector_index = repository.get_ready_vector_index_version(
         service.service_id,
         catalog_version.intent_catalog_version,
+        provider.model_version,
     )
     if vector_index is None:
-        raise CsvValidationError("Catalog version does not have a ready vector index.")
+        raise CsvValidationError(
+            "Catalog version does not have a ready vector index for the current embedding model."
+        )
     release = _release_context(
         service=service,
         policy_version=policy_version,
@@ -190,6 +196,8 @@ def run_csv_tests(
             "test_dataset_version": dataset_version,
             "policy_version": policy_version.policy_version,
             "intent_catalog_version": catalog_version.intent_catalog_version,
+            "model_version": vector_index.model_version,
+            "vector_index_version": vector_index.vector_index_version,
             "threshold_preset": threshold_preset,
             "threshold_value": Decimal(str(threshold_value)),
             "pass_rate": Decimal(str(gate.pass_rate)),
@@ -204,6 +212,8 @@ def run_csv_tests(
     return _summary(
         test_run_id=test_run_id,
         test_dataset_version=dataset_version,
+        model_version=vector_index.model_version,
+        vector_index_version=vector_index.vector_index_version,
         threshold_preset=threshold_preset,
         threshold_value=threshold_value,
         pass_rate=gate.pass_rate,
@@ -230,6 +240,8 @@ def summarize_test_run(
     return _summary(
         test_run_id=test_run.test_run_id,
         test_dataset_version=test_run.test_dataset_version,
+        model_version=test_run.model_version,
+        vector_index_version=test_run.vector_index_version,
         threshold_preset=test_run.threshold_preset,
         threshold_value=float(test_run.threshold_value),
         pass_rate=float(test_run.pass_rate),
@@ -327,6 +339,10 @@ def _semantic_matches(
         return {}
 
     provider = get_embedding_provider()
+    if provider.model_version != release.model_version:
+        raise CsvValidationError(
+            "Embedding provider model does not match the selected vector index model."
+        )
     embeddings = provider.embed_texts([query], max_tokens=release.max_input_tokens)
     if len(embeddings) != 1 or len(embeddings[0]) != provider.dimension:
         raise ValueError("embedding provider returned an invalid result")
@@ -436,6 +452,8 @@ def _summary(
     *,
     test_run_id: str,
     test_dataset_version: str,
+    model_version: str | None,
+    vector_index_version: str | None,
     threshold_preset: str,
     threshold_value: float,
     pass_rate: float,
@@ -448,6 +466,8 @@ def _summary(
     return CsvTestRunSummary(
         test_run_id=test_run_id,
         test_dataset_version=test_dataset_version,
+        model_version=model_version,
+        vector_index_version=vector_index_version,
         threshold_preset=threshold_preset,
         threshold_value=threshold_value,
         pass_rate=pass_rate,

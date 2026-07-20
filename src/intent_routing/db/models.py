@@ -511,6 +511,8 @@ class TestRun(Base):
     intent_catalog_version: Mapped[str] = mapped_column(
         Text, ForeignKey("intent_catalog_versions.intent_catalog_version")
     )
+    model_version: Mapped[str | None] = mapped_column(Text)
+    vector_index_version: Mapped[str | None] = mapped_column(Text)
     threshold_preset: Mapped[str] = mapped_column(Text)
     threshold_value: Mapped[Decimal] = mapped_column(Numeric)
     pass_rate: Mapped[Decimal] = mapped_column(Numeric)

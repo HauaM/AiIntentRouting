@@ -328,6 +328,15 @@ def _semantic_matches(
     if not candidates:
         return {}
     embedding_provider = _resolve_embedding_provider()
+    if release.model_version is None or embedding_provider.model_version != release.model_version:
+        raise RuntimeApiError(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            code=ErrorCode.EMBEDDING_MODEL_UNAVAILABLE,
+            message="Embedding dependency is temporarily unavailable.",
+            retryable=True,
+            category="dependency_failure",
+            layer="embedding_layer",
+        )
 
     try:
         embeddings = embedding_provider.embed_texts(
