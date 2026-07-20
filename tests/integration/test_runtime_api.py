@@ -8,6 +8,7 @@ from decimal import Decimal
 from importlib import import_module
 from pathlib import Path
 from typing import Any, cast
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from intent_routing.api.dependencies import get_api_key_lookup, get_runtime_environment
 from intent_routing.db import models
-from intent_routing.db.repositories import IntentRoutingRepository
+from intent_routing.db.repositories import ExampleSearchResult, IntentRoutingRepository
 from intent_routing.embedding.fake import FakeEmbeddingProvider
 from intent_routing.embedding.provider import clear_embedding_provider_cache
 from intent_routing.main import create_app
@@ -767,17 +768,17 @@ def test_intent_route_vector_repository_exception_returns_service_unavailable_er
 
     def broken_search(
         self: IntentRoutingRepository,
-        service_id: str,
+        intent_catalog_version: str,
+        model_version: str,
         query_embedding: list[float],
-        *,
         limit: int,
     ) -> list[object]:
-        del self, service_id, query_embedding, limit
+        del self, intent_catalog_version, model_version, query_embedding, limit
         raise RuntimeError("vector search unavailable")
 
     monkeypatch.setattr(
         IntentRoutingRepository,
-        "search_approved_examples_by_embedding",
+        "search_catalog_version_examples_by_embedding",
         broken_search,
     )
 
@@ -815,17 +816,17 @@ def test_intent_route_vector_repository_error_with_invalid_kek_persists_masked_f
 
     def broken_search(
         self: IntentRoutingRepository,
-        service_id: str,
+        intent_catalog_version: str,
+        model_version: str,
         query_embedding: list[float],
-        *,
         limit: int,
     ) -> list[object]:
-        del self, service_id, query_embedding, limit
+        del self, intent_catalog_version, model_version, query_embedding, limit
         raise RuntimeError("vector search unavailable")
 
     monkeypatch.setattr(
         IntentRoutingRepository,
-        "search_approved_examples_by_embedding",
+        "search_catalog_version_examples_by_embedding",
         broken_search,
     )
 
@@ -850,6 +851,70 @@ def test_intent_route_vector_repository_error_with_invalid_kek_persists_masked_f
     assert persisted.query_masked == "api timeout gateway incident latency"
     assert persisted.query_raw_ciphertext is None
     assert persisted.query_raw_encrypted_dek is None
+
+
+def test_intent_route_uses_release_catalog_version_and_model_for_semantic_search(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = _seed_runtime_state(db_session)
+    client = _runtime_client(db_session, monkeypatch)
+    captured: dict[str, object] = {}
+
+    def legacy_search_should_not_be_used(
+        self: IntentRoutingRepository,
+        service_id: str,
+        query_embedding: list[float],
+        *,
+        limit: int,
+    ) -> list[object]:
+        del self, service_id, query_embedding, limit
+        raise AssertionError("runtime must use catalog-version scoped example search")
+
+    def capture_version_scoped_search(
+        self: IntentRoutingRepository,
+        intent_catalog_version: str,
+        model_version: str,
+        query_embedding: list[float],
+        limit: int,
+    ) -> list[ExampleSearchResult]:
+        del self, query_embedding
+        captured["intent_catalog_version"] = intent_catalog_version
+        captured["model_version"] = model_version
+        captured["limit"] = limit
+        return [
+            ExampleSearchResult(
+                example_id=UUID("00000000-0000-0000-0000-000000000001"),
+                intent_id="intent-api-timeout",
+                example_type="positive",
+                similarity=0.99,
+            )
+        ]
+
+    monkeypatch.setattr(
+        IntentRoutingRepository,
+        "search_approved_examples_by_embedding",
+        legacy_search_should_not_be_used,
+    )
+    monkeypatch.setattr(
+        IntentRoutingRepository,
+        "search_catalog_version_examples_by_embedding",
+        capture_version_scoped_search,
+    )
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(secret, request_id="req-runtime-version-search-1"),
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["intent_id"] == "intent-api-timeout"
+    assert captured == {
+        "intent_catalog_version": "cat-it-runtime-helpdesk-20260625-001",
+        "model_version": "emb-fake-v1",
+        "limit": 8,
+    }
 
 
 def test_intent_route_embedding_unavailable_returns_service_unavailable_and_runtime_log(
@@ -1313,6 +1378,44 @@ def _seed_runtime_state(
         created_by="runtime-test",
         created_at=now,
     )
+    repository.create_vector_index_version(
+        vector_index_version="vec-it-runtime-helpdesk-20260625-001",
+        service_id=SERVICE_ID,
+        intent_catalog_version="cat-it-runtime-helpdesk-20260625-001",
+        model_version=provider.model_version,
+        status="ready",
+        created_at=now,
+    )
+    for intent_id, example_type, text_raw in (
+        ("intent-api-timeout", "positive", "api timeout gateway incident latency"),
+        ("intent-api-timeout", "negative", "database timeout query connection"),
+        ("intent-db-timeout", "positive", "database timeout query connection"),
+        ("intent-db-timeout", "negative", "api timeout gateway incident latency"),
+    ):
+        encrypted = encryptor.encrypt_text(text_raw)
+        db_session.add(
+            models.CatalogVersionExampleEmbedding(
+                intent_catalog_version="cat-it-runtime-helpdesk-20260625-001",
+                service_id=SERVICE_ID,
+                model_version=provider.model_version,
+                vector_index_version="vec-it-runtime-helpdesk-20260625-001",
+                intent_id=intent_id,
+                example_id=None,
+                example_type=example_type,
+                text_raw_ciphertext=encrypted.ciphertext,
+                text_raw_encrypted_dek=encrypted.encrypted_dek,
+                text_raw_encrypted_dek_iv=encrypted.encrypted_dek_iv,
+                text_raw_encrypted_dek_auth_tag=encrypted.encrypted_dek_auth_tag,
+                text_raw_key_id=encrypted.key_id,
+                text_raw_iv=encrypted.iv,
+                text_raw_auth_tag=encrypted.auth_tag,
+                text_raw_algorithm=encrypted.algorithm,
+                text_masked=mask_pii(text_raw),
+                embedding=provider.embed_texts([mask_pii(text_raw)], max_tokens=256)[0],
+                embedding_status="active",
+                created_at=now,
+            )
+        )
     repository.create_test_dataset(
         {
             "test_dataset_version": "ds-it-runtime-helpdesk-20260625-001",
@@ -1428,6 +1531,11 @@ def _purge_runtime_rows(db_session: Session) -> None:
         delete(models.IntentExample).where(models.IntentExample.service_id == SERVICE_ID)
     )
     db_session.execute(delete(models.Intent).where(models.Intent.service_id == SERVICE_ID))
+    db_session.execute(
+        delete(models.CatalogVersionExampleEmbedding).where(
+            models.CatalogVersionExampleEmbedding.service_id == SERVICE_ID
+        )
+    )
     db_session.execute(
         delete(models.VectorIndexVersion).where(models.VectorIndexVersion.service_id == SERVICE_ID)
     )

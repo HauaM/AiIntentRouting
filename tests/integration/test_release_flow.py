@@ -561,7 +561,7 @@ def test_release_creation_succeeds_when_gate_and_versions_match(
     )
     monkeypatch.setattr(
         "intent_routing.api.admin.get_embedding_provider",
-        lambda: _ReleaseEmbeddingProvider("emb-fake/v1"),
+        lambda: _ReleaseEmbeddingProvider("emb-fake-v1"),
     )
     test_run_id = _seed_test_run(
         db_session,
@@ -588,8 +588,8 @@ def test_release_creation_succeeds_when_gate_and_versions_match(
     assert body["environment"] == "prod"
     assert body["policy_version"] == policy_version
     assert body["intent_catalog_version"] == catalog_version
-    assert body["model_version"] == "emb-fake/v1"
-    assert body["vector_index_version"] == f"vec-{catalog_version}-emb-fake/v1-001"
+    assert body["model_version"] == "emb-fake-v1"
+    assert body["vector_index_version"] == f"vec-{catalog_version}-emb-fake-v1-001"
     assert body["test_run_id"] == test_run_id
     assert body["pass_rate"] == pytest.approx(1.0)
     assert body["risk_pass_rate"] == pytest.approx(1.0)
@@ -630,10 +630,41 @@ def test_release_creation_succeeds_when_gate_and_versions_match(
     next_released_day = _date_segment(next_body["released_at"])
     assert next_released_day == released_day
     assert next_body["release_version"] == f"rel-{service_id}-{released_day}-002"
-    assert (
-        next_body["vector_index_version"]
-        == f"vec-{catalog_version}-emb-fake/v1-002"
+    assert next_body["model_version"] == "emb-fake-v1"
+    assert next_body["vector_index_version"] == body["vector_index_version"]
+
+
+def test_release_creation_rejects_when_provider_model_has_no_ready_catalog_index(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_id, policy_version, catalog_version, client = _release_setup(
+        db_session,
+        monkeypatch,
     )
+    monkeypatch.setattr(
+        "intent_routing.api.admin.get_embedding_provider",
+        lambda: _ReleaseEmbeddingProvider("emb-fake/v2"),
+    )
+    test_run_id = _seed_test_run(
+        db_session,
+        service_id=service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        gate_passed=True,
+        risk_pass_rate=Decimal("1.0"),
+    )
+
+    response = _create_release_response(
+        client,
+        service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        test_run_id=test_run_id,
+    )
+
+    assert response.status_code == 400
+    assert "ready vector index" in response.json()["error"]["message"].casefold()
 
 
 def test_release_creation_acquires_sequence_locks_in_deterministic_order(
@@ -646,7 +677,7 @@ def test_release_creation_acquires_sequence_locks_in_deterministic_order(
     )
     monkeypatch.setattr(
         "intent_routing.api.admin.get_embedding_provider",
-        lambda: _ReleaseEmbeddingProvider("emb-fake/v1"),
+        lambda: _ReleaseEmbeddingProvider("emb-fake-v1"),
     )
     test_run_id = _seed_test_run(
         db_session,
@@ -685,7 +716,7 @@ def test_release_creation_acquires_sequence_locks_in_deterministic_order(
         [
             f"catalog-version:{service_id}",
             f"release-version:{service_id}:{released_day}",
-            f"vector-index-version:{catalog_version}:emb-fake/v1",
+            f"vector-index-version:{catalog_version}:emb-fake-v1",
         ]
     )
     assert response.status_code == 201

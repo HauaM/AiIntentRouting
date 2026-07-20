@@ -53,7 +53,8 @@ class ExampleSearch(Protocol):
     def __call__(
         self,
         repository: IntentRoutingRepository,
-        service_id: str,
+        intent_catalog_version: str,
+        model_version: str,
         query_embedding: list[float],
         *,
         limit: int,
@@ -323,6 +324,7 @@ def _semantic_matches(
     candidates: list[IntentCandidate],
     release: ActiveReleaseContext,
 ) -> Mapping[str, SemanticMatch]:
+    del service_id
     if not candidates:
         return {}
     embedding_provider = _resolve_embedding_provider()
@@ -352,9 +354,12 @@ def _semantic_matches(
         )
 
     try:
+        if release.intent_catalog_version is None or release.model_version is None:
+            raise RuntimeError("release must include catalog and model versions")
         example_rows = example_search(
             repository,
-            service_id,
+            release.intent_catalog_version,
+            release.model_version,
             embeddings[0],
             limit=max(8, len(candidates) * 4),
         )
@@ -395,15 +400,17 @@ def _semantic_matches(
 
 def _search_examples(
     repository: IntentRoutingRepository,
-    service_id: str,
+    intent_catalog_version: str,
+    model_version: str,
     query_embedding: list[float],
     *,
     limit: int,
 ) -> list[Any]:
-    return repository.search_approved_examples_by_embedding(
-        service_id,
+    return repository.search_catalog_version_examples_by_embedding(
+        intent_catalog_version,
+        model_version,
         query_embedding,
-        limit=limit,
+        limit,
     )
 
 
