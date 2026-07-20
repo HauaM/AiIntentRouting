@@ -534,7 +534,15 @@ body {
 
   .service-scope-bar .ant-typography,
   .service-scope-bar .ant-typography code {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .service-scope-bar .ant-typography code {
+    display: inline-block;
+    vertical-align: bottom;
   }
 }
 

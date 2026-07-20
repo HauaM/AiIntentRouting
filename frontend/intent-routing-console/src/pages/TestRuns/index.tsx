@@ -280,6 +280,7 @@ export default function TestRunsPage() {
                       />
                       <div aria-label="기존 테스트 실행 결과">
                         <TestRunHistorySelect
+                          key={session.serviceId}
                           serviceId={session.serviceId}
                           value={summary?.test_run_id}
                           disabled={!canRun}

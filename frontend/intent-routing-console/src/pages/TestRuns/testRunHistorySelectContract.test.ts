@@ -18,6 +18,11 @@ describe('TestRunHistorySelect contract', () => {
     expect(source).toContain('<Select');
     expect(source).toContain('showSearch');
     expect(source).not.toContain('allowClear');
+    expect(source).toContain('optionFilterProp="searchLabel"');
+    expect(source).toContain('label: testRunOptionLabel(run)');
+    expect(source).toContain('searchLabel: testRunSearchLabel(run)');
+    expect(source).toContain('setRuns([]);');
+    expect(source).toContain('setLoadError');
     expect(source).toContain('optionRender');
   });
 

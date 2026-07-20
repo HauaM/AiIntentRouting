@@ -37,6 +37,9 @@ const testRunSearchLabel = (run: API.TestRunListItem) =>
     .filter(Boolean)
     .join(' ');
 
+const testRunOptionLabel = (run: API.TestRunListItem) =>
+  `${run.source_filename || run.test_dataset_version} / ${formatCreatedAt(run.created_at)}`;
+
 export function TestRunHistorySelect({
   serviceId,
   value,
@@ -46,6 +49,7 @@ export function TestRunHistorySelect({
 }: TestRunHistorySelectProps) {
   const [runs, setRuns] = useState<API.TestRunListItem[]>([]);
   const [fetching, setFetching] = useState(false);
+  const [loadError, setLoadError] = useState<string>();
   const requestRef = useRef(0);
 
   const selectedRun = useMemo(
@@ -56,6 +60,8 @@ export function TestRunHistorySelect({
   const loadRuns = useCallback(async () => {
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
+    setRuns([]);
+    setLoadError(undefined);
     setFetching(true);
     try {
       const nextRuns = await listTestRuns(serviceId, {
@@ -63,6 +69,10 @@ export function TestRunHistorySelect({
       });
       if (requestRef.current !== requestId) return;
       setRuns(nextRuns);
+    } catch {
+      if (requestRef.current !== requestId) return;
+      setRuns([]);
+      setLoadError('기존 테스트 실행 목록을 불러오지 못했습니다.');
     } finally {
       if (requestRef.current === requestId) setFetching(false);
     }
@@ -99,7 +109,7 @@ export function TestRunHistorySelect({
           loading={fetching || loading}
           disabled={disabled}
           placeholder="이전 테스트 실행을 선택하세요"
-          optionFilterProp="label"
+          optionFilterProp="searchLabel"
           className="test-run-step-select"
           notFoundContent={
             fetching ? (
@@ -107,13 +117,16 @@ export function TestRunHistorySelect({
             ) : (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="현재 서비스의 이전 테스트 실행이 없습니다."
+                description={
+                  loadError ?? '현재 서비스의 이전 테스트 실행이 없습니다.'
+                }
               />
             )
           }
           options={runs.map((run) => ({
             value: run.test_run_id,
-            label: testRunSearchLabel(run),
+            label: testRunOptionLabel(run),
+            searchLabel: testRunSearchLabel(run),
             testRun: run,
           }))}
           onChange={(nextTestRunId) => {

@@ -25,6 +25,7 @@ it('shows previous test runs as a DB-backed combo in step one without nested Car
   const page = read('index.tsx');
 
   expect(page).toContain('<TestRunHistorySelect');
+  expect(page).toContain('key={session.serviceId}');
   expect(page).toContain('onSelect={handleHistorySelect}');
   expect(page).toContain('className="test-run-step-grid"');
   expect(page.indexOf('<TestRunHistorySelect')).toBeGreaterThan(

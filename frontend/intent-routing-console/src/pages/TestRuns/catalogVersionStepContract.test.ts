@@ -19,6 +19,9 @@ describe('CatalogVersionStep contract', () => {
     expect(source).toContain('id="test-run-catalog-version-select"');
     expect(source).toContain('Catalog 버전');
     expect(source).toContain('<Select');
+    expect(source).toContain('optionFilterProp="searchLabel"');
+    expect(source).toContain('label: catalogVersionOptionLabel(version)');
+    expect(source).toContain('searchLabel: catalogVersionSearchLabel(version)');
     expect(source).toContain('className="test-run-step-field-help"');
     expect(source).toContain('선택한 Catalog 버전은 테스트 결과와 Release 후보에서 그대로 참조됩니다.');
     const catalogSelectIdIndex = source.indexOf('id="test-run-catalog-version-select"');

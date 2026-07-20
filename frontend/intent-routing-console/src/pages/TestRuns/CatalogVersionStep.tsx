@@ -28,6 +28,9 @@ const catalogVersionSearchLabel = (version: API.CatalogVersionListItem) =>
     .filter(Boolean)
     .join(' ');
 
+const catalogVersionOptionLabel = (version: API.CatalogVersionListItem) =>
+  version.display_version || version.intent_catalog_version;
+
 export function CatalogVersionStep({
   serviceId,
   value,
@@ -109,11 +112,12 @@ export function CatalogVersionStep({
           value={selectedValue}
           loading={loading}
           placeholder="Catalog 버전을 선택하세요"
-          optionFilterProp="label"
+          optionFilterProp="searchLabel"
           className="test-run-step-select"
           options={versions.map((version) => ({
             value: version.intent_catalog_version,
-            label: catalogVersionSearchLabel(version),
+            label: catalogVersionOptionLabel(version),
+            searchLabel: catalogVersionSearchLabel(version),
             catalogVersion: version,
           }))}
           onChange={(nextVersionId) => {
