@@ -95,7 +95,6 @@ export function TestRunHistorySelect({
         <Select
           id="test-run-history-select"
           showSearch
-          allowClear
           value={value}
           loading={fetching || loading}
           disabled={disabled}

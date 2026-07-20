@@ -17,6 +17,7 @@ describe('TestRunHistorySelect contract', () => {
     expect(source).toContain('기존 테스트 실행 결과');
     expect(source).toContain('<Select');
     expect(source).toContain('showSearch');
+    expect(source).not.toContain('allowClear');
     expect(source).toContain('optionRender');
   });
 
