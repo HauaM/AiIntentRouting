@@ -1251,7 +1251,7 @@ Expected: FAIL because the page still has mixed cards and a main-page textarea.
 In `frontend/intent-routing-console/src/pages/TestRuns/index.tsx`, update imports:
 
 ```ts
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ProTable, type ProColumns } from '@ant-design/pro-components';
 import { history, useModel } from '@umijs/max';
 import {
