@@ -2139,6 +2139,7 @@ def _purge_service_rows(db_session: Session, service_id: str) -> None:
         "releases",
         "test_runs",
         "test_datasets",
+        "catalog_version_example_embeddings",
         "vector_index_versions",
         "intent_catalog_versions",
         "policy_versions",

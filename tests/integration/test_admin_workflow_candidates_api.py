@@ -277,7 +277,10 @@ def test_lists_policy_and_catalog_versions(db_session: Session) -> None:
             f"/admin/v1/services/{service_id}/policy-versions",
             json=_policy_payload(),
         )
-        catalog = client.post(f"/admin/v1/services/{service_id}/catalog-versions")
+        catalog = client.post(
+            f"/admin/v1/services/{service_id}/catalog-versions",
+            json={"description": "Workflow catalog version"},
+        )
 
         policies = client.get(f"/admin/v1/services/{service_id}/policy-versions")
         catalogs = client.get(f"/admin/v1/services/{service_id}/catalog-versions")
