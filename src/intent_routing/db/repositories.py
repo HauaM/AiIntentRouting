@@ -112,6 +112,8 @@ class CatalogVersionDiagnosticRecord:
     test_run_vector_index_version: str | None
     ready_vector_index_version: str | None
     ready_vector_index_model_version: str | None
+    test_run_vector_index_ready: bool | None
+    test_run_vector_index_status: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1938,6 +1940,25 @@ class IntentRoutingRepository:
             )
         )
 
+        selected_vector_index = None
+        if vector_index_version is not None:
+            selected_vector_index = self.session.scalar(
+                select(models.VectorIndexVersion)
+                .where(models.VectorIndexVersion.service_id == service_id)
+                .where(
+                    models.VectorIndexVersion.intent_catalog_version
+                    == intent_catalog_version
+                )
+                .where(models.VectorIndexVersion.vector_index_version == vector_index_version)
+            )
+        selected_vector_index_ready = (
+            selected_vector_index.status == "ready"
+            if selected_vector_index is not None
+            else False
+            if vector_index_version is not None
+            else None
+        )
+
         embedding_count_statement = (
             select(func.count(models.CatalogVersionExampleEmbedding.id))
             .where(
@@ -1975,6 +1996,10 @@ class IntentRoutingRepository:
             ),
             ready_vector_index_model_version=(
                 ready_vector_index.model_version if ready_vector_index is not None else None
+            ),
+            test_run_vector_index_ready=selected_vector_index_ready,
+            test_run_vector_index_status=(
+                selected_vector_index.status if selected_vector_index is not None else None
             ),
         )
 

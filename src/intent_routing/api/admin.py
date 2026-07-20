@@ -930,6 +930,8 @@ class TestRunCatalogVersionDiagnosticsResponse(BaseModel):
     test_run_vector_index_version: str | None
     ready_vector_index_version: str | None
     ready_vector_index_model_version: str | None
+    test_run_vector_index_ready: bool | None
+    test_run_vector_index_status: str | None
 
 
 class TestRunDiagnosticsResponse(BaseModel):
@@ -2422,6 +2424,8 @@ def _catalog_diagnostic_stats(
         test_run_vector_index_version=record.test_run_vector_index_version,
         ready_vector_index_version=record.ready_vector_index_version,
         ready_vector_index_model_version=record.ready_vector_index_model_version,
+        test_run_vector_index_ready=record.test_run_vector_index_ready,
+        test_run_vector_index_status=record.test_run_vector_index_status,
     )
 
 
@@ -2459,6 +2463,12 @@ def _test_run_diagnostics_response(
             ),
             ready_vector_index_model_version=(
                 diagnostics.catalog_version.ready_vector_index_model_version
+            ),
+            test_run_vector_index_ready=(
+                diagnostics.catalog_version.test_run_vector_index_ready
+            ),
+            test_run_vector_index_status=(
+                diagnostics.catalog_version.test_run_vector_index_status
             ),
         ),
         result_counts=diagnostics.result_counts,

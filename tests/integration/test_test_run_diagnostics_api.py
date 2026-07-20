@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -36,6 +36,41 @@ def client(db_session: Session) -> Iterator[TestClient]:
     app.dependency_overrides[get_admin_session] = override_session
     with TestClient(app) as test_client:
         yield test_client
+
+
+def _catalog_embedding(
+    *,
+    catalog: models.IntentCatalogVersion,
+    service: models.Service,
+    model_version: str,
+    vector_index_version: str,
+    embedding_status: str,
+    embedding: list[float] | None,
+    now: datetime,
+) -> models.CatalogVersionExampleEmbedding:
+    return models.CatalogVersionExampleEmbedding(
+        id=uuid4(),
+        intent_catalog_version=catalog.intent_catalog_version,
+        service_id=service.service_id,
+        model_version=model_version,
+        vector_index_version=vector_index_version,
+        intent_id="program_supported_question",
+        example_id=None,
+        example_type="positive",
+        text_raw_ciphertext=b"ciphertext",
+        text_raw_encrypted_dek=b"dek",
+        text_raw_encrypted_dek_iv=b"dek-iv",
+        text_raw_encrypted_dek_auth_tag=b"dek-tag",
+        text_raw_key_id="test-key",
+        text_raw_iv=b"raw-iv",
+        text_raw_auth_tag=b"raw-tag",
+        text_raw_algorithm="AES-256-GCM",
+        text_masked="masked diagnostic example",
+        embedding=embedding,
+        embedding_status=embedding_status,
+        created_at=now,
+        deactivated_at=None,
+    )
 
 
 def test_repository_returns_catalog_version_diagnostic_stats(db_session: Session) -> None:
@@ -85,33 +120,76 @@ def test_repository_returns_catalog_version_diagnostic_stats(db_session: Session
         status="ready",
         created_at=now,
     )
-    db_session.add(vector_index)
+    wrong_model_vector_index = models.VectorIndexVersion(
+        vector_index_version=f"viv-diagnostics-wrong-model-{suffix}",
+        service_id=service.service_id,
+        intent_catalog_version=catalog.intent_catalog_version,
+        model_version="fake-embedding-v2",
+        status="ready",
+        created_at=now - timedelta(seconds=2),
+    )
+    wrong_version_vector_index = models.VectorIndexVersion(
+        vector_index_version=f"viv-diagnostics-wrong-version-{suffix}",
+        service_id=service.service_id,
+        intent_catalog_version=catalog.intent_catalog_version,
+        model_version=vector_index.model_version,
+        status="ready",
+        created_at=now - timedelta(seconds=1),
+    )
+    db_session.add_all(
+        [vector_index, wrong_model_vector_index, wrong_version_vector_index]
+    )
     db_session.flush()
 
-    embedding = models.CatalogVersionExampleEmbedding(
-        id=uuid4(),
-        intent_catalog_version=catalog.intent_catalog_version,
-        service_id=service.service_id,
-        model_version="fake-embedding-v1",
-        vector_index_version=vector_index.vector_index_version,
-        intent_id="program_supported_question",
-        example_id=None,
-        example_type="positive",
-        text_raw_ciphertext=b"ciphertext",
-        text_raw_encrypted_dek=b"dek",
-        text_raw_encrypted_dek_iv=b"dek-iv",
-        text_raw_encrypted_dek_auth_tag=b"dek-tag",
-        text_raw_key_id="test-key",
-        text_raw_iv=b"raw-iv",
-        text_raw_auth_tag=b"raw-tag",
-        text_raw_algorithm="AES-256-GCM",
-        text_masked="masked diagnostic example",
-        embedding=[0.0] * 1024,
-        embedding_status="active",
-        created_at=now,
-        deactivated_at=None,
+    db_session.add_all(
+        [
+            _catalog_embedding(
+                catalog=catalog,
+                service=service,
+                model_version=vector_index.model_version,
+                vector_index_version=vector_index.vector_index_version,
+                embedding_status="active",
+                embedding=[0.0] * 1024,
+                now=now,
+            ),
+            _catalog_embedding(
+                catalog=catalog,
+                service=service,
+                model_version=wrong_model_vector_index.model_version,
+                vector_index_version=wrong_model_vector_index.vector_index_version,
+                embedding_status="active",
+                embedding=[0.0] * 1024,
+                now=now,
+            ),
+            _catalog_embedding(
+                catalog=catalog,
+                service=service,
+                model_version=vector_index.model_version,
+                vector_index_version=wrong_version_vector_index.vector_index_version,
+                embedding_status="active",
+                embedding=[0.0] * 1024,
+                now=now,
+            ),
+            _catalog_embedding(
+                catalog=catalog,
+                service=service,
+                model_version=vector_index.model_version,
+                vector_index_version=vector_index.vector_index_version,
+                embedding_status="inactive",
+                embedding=[0.0] * 1024,
+                now=now,
+            ),
+            _catalog_embedding(
+                catalog=catalog,
+                service=service,
+                model_version=vector_index.model_version,
+                vector_index_version=vector_index.vector_index_version,
+                embedding_status="active",
+                embedding=None,
+                now=now,
+            ),
+        ]
     )
-    db_session.add(embedding)
     db_session.commit()
 
     stats = IntentRoutingRepository(db_session).get_catalog_version_diagnostic_record(
@@ -131,6 +209,8 @@ def test_repository_returns_catalog_version_diagnostic_stats(db_session: Session
     assert stats.embedding_count == 1
     assert stats.ready_vector_index_version == vector_index.vector_index_version
     assert stats.ready_vector_index_model_version == vector_index.model_version
+    assert stats.test_run_vector_index_ready is True
+    assert stats.test_run_vector_index_status == "ready"
 
 
 def test_repository_distinguishes_stale_selected_vector_index(
@@ -204,6 +284,8 @@ def test_repository_distinguishes_stale_selected_vector_index(
 
     assert stats is not None
     assert stats.ready_vector_index_version == ready_index.vector_index_version
+    assert stats.test_run_vector_index_ready is False
+    assert stats.test_run_vector_index_status == "building"
     diagnostics = diagnose_test_run(
         CsvTestRunSummary(
             test_run_id="tr-diagnostics-stale-index",
@@ -231,6 +313,8 @@ def test_repository_distinguishes_stale_selected_vector_index(
             test_run_vector_index_version=stats.test_run_vector_index_version,
             ready_vector_index_version=stats.ready_vector_index_version,
             ready_vector_index_model_version=stats.ready_vector_index_model_version,
+            test_run_vector_index_ready=stats.test_run_vector_index_ready,
+            test_run_vector_index_status=stats.test_run_vector_index_status,
         ),
         [],
     )
@@ -291,14 +375,22 @@ def test_get_test_run_diagnostics_reports_selected_catalog_readiness(
         created_by="test",
         created_at=now,
     )
+    vector_index = models.VectorIndexVersion(
+        vector_index_version=f"viv-diagnostics-api-service-{suffix}",
+        service_id=service.service_id,
+        intent_catalog_version=catalog.intent_catalog_version,
+        model_version="fake-embedding-v1",
+        status="ready",
+        created_at=now,
+    )
     test_run = models.TestRun(
         test_run_id=f"tr-diagnostics-api-service-{suffix}",
         service_id=service.service_id,
         test_dataset_version=dataset.test_dataset_version,
         policy_version=policy.policy_version,
         intent_catalog_version=catalog.intent_catalog_version,
-        model_version=None,
-        vector_index_version=None,
+        model_version=vector_index.model_version,
+        vector_index_version=vector_index.vector_index_version,
         threshold_preset="balanced",
         threshold_value=Decimal("0.8"),
         pass_rate=Decimal("0.0"),
@@ -322,7 +414,19 @@ def test_get_test_run_diagnostics_reports_selected_catalog_readiness(
         result="FAIL",
         reason="actual decision did not match expected decision",
     )
-    db_session.add_all([service, policy, catalog, dataset, test_run, result])
+    db_session.add_all([service, policy, catalog, dataset, vector_index, test_run, result])
+    db_session.flush()
+    db_session.add(
+        _catalog_embedding(
+            catalog=catalog,
+            service=service,
+            model_version=vector_index.model_version,
+            vector_index_version=vector_index.vector_index_version,
+            embedding_status="active",
+            embedding=[0.0] * 1024,
+            now=now,
+        )
+    )
     db_session.commit()
 
     response = client.get(
@@ -335,5 +439,11 @@ def test_get_test_run_diagnostics_reports_selected_catalog_readiness(
     assert body["primary_issue"]["code"] == "catalog_version_has_no_intents"
     assert body["catalog_version"]["intent_catalog_version"] == catalog.intent_catalog_version
     assert body["catalog_version"]["intent_count"] == 0
+    assert body["catalog_version"]["test_run_model_version"] == vector_index.model_version
+    assert body["catalog_version"]["test_run_vector_index_version"] == (
+        vector_index.vector_index_version
+    )
+    assert body["catalog_version"]["test_run_vector_index_ready"] is True
+    assert body["catalog_version"]["test_run_vector_index_status"] == "ready"
     assert body["result_counts"]["FAIL"] == 1
     assert body["actual_decision_counts"]["fallback"] == 1

@@ -16,6 +16,8 @@ class CatalogVersionDiagnosticStats:
     test_run_vector_index_version: str | None
     ready_vector_index_version: str | None = None
     ready_vector_index_model_version: str | None = None
+    test_run_vector_index_ready: bool | None = None
+    test_run_vector_index_status: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

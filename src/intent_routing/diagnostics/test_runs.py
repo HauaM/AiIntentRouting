@@ -11,6 +11,21 @@ from intent_routing.diagnostics.models import (
 )
 from intent_routing.testing.csv_runner import CsvTestRunSummary
 
+ISSUE_CODE_PRIORITY = {
+    "catalog_version_not_active": 0,
+    "catalog_version_not_reproducible": 1,
+    "catalog_version_has_no_intents": 2,
+    "catalog_version_has_no_examples": 3,
+    "test_run_vector_index_not_ready": 4,
+    "catalog_version_has_no_ready_vector_index": 5,
+    "catalog_version_has_no_embeddings": 6,
+    "risk_case_failed": 10,
+    "fallback_failures_dominant": 20,
+    "intent_mismatch_exists": 21,
+    "pass_rate_below_gate": 30,
+    "review_rate_above_guidance": 31,
+}
+
 
 def diagnose_test_run(
     summary: CsvTestRunSummary,
@@ -62,18 +77,9 @@ def diagnose_test_run(
                 evidence={"example_count": 0},
             )
         )
-    elif catalog_stats.ready_vector_index_version is None:
-        issues.append(
-            DiagnosticIssue(
-                code="catalog_version_has_no_ready_vector_index",
-                severity="blocker",
-                evidence={"ready_vector_index_version": None},
-            )
-        )
     elif (
         catalog_stats.test_run_vector_index_version is not None
-        and catalog_stats.ready_vector_index_version
-        != catalog_stats.test_run_vector_index_version
+        and catalog_stats.test_run_vector_index_ready is False
     ):
         issues.append(
             DiagnosticIssue(
@@ -83,8 +89,21 @@ def diagnose_test_run(
                     "test_run_vector_index_version": (
                         catalog_stats.test_run_vector_index_version
                     ),
-                    "ready_vector_index_version": catalog_stats.ready_vector_index_version,
+                    "test_run_vector_index_status": (
+                        catalog_stats.test_run_vector_index_status
+                    ),
                 },
+            )
+        )
+    elif (
+        catalog_stats.test_run_vector_index_version is None
+        and catalog_stats.ready_vector_index_version is None
+    ):
+        issues.append(
+            DiagnosticIssue(
+                code="catalog_version_has_no_ready_vector_index",
+                severity="blocker",
+                evidence={"ready_vector_index_version": None},
             )
         )
     elif catalog_stats.embedding_count == 0:
@@ -149,21 +168,7 @@ def diagnose_test_run(
             )
         )
 
-    issue_priority = {
-        "catalog_version_not_active": 0,
-        "catalog_version_not_reproducible": 0,
-        "catalog_version_has_no_intents": 0,
-        "catalog_version_has_no_examples": 0,
-        "catalog_version_has_no_ready_vector_index": 0,
-        "test_run_vector_index_not_ready": 0,
-        "catalog_version_has_no_embeddings": 0,
-        "risk_case_failed": 1,
-        "fallback_failures_dominant": 2,
-        "intent_mismatch_exists": 2,
-        "pass_rate_below_gate": 3,
-        "review_rate_above_guidance": 3,
-    }
-    issues.sort(key=lambda issue: issue_priority[issue.code])
+    issues.sort(key=lambda issue: ISSUE_CODE_PRIORITY[issue.code])
 
     return TestRunDiagnostics(
         primary_issue=issues[0] if issues else None,

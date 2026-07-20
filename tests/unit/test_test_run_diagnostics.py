@@ -39,6 +39,8 @@ def _catalog_stats(**overrides: object) -> CatalogVersionDiagnosticStats:
         "test_run_vector_index_version": "vec-cat-test-fake-embedding-v1-001",
         "ready_vector_index_version": "vec-cat-test-fake-embedding-v1-001",
         "ready_vector_index_model_version": "fake-embedding-v1",
+        "test_run_vector_index_ready": True,
+        "test_run_vector_index_status": "ready",
     }
     values.update(overrides)
     return CatalogVersionDiagnosticStats(**values)
@@ -105,13 +107,16 @@ def test_missing_version_embeddings_are_reported() -> None:
 
 def test_missing_ready_vector_index_is_reported_before_embeddings() -> None:
     diagnostics = diagnose_test_run(
-        _summary(),
+        _summary(vector_index_version=None),
         _catalog_stats(
             intent_count=5,
             example_count=20,
             embedding_count=0,
+            test_run_vector_index_version=None,
             ready_vector_index_version=None,
             ready_vector_index_model_version=None,
+            test_run_vector_index_ready=None,
+            test_run_vector_index_status=None,
         ),
         [],
     )
@@ -126,12 +131,37 @@ def test_test_run_vector_index_not_ready_is_reported() -> None:
         _catalog_stats(
             test_run_vector_index_version="vec-old",
             ready_vector_index_version="vec-current",
+            test_run_vector_index_ready=False,
+            test_run_vector_index_status=None,
         ),
         [],
     )
 
     assert diagnostics.primary_issue is not None
     assert diagnostics.primary_issue.code == "test_run_vector_index_not_ready"
+    assert diagnostics.primary_issue.evidence == {
+        "test_run_vector_index_version": "vec-old",
+        "test_run_vector_index_status": None,
+    }
+
+
+def test_test_run_vector_index_not_ready_includes_known_status() -> None:
+    diagnostics = diagnose_test_run(
+        _summary(vector_index_version="vec-building"),
+        _catalog_stats(
+            test_run_vector_index_version="vec-building",
+            test_run_vector_index_ready=False,
+            test_run_vector_index_status="building",
+        ),
+        [],
+    )
+
+    assert diagnostics.primary_issue is not None
+    assert diagnostics.primary_issue.code == "test_run_vector_index_not_ready"
+    assert diagnostics.primary_issue.evidence == {
+        "test_run_vector_index_version": "vec-building",
+        "test_run_vector_index_status": "building",
+    }
 
 
 def test_fallback_dominance_precedes_pass_rate_gate_for_single_failure() -> None:
@@ -153,7 +183,10 @@ def test_fallback_dominance_precedes_pass_rate_gate_for_single_failure() -> None
 
     assert diagnostics.primary_issue is not None
     assert diagnostics.primary_issue.code == "fallback_failures_dominant"
-    assert "fallback_failures_dominant" in diagnostics.issue_codes
+    assert diagnostics.issue_codes == [
+        "fallback_failures_dominant",
+        "pass_rate_below_gate",
+    ]
 
 
 def test_fallback_dominant_when_catalog_is_ready() -> None:
@@ -185,6 +218,10 @@ def test_fallback_dominant_when_catalog_is_ready() -> None:
     assert diagnostics.primary_issue is not None
     assert diagnostics.primary_issue.code == "fallback_failures_dominant"
     assert diagnostics.primary_issue.evidence["fallback_fail_count"] == 2
+    assert diagnostics.issue_codes == [
+        "fallback_failures_dominant",
+        "pass_rate_below_gate",
+    ]
 
 
 def test_intent_mismatch_when_decision_matches_but_intent_differs() -> None:
