@@ -12,7 +12,10 @@ from sqlalchemy.orm import Session
 from intent_routing.api.admin import get_admin_session
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
+from intent_routing.diagnostics.models import CatalogVersionDiagnosticStats
+from intent_routing.diagnostics.test_runs import diagnose_test_run
 from intent_routing.main import create_app
+from intent_routing.testing.csv_runner import CsvTestRunSummary
 
 
 def _admin_headers() -> dict[str, str]:
@@ -128,6 +131,99 @@ def test_repository_returns_catalog_version_diagnostic_stats(db_session: Session
     assert stats.embedding_count == 1
     assert stats.ready_vector_index_version == vector_index.vector_index_version
     assert stats.ready_vector_index_model_version == vector_index.model_version
+
+
+def test_repository_distinguishes_stale_selected_vector_index(
+    db_session: Session,
+) -> None:
+    now = datetime.now(UTC)
+    suffix = uuid4().hex[:8]
+    service = models.Service(
+        service_id=f"diagnostics-stale-index-service-{suffix}",
+        display_name="Diagnostics Stale Index Service",
+        environment="test",
+        default_threshold_preset="balanced",
+        max_input_tokens=256,
+        status="active",
+        created_by="test",
+        created_at=now,
+        updated_at=now,
+    )
+    catalog = models.IntentCatalogVersion(
+        intent_catalog_version=f"cat-diagnostics-stale-index-{suffix}",
+        display_version="v1",
+        service_id=service.service_id,
+        snapshot={"service_id": service.service_id, "intents": []},
+        description="diagnostic stale index test version",
+        status="active",
+        reproducibility_status="complete",
+        source_catalog_version=None,
+        activated_at=now,
+        deactivated_at=None,
+        created_by="test",
+        created_at=now,
+    )
+    selected_index = models.VectorIndexVersion(
+        vector_index_version=f"viv-diagnostics-stale-selected-{suffix}",
+        service_id=service.service_id,
+        intent_catalog_version=catalog.intent_catalog_version,
+        model_version="fake-embedding-v1",
+        status="building",
+        created_at=now,
+    )
+    ready_index = models.VectorIndexVersion(
+        vector_index_version=f"viv-diagnostics-stale-ready-{suffix}",
+        service_id=service.service_id,
+        intent_catalog_version=catalog.intent_catalog_version,
+        model_version="fake-embedding-v1",
+        status="ready",
+        created_at=now,
+    )
+    db_session.add_all([service, catalog, selected_index, ready_index])
+    db_session.commit()
+
+    stats = IntentRoutingRepository(db_session).get_catalog_version_diagnostic_record(
+        service.service_id,
+        catalog.intent_catalog_version,
+        model_version=selected_index.model_version,
+        vector_index_version=selected_index.vector_index_version,
+    )
+
+    assert stats is not None
+    assert stats.ready_vector_index_version == ready_index.vector_index_version
+    diagnostics = diagnose_test_run(
+        CsvTestRunSummary(
+            test_run_id="tr-diagnostics-stale-index",
+            test_dataset_version="tds-diagnostics-stale-index",
+            model_version=selected_index.model_version,
+            vector_index_version=selected_index.vector_index_version,
+            threshold_preset="balanced",
+            threshold_value=0.8,
+            pass_rate=1.0,
+            review_rate=0.0,
+            risk_pass_rate=1.0,
+            gate_passed=True,
+            block_reasons=[],
+            recommendations=[],
+        ),
+        CatalogVersionDiagnosticStats(
+            intent_catalog_version=stats.intent_catalog_version,
+            display_version=stats.display_version,
+            status=stats.status,
+            reproducibility_status=stats.reproducibility_status,
+            intent_count=stats.intent_count,
+            example_count=stats.example_count,
+            embedding_count=stats.embedding_count,
+            test_run_model_version=stats.test_run_model_version,
+            test_run_vector_index_version=stats.test_run_vector_index_version,
+            ready_vector_index_version=stats.ready_vector_index_version,
+            ready_vector_index_model_version=stats.ready_vector_index_model_version,
+        ),
+        [],
+    )
+
+    assert diagnostics.primary_issue is not None
+    assert diagnostics.primary_issue.code == "test_run_vector_index_not_ready"
 
 
 def test_get_test_run_diagnostics_reports_selected_catalog_readiness(

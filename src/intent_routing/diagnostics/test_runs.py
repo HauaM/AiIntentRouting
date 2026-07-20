@@ -149,15 +149,21 @@ def diagnose_test_run(
             )
         )
 
-    severity_order = {"blocker": 0, "warning": 1, "recommendation": 2}
-    result_pattern_has_precedence = fallback_fail_count >= 2 or bool(intent_mismatch_count)
-
-    def issue_order(issue: DiagnosticIssue) -> tuple[int, int]:
-        if issue.code == "pass_rate_below_gate" and result_pattern_has_precedence:
-            return (1, severity_order[issue.severity])
-        return (severity_order.get(issue.severity, 99), 0)
-
-    issues.sort(key=issue_order)
+    issue_priority = {
+        "catalog_version_not_active": 0,
+        "catalog_version_not_reproducible": 0,
+        "catalog_version_has_no_intents": 0,
+        "catalog_version_has_no_examples": 0,
+        "catalog_version_has_no_ready_vector_index": 0,
+        "test_run_vector_index_not_ready": 0,
+        "catalog_version_has_no_embeddings": 0,
+        "risk_case_failed": 1,
+        "fallback_failures_dominant": 2,
+        "intent_mismatch_exists": 2,
+        "pass_rate_below_gate": 3,
+        "review_rate_above_guidance": 3,
+    }
+    issues.sort(key=lambda issue: issue_priority[issue.code])
 
     return TestRunDiagnostics(
         primary_issue=issues[0] if issues else None,

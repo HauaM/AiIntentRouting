@@ -1931,10 +1931,6 @@ class IntentRoutingRepository:
             ready_vector_index_statement = ready_vector_index_statement.where(
                 models.VectorIndexVersion.model_version == model_version
             )
-        if vector_index_version is not None:
-            ready_vector_index_statement = ready_vector_index_statement.where(
-                models.VectorIndexVersion.vector_index_version == vector_index_version
-            )
         ready_vector_index = self.session.scalar(
             ready_vector_index_statement.order_by(
                 models.VectorIndexVersion.created_at.desc(),

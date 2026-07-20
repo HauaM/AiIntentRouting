@@ -120,10 +120,13 @@ def test_missing_ready_vector_index_is_reported_before_embeddings() -> None:
     assert diagnostics.primary_issue.code == "catalog_version_has_no_ready_vector_index"
 
 
-def test_test_run_vector_index_mismatch_is_reported() -> None:
+def test_test_run_vector_index_not_ready_is_reported() -> None:
     diagnostics = diagnose_test_run(
         _summary(vector_index_version="vec-old"),
-        _catalog_stats(test_run_vector_index_version="vec-old"),
+        _catalog_stats(
+            test_run_vector_index_version="vec-old",
+            ready_vector_index_version="vec-current",
+        ),
         [],
     )
 
@@ -131,7 +134,7 @@ def test_test_run_vector_index_mismatch_is_reported() -> None:
     assert diagnostics.primary_issue.code == "test_run_vector_index_not_ready"
 
 
-def test_blocker_remains_primary_when_warning_detected_first() -> None:
+def test_fallback_dominance_precedes_pass_rate_gate_for_single_failure() -> None:
     diagnostics = diagnose_test_run(
         _summary(pass_rate=0.4, risk_pass_rate=1.0, block_reasons=["pass rate below 70%"]),
         _catalog_stats(),
@@ -149,7 +152,7 @@ def test_blocker_remains_primary_when_warning_detected_first() -> None:
     )
 
     assert diagnostics.primary_issue is not None
-    assert diagnostics.primary_issue.code == "pass_rate_below_gate"
+    assert diagnostics.primary_issue.code == "fallback_failures_dominant"
     assert "fallback_failures_dominant" in diagnostics.issue_codes
 
 
