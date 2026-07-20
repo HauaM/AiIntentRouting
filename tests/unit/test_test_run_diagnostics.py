@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from intent_routing.diagnostics.models import CatalogVersionDiagnosticStats
 from intent_routing.diagnostics.test_runs import diagnose_test_run
 from intent_routing.testing.csv_runner import CsvTestRunSummary
@@ -117,6 +119,30 @@ def test_missing_ready_vector_index_is_reported_before_embeddings() -> None:
             ready_vector_index_model_version=None,
             test_run_vector_index_ready=None,
             test_run_vector_index_status=None,
+        ),
+        [],
+    )
+
+    assert diagnostics.primary_issue is not None
+    assert diagnostics.primary_issue.code == "catalog_version_has_no_ready_vector_index"
+
+
+@pytest.mark.parametrize(
+    ("selected_vector_index_version", "selected_vector_index_status"),
+    [("vec-building", "building"), ("vec-missing", None)],
+)
+def test_missing_ready_vector_index_precedes_selected_index_not_ready(
+    selected_vector_index_version: str,
+    selected_vector_index_status: str | None,
+) -> None:
+    diagnostics = diagnose_test_run(
+        _summary(vector_index_version=selected_vector_index_version),
+        _catalog_stats(
+            test_run_vector_index_version=selected_vector_index_version,
+            ready_vector_index_version=None,
+            ready_vector_index_model_version=None,
+            test_run_vector_index_ready=False,
+            test_run_vector_index_status=selected_vector_index_status,
         ),
         [],
     )

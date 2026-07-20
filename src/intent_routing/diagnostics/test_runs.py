@@ -77,6 +77,14 @@ def diagnose_test_run(
                 evidence={"example_count": 0},
             )
         )
+    elif catalog_stats.ready_vector_index_version is None:
+        issues.append(
+            DiagnosticIssue(
+                code="catalog_version_has_no_ready_vector_index",
+                severity="blocker",
+                evidence={"ready_vector_index_version": None},
+            )
+        )
     elif (
         catalog_stats.test_run_vector_index_version is not None
         and catalog_stats.test_run_vector_index_ready is False
@@ -93,17 +101,6 @@ def diagnose_test_run(
                         catalog_stats.test_run_vector_index_status
                     ),
                 },
-            )
-        )
-    elif (
-        catalog_stats.test_run_vector_index_version is None
-        and catalog_stats.ready_vector_index_version is None
-    ):
-        issues.append(
-            DiagnosticIssue(
-                code="catalog_version_has_no_ready_vector_index",
-                severity="blocker",
-                evidence={"ready_vector_index_version": None},
             )
         )
     elif catalog_stats.embedding_count == 0:

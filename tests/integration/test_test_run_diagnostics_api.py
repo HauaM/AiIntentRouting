@@ -214,6 +214,19 @@ def test_repository_returns_catalog_version_diagnostic_stats(db_session: Session
     assert stats.test_run_vector_index_ready is True
     assert stats.test_run_vector_index_status == "ready"
 
+    mismatched_selected_index_stats = (
+        IntentRoutingRepository(db_session).get_catalog_version_diagnostic_record(
+            service.service_id,
+            catalog.intent_catalog_version,
+            model_version=wrong_model_vector_index.model_version,
+            vector_index_version=vector_index.vector_index_version,
+        )
+    )
+
+    assert mismatched_selected_index_stats is not None
+    assert mismatched_selected_index_stats.test_run_vector_index_ready is False
+    assert mismatched_selected_index_stats.test_run_vector_index_status is None
+
 
 def test_repository_distinguishes_stale_selected_vector_index(
     db_session: Session,
