@@ -1,15 +1,49 @@
+# Local editor and OS files
 *.save
+.DS_Store
+.idea/
+.vscode/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.template
+*.secret.json
+
+# Local workspace state
 .worktrees/
 .superpowers/
 var/
-*.secret.json
+
+# Python
 .venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
 __pycache__/
 *.py[cod]
+
+# Node and pnpm
+.pnpm-store/
 frontend/**/node_modules/
 frontend/**/dist/
+frontend/**/coverage/
+frontend/**/.cache/
+frontend/**/.turbo/
+frontend/**/.vite/
+frontend/**/.vitest/
+
+# Umi / Max generated files
 frontend/**/.umi/
 frontend/**/.umi-production/
