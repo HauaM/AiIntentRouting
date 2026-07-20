@@ -57,11 +57,18 @@ from intent_routing.db.models import (
 from intent_routing.db.repositories import (
     MASKED_RUNTIME_LOG_FIELD_NAMES,
     AdminSessionContextRecord,
+    CatalogVersionDiagnosticRecord,
     IntentRoutingRepository,
     PermissionAdminUserSummaryRecord,
     PermissionServiceRoleAssignmentRecord,
     PermissionServiceRoleSummaryRecord,
 )
+from intent_routing.diagnostics.models import (
+    CatalogVersionDiagnosticStats,
+    DiagnosticIssue,
+    TestRunDiagnostics,
+)
+from intent_routing.diagnostics.test_runs import diagnose_test_run
 from intent_routing.domain.enums import (
     ApiKeyStatus,
     ErrorCode,
@@ -903,6 +910,34 @@ class TestRunResultResponse(BaseModel):
     confidence: float | None
     result: str
     reason: str
+
+
+class TestRunDiagnosticIssueResponse(BaseModel):
+    code: str
+    severity: str
+    evidence: dict[str, object]
+
+
+class TestRunCatalogVersionDiagnosticsResponse(BaseModel):
+    intent_catalog_version: str
+    display_version: str | None
+    status: str
+    reproducibility_status: str
+    intent_count: int
+    example_count: int
+    embedding_count: int
+    test_run_model_version: str | None
+    test_run_vector_index_version: str | None
+    ready_vector_index_version: str | None
+    ready_vector_index_model_version: str | None
+
+
+class TestRunDiagnosticsResponse(BaseModel):
+    primary_issue: TestRunDiagnosticIssueResponse | None
+    issues: list[TestRunDiagnosticIssueResponse]
+    catalog_version: TestRunCatalogVersionDiagnosticsResponse
+    result_counts: dict[str, int]
+    actual_decision_counts: dict[str, int]
 
 
 class ReleaseCreateRequest(BaseModel):
@@ -2369,6 +2404,65 @@ def _test_result_response(result: TestResult) -> TestRunResultResponse:
         confidence=float(result.confidence) if result.confidence is not None else None,
         result=result.result,
         reason=result.reason,
+    )
+
+
+def _catalog_diagnostic_stats(
+    record: CatalogVersionDiagnosticRecord,
+) -> CatalogVersionDiagnosticStats:
+    return CatalogVersionDiagnosticStats(
+        intent_catalog_version=record.intent_catalog_version,
+        display_version=record.display_version,
+        status=record.status,
+        reproducibility_status=record.reproducibility_status,
+        intent_count=record.intent_count,
+        example_count=record.example_count,
+        embedding_count=record.embedding_count,
+        test_run_model_version=record.test_run_model_version,
+        test_run_vector_index_version=record.test_run_vector_index_version,
+        ready_vector_index_version=record.ready_vector_index_version,
+        ready_vector_index_model_version=record.ready_vector_index_model_version,
+    )
+
+
+def _test_run_diagnostics_response(
+    diagnostics: TestRunDiagnostics,
+) -> TestRunDiagnosticsResponse:
+    def issue_response(issue: DiagnosticIssue) -> TestRunDiagnosticIssueResponse:
+        return TestRunDiagnosticIssueResponse(
+            code=issue.code,
+            severity=issue.severity,
+            evidence=issue.evidence,
+        )
+
+    return TestRunDiagnosticsResponse(
+        primary_issue=(
+            issue_response(diagnostics.primary_issue)
+            if diagnostics.primary_issue is not None
+            else None
+        ),
+        issues=[issue_response(issue) for issue in diagnostics.issues],
+        catalog_version=TestRunCatalogVersionDiagnosticsResponse(
+            intent_catalog_version=diagnostics.catalog_version.intent_catalog_version,
+            display_version=diagnostics.catalog_version.display_version,
+            status=diagnostics.catalog_version.status,
+            reproducibility_status=diagnostics.catalog_version.reproducibility_status,
+            intent_count=diagnostics.catalog_version.intent_count,
+            example_count=diagnostics.catalog_version.example_count,
+            embedding_count=diagnostics.catalog_version.embedding_count,
+            test_run_model_version=diagnostics.catalog_version.test_run_model_version,
+            test_run_vector_index_version=(
+                diagnostics.catalog_version.test_run_vector_index_version
+            ),
+            ready_vector_index_version=(
+                diagnostics.catalog_version.ready_vector_index_version
+            ),
+            ready_vector_index_model_version=(
+                diagnostics.catalog_version.ready_vector_index_model_version
+            ),
+        ),
+        result_counts=diagnostics.result_counts,
+        actual_decision_counts=diagnostics.actual_decision_counts,
     )
 
 
@@ -5637,6 +5731,51 @@ def get_test_run_results(
         _test_result_response(result)
         for result in repository.list_test_results(test_run_id)
     ]
+
+
+@router.get(
+    "/services/{service_id}/test-runs/{test_run_id}/diagnostics",
+    response_model=TestRunDiagnosticsResponse,
+)
+def get_test_run_diagnostics(
+    service_id: str,
+    test_run_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> TestRunDiagnosticsResponse:
+    _require_service_catalog_access(context, service_id)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    test_run = repository.get_test_run(test_run_id)
+    if test_run is None or test_run.service_id != service_id:
+        _raise_not_found("Test run does not exist.")
+    catalog_record = repository.get_catalog_version_diagnostic_record(
+        service_id,
+        test_run.intent_catalog_version,
+        model_version=test_run.model_version,
+        vector_index_version=test_run.vector_index_version,
+    )
+    if catalog_record is None:
+        _raise_not_found("Catalog version does not exist.")
+    results = repository.list_test_results(test_run_id)
+    summary = summarize_test_run(test_run, results)
+    diagnostics = diagnose_test_run(
+        summary,
+        _catalog_diagnostic_stats(catalog_record),
+        [
+            {
+                "case_type": result.case_type,
+                "expected_decision": result.expected_decision,
+                "expected_intent": result.expected_intent,
+                "actual_decision": result.actual_decision,
+                "actual_intent": result.actual_intent,
+                "result": result.result,
+                "reason": result.reason,
+            }
+            for result in results
+        ],
+    )
+    return _test_run_diagnostics_response(diagnostics)
 
 
 @router.post(
