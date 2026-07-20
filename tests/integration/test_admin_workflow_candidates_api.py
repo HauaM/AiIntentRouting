@@ -202,6 +202,14 @@ def _purge_rows(db_session: Session, *, user_id: str, service_id: str) -> None:
         {"service_id": service_id},
     )
     db_session.execute(
+        text("delete from catalog_version_example_embeddings where service_id = :service_id"),
+        {"service_id": service_id},
+    )
+    db_session.execute(
+        text("delete from vector_index_versions where service_id = :service_id"),
+        {"service_id": service_id},
+    )
+    db_session.execute(
         text("delete from intent_catalog_versions where service_id = :service_id"),
         {"service_id": service_id},
     )
@@ -294,7 +302,8 @@ def test_lists_policy_and_catalog_versions(db_session: Session) -> None:
             "intent_catalog_version"
         ]
         assert catalogs.json()[0]["intent_count"] == 0
-        assert catalogs.json()[0]["approved_example_count"] == 0
+        assert catalogs.json()[0]["example_count"] == 0
+        assert catalogs.json()[0]["embedding_count"] == 0
     finally:
         try:
             _purge_rows(db_session, user_id=user_id, service_id=service_id)
