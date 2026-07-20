@@ -1234,13 +1234,6 @@ it('keeps CSV import, export, and create wired to the same applied cases state',
   expect(page).toContain('csvCases,');
 });
 
-it('does not wire backend diagnostics before the diagnostics plan is merged', () => {
-  const page = read('index.tsx');
-
-  expect(page).toContain('<TestRunDiagnosticsPanel');
-  expect(page).not.toContain('fetchTestRunDiagnostics');
-  expect(page).not.toContain('/diagnostics');
-});
 ```
 
 - [ ] **Step 2: Run page contracts to verify failure**
@@ -1287,7 +1280,6 @@ import {
 import { CatalogVersionStep } from './CatalogVersionStep';
 import { CsvCasesGrid } from './CsvCasesGrid';
 import { CsvImportModal } from './CsvImportModal';
-import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
 import { TestPolicyPanel } from './TestPolicyPanel';
 import {
   buildCsvText,
@@ -1537,7 +1529,6 @@ Inside `return`, replace the current `Space` body under `<AdminShell title="Test
                 ) : (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="조회된 Test Run이 없습니다." />
                 )}
-                <TestRunDiagnosticsPanel />
                 <ProTable<API.TestRunResult>
                   rowKey="case_id"
                   columns={columns}
@@ -1727,7 +1718,34 @@ export function TestRunDiagnosticsPanel() {
 }
 ```
 
-- [ ] **Step 4: Run diagnostics shell tests**
+- [ ] **Step 4: Wire the diagnostics shell into the result step**
+
+Add this import to `frontend/intent-routing-console/src/pages/TestRuns/index.tsx`:
+
+```ts
+import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
+```
+
+Render the shell in step 3 above the results table:
+
+```tsx
+<TestRunDiagnosticsPanel />
+<ProTable<API.TestRunResult>
+```
+
+Append this contract to `frontend/intent-routing-console/src/pages/TestRuns/testRunsPageContract.test.ts`:
+
+```ts
+it('shows the pre-merge diagnostics dependency shell without backend wiring', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain('<TestRunDiagnosticsPanel');
+  expect(page).not.toContain('fetchTestRunDiagnostics');
+  expect(page).not.toContain('/diagnostics');
+});
+```
+
+- [ ] **Step 5: Run diagnostics shell tests**
 
 Run from `frontend/intent-routing-console`:
 
@@ -1737,7 +1755,7 @@ Run from `frontend/intent-routing-console`:
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add frontend/intent-routing-console/src/pages/TestRuns/TestRunDiagnosticsPanel.tsx frontend/intent-routing-console/src/pages/TestRuns/testRunDiagnosticsPanelContract.test.ts frontend/intent-routing-console/src/pages/TestRuns/index.tsx frontend/intent-routing-console/src/pages/TestRuns/testRunsPageContract.test.ts
