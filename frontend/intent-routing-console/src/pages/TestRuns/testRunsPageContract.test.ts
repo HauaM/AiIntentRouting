@@ -127,6 +127,14 @@ it('clears prior run data and only allows the latest run request to update the r
   expect(page).toContain('if (!isCurrentRunRequest(requestGeneration, serviceId)) return;');
 });
 
+it('resets loading when a service change invalidates a pending run request', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain(
+    'runRequestGenerationRef.current += 1;\n    setLoading(false);\n    setSummary(undefined);',
+  );
+});
+
 it('wires diagnostics to the selected test run in the results step', () => {
   const page = read('index.tsx');
 

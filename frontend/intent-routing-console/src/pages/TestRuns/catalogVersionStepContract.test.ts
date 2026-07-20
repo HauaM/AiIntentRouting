@@ -44,6 +44,7 @@ describe('CatalogVersionStep contract', () => {
 
     expect(page).toContain('<Steps');
     expect(page).toContain('<CatalogVersionStep');
+    expect(page).toContain('key={session.serviceId}');
     expect(page).not.toContain('<ValidationVersionsPanel');
   });
 });

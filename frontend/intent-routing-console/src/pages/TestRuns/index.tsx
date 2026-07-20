@@ -81,6 +81,7 @@ export default function TestRunsPage() {
   useEffect(() => {
     serviceIdRef.current = session.serviceId;
     runRequestGenerationRef.current += 1;
+    setLoading(false);
     setSummary(undefined);
     setResults([]);
     setPolicy(undefined);
@@ -268,6 +269,7 @@ export default function TestRunsPage() {
                   />
                   {currentStep === 0 ? (
                     <CatalogVersionStep
+                      key={session.serviceId}
                       serviceId={session.serviceId}
                       value={selectedCatalogVersion}
                       onChange={(nextCatalogVersion) => {
