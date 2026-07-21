@@ -4,7 +4,7 @@ import { StatusTag } from '@/components/StatusTag';
 import { formatDecisionLabel, formatIntentLabel, formatIssueTitle } from './testRunResultCopy';
 import {
   buildTestRunInsights,
-  type TestRunPatternKind,
+  type TestRunPatternValueType,
   type TestRunResultsLoadState,
 } from './testRunResultInsights';
 
@@ -23,10 +23,23 @@ type TestRunDiagnosticsPanelProps = {
   resultsLoadState?: TestRunResultsLoadState;
 };
 
-const formatPatternValue = (kind: TestRunPatternKind, value: string) =>
-  kind === 'decision_mismatch' || (kind === 'fallback' && value === 'fallback')
-    ? formatDecisionLabel(value)
-    : formatIntentLabel(value);
+const formatPatternValue = (valueType: TestRunPatternValueType, value: string) =>
+  valueType === 'decision' ? formatDecisionLabel(value) : formatIntentLabel(value);
+
+const resultLoadStateCopy = {
+  not_loaded: {
+    patternDescription: '상세 결과를 아직 불러오지 않아 실패 패턴을 집계할 수 없습니다.',
+    nextActionDescription: '상세 결과를 불러온 뒤 추가 권장 조치를 확인할 수 있습니다.',
+  },
+  loading: {
+    patternDescription: '상세 결과를 불러오는 중이라 실패 패턴을 집계할 수 없습니다.',
+    nextActionDescription: '상세 결과를 불러오는 중이라 추가 권장 조치를 계산하고 있습니다.',
+  },
+  error: {
+    patternDescription: '상세 결과를 불러오지 못해 실패 패턴을 집계할 수 없습니다.',
+    nextActionDescription: '상세 결과를 불러오지 못해 추가 권장 조치를 제시할 수 없습니다.',
+  },
+} as const;
 
 export function TestRunDiagnosticsPanel({
   testRunId,
@@ -40,6 +53,16 @@ export function TestRunDiagnosticsPanel({
     () => buildTestRunInsights(results ?? [], diagnostics ?? undefined, resultsLoadState),
     [diagnostics, results, resultsLoadState],
   );
+  const resultSectionState = resultsLoadState === 'loaded'
+    ? {
+        isLoaded: true,
+        patternDescription: '집계된 실패 패턴이 없습니다.',
+        nextActionDescription: '추가 권장 조치가 없습니다.',
+      }
+    : {
+        isLoaded: false,
+        ...resultLoadStateCopy[resultsLoadState],
+      };
   const primaryIssue = diagnostics?.primary_issue;
 
   if (!testRunId) {
@@ -88,7 +111,7 @@ export function TestRunDiagnosticsPanel({
           />
 
           <Card size="small" title="실패 패턴 요약">
-            {insights.patterns.length ? (
+            {resultSectionState.isLoaded && insights.patterns.length ? (
               <List
                 size="small"
                 dataSource={insights.patterns}
@@ -96,11 +119,11 @@ export function TestRunDiagnosticsPanel({
                   <List.Item>
                     <Space>
                       <Typography.Text title={pattern.expected}>
-                        {formatPatternValue(pattern.kind, pattern.expected)}
+                        {formatPatternValue(pattern.expectedValueType, pattern.expected)}
                       </Typography.Text>
                       <Typography.Text>→</Typography.Text>
                       <Typography.Text title={pattern.actual}>
-                        {formatPatternValue(pattern.kind, pattern.actual)}
+                        {formatPatternValue(pattern.actualValueType, pattern.actual)}
                       </Typography.Text>
                       <StatusTag status={patternStatus[pattern.kind]} label={`${pattern.count}건`} />
                     </Space>
@@ -108,7 +131,7 @@ export function TestRunDiagnosticsPanel({
                 )}
               />
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="집계된 실패 패턴이 없습니다." />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={resultSectionState.patternDescription} />
             )}
             <Typography.Text strong>실제 결정 분포</Typography.Text>
             {Object.entries(diagnostics.actual_decision_counts).length ? (
@@ -139,7 +162,7 @@ export function TestRunDiagnosticsPanel({
           </Card>
 
           <Card size="small" title="다음 조치">
-            {insights.nextActions.length ? (
+            {resultSectionState.isLoaded && insights.nextActions.length ? (
               <List
                 size="small"
                 dataSource={insights.nextActions}
@@ -150,7 +173,7 @@ export function TestRunDiagnosticsPanel({
                 )}
               />
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="추가 권장 조치가 없습니다." />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={resultSectionState.nextActionDescription} />
             )}
           </Card>
         </Space>

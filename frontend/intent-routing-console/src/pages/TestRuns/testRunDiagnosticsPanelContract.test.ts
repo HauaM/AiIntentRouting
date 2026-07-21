@@ -78,17 +78,25 @@ describe('TestRunDiagnosticsPanel contract after actionable diagnostics redesign
     expect(source).toContain('Object.entries(diagnostics.actual_decision_counts)');
   });
 
-  it('does not treat diagnostics or rows in flight as empty findings', () => {
+  it('renders result-load-specific copy instead of empty findings until rows are loaded', () => {
     const source = read('TestRunDiagnosticsPanel.tsx');
 
     expect(source).toContain('description="진단 결과를 불러오는 중입니다."');
     expect(source).toContain('buildTestRunInsights(results ?? [], diagnostics ?? undefined, resultsLoadState)');
+    expect(source).toContain("const resultSectionState = resultsLoadState === 'loaded'");
+    expect(source).toContain("description={resultSectionState.patternDescription}");
+    expect(source).toContain("description={resultSectionState.nextActionDescription}");
+    expect(source).toContain("patternDescription: '상세 결과를 불러오지 못해 실패 패턴을 집계할 수 없습니다.'");
+    expect(source).toContain("nextActionDescription: '상세 결과를 불러오지 못해 추가 권장 조치를 제시할 수 없습니다.'");
+    expect(source).toContain("{resultSectionState.isLoaded && insights.patterns.length ? (");
+    expect(source).toContain("{resultSectionState.isLoaded && insights.nextActions.length ? (");
   });
 
   it('groups distributions and issue tags under the required failure pattern section', () => {
     const source = read('TestRunDiagnosticsPanel.tsx');
 
-    expect(source).toContain('formatPatternValue(pattern.kind, pattern.expected)');
+    expect(source).toContain('formatPatternValue(pattern.expectedValueType, pattern.expected)');
+    expect(source).toContain('formatPatternValue(pattern.actualValueType, pattern.actual)');
     expect(source.indexOf('title="실패 패턴 요약"')).toBeLessThan(source.indexOf('title="다음 조치"'));
     expect(source.indexOf('실제 결정 분포')).toBeGreaterThan(source.indexOf('title="실패 패턴 요약"'));
     expect(source.indexOf('실제 결정 분포')).toBeLessThan(source.indexOf('title="다음 조치"'));

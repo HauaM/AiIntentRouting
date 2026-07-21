@@ -34,6 +34,8 @@ describe('buildTestRunInsights', () => {
       key: 'intent_mismatch:it_api_timeout→program_supported_question',
       expected: 'it_api_timeout',
       actual: 'program_supported_question',
+      expectedValueType: 'intent',
+      actualValueType: 'intent',
       count: 2,
       kind: 'intent_mismatch',
     });
@@ -130,6 +132,8 @@ describe('buildTestRunInsights', () => {
       key: 'decision_mismatch:confident→risk',
       expected: 'confident',
       actual: 'risk',
+      expectedValueType: 'decision',
+      actualValueType: 'decision',
       count: 1,
       kind: 'decision_mismatch',
     });
@@ -137,9 +141,39 @@ describe('buildTestRunInsights', () => {
       key: 'intent_mismatch:shared_expected→shared_actual',
       expected: 'shared_expected',
       actual: 'shared_actual',
+      expectedValueType: 'intent',
+      actualValueType: 'intent',
       count: 1,
       kind: 'intent_mismatch',
     });
+    expect(insights.nextActions).toContain('확정의 기대 결정과 위험/검토 기준을 점검하세요.');
+    expect(insights.nextActions).not.toContain('confident의 기대 결정과 위험/검토 기준을 점검하세요.');
+  });
+
+  it('localizes fallback guidance when the expected intent is unavailable', () => {
+    const insights = buildTestRunInsights([
+      result({
+        case_id: 'F001',
+        expected_intent: null,
+        expected_decision: 'clarify',
+        actual_decision: 'fallback',
+        actual_intent: null,
+        actual_route_key: null,
+        reason: 'actual decision did not match expected decision',
+      }),
+    ]);
+
+    expect(insights.patterns).toContainEqual({
+      key: 'fallback:clarify→fallback',
+      expected: 'clarify',
+      actual: 'fallback',
+      expectedValueType: 'decision',
+      actualValueType: 'decision',
+      count: 1,
+      kind: 'fallback',
+    });
+    expect(insights.nextActions).toContain('확인 필요 관련 표현을 Catalog 예시에 추가하세요.');
+    expect(insights.nextActions).not.toContain('clarify 관련 표현을 Catalog 예시에 추가하세요.');
   });
 
   it('puts the primary catalog blocker action before pattern actions', () => {

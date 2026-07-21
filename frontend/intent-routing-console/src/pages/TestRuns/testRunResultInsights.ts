@@ -1,10 +1,15 @@
+import { formatDecisionLabel, formatIntentLabel } from './testRunResultCopy';
+
 export type TestRunPatternKind = 'intent_mismatch' | 'decision_mismatch' | 'fallback';
 export type TestRunResultsLoadState = 'not_loaded' | 'loading' | 'error' | 'loaded';
+export type TestRunPatternValueType = 'intent' | 'decision';
 
 export type TestRunPattern = {
   key: string;
   expected: string;
   actual: string;
+  expectedValueType: TestRunPatternValueType;
+  actualValueType: TestRunPatternValueType;
   count: number;
   kind: TestRunPatternKind;
 };
@@ -21,6 +26,9 @@ const issueCodes = (diagnostics?: API.TestRunDiagnostics) =>
 
 const topPatterns = (patterns: TestRunPattern[]) =>
   [...patterns].sort((left, right) => right.count - left.count || left.key.localeCompare(right.key)).slice(0, 5);
+
+const formatPatternValue = (value: string, valueType: TestRunPatternValueType) =>
+  valueType === 'decision' ? formatDecisionLabel(value) : formatIntentLabel(value);
 
 const diagnosticIssueRecommendations: Record<string, string> = {
   catalog_version_not_active: '활성 상태의 Catalog 버전을 선택하거나 현재 버전을 활성화한 뒤 테스트를 다시 실행하세요.',
@@ -57,6 +65,12 @@ export function buildTestRunInsights(
     else if (row.reason === 'actual decision did not match expected decision') kind = 'decision_mismatch';
     if (!kind) continue;
 
+    const expectedValueType = kind === 'decision_mismatch' || row.expected_intent === null
+      ? 'decision'
+      : 'intent';
+    const actualValueType = kind === 'decision_mismatch' || (row.actual_intent === null && row.actual_route_key === null)
+      ? 'decision'
+      : 'intent';
     const expected = kind === 'decision_mismatch'
       ? row.expected_decision
       : row.expected_intent ?? row.expected_decision;
@@ -69,6 +83,8 @@ export function buildTestRunInsights(
       key,
       expected,
       actual,
+      expectedValueType,
+      actualValueType,
       kind,
       count: (previous?.count ?? 0) + 1,
     });
@@ -109,15 +125,16 @@ export function buildTestRunInsights(
     addNextAction(formatDiagnosticIssueRecommendation(diagnostics.primary_issue.code));
   }
   for (const pattern of patterns) {
+    const expectedLabel = formatPatternValue(pattern.expected, pattern.expectedValueType);
     if (pattern.kind === 'fallback') {
-      addNextAction(`${pattern.expected} 관련 표현을 Catalog 예시에 추가하세요.`);
+      addNextAction(`${expectedLabel} 관련 표현을 Catalog 예시에 추가하세요.`);
     } else if (pattern.kind === 'intent_mismatch') {
-      addNextAction(`${pattern.expected} Intent 예시를 보강하세요.`);
+      addNextAction(`${expectedLabel} Intent 예시를 보강하세요.`);
     } else if (pattern.kind === 'decision_mismatch') {
-      addNextAction(`${pattern.expected}의 기대 결정과 위험/검토 기준을 점검하세요.`);
+      addNextAction(`${expectedLabel}의 기대 결정과 위험/검토 기준을 점검하세요.`);
     }
   }
-  if (patterns.some((pattern) => pattern.actual === 'program_supported_question')) {
+  if (patterns.some((pattern) => pattern.actualValueType === 'intent' && pattern.actual === 'program_supported_question')) {
     addNextAction('program_supported_question이 구체 Intent를 과도하게 흡수하는지 점검하세요.');
   }
   if (codes.has('review_rate_above_guidance')) {
