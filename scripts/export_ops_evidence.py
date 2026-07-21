@@ -28,6 +28,7 @@ SECURITY_LIFECYCLE_AUDIT_EVENT_TYPES = (
     "raw_query.viewed",
     "api_key.revoked",
 )
+SUPPORTED_RELEASE_ENVIRONMENTS = ("dev", "qa", "prod")
 
 
 def run_ops_evidence_export(
@@ -60,7 +61,7 @@ def run_ops_evidence_export(
         )
         runtime_metrics = client.get(
             f"/admin/v1/services/{service_id}/runtime-metrics",
-            params={"window_hours": window_hours},
+            params={"window_hours": window_hours, "environment": environment},
         )
         raw_text_key_summary = client.get(
             f"/admin/v1/services/{service_id}/security/raw-text-key-summary"
@@ -143,10 +144,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--actor-id", default="ops-evidence")
     parser.add_argument(
         "--environment",
-        default=os.environ.get("INTENT_ROUTING_ENVIRONMENT", "dev"),
+        choices=SUPPORTED_RELEASE_ENVIRONMENTS,
+        default=os.environ.get("RELEASE_ENVIRONMENT", "dev"),
         help="Release environment for active release lookup.",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.environment not in SUPPORTED_RELEASE_ENVIRONMENTS:
+        parser.error("--environment must be one of: dev, qa, prod")
+    return args
 
 
 def _get_json(

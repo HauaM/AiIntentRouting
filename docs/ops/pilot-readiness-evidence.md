@@ -10,7 +10,7 @@ uv run python scripts/run_pilot_rehearsal.py \
   --base-url http://127.0.0.1:8000 \
   --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
   --service-id ${SERVICE_ID} \
-  --environment ${INTENT_ROUTING_ENVIRONMENT} \
+  --environment dev \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
   --required-preset balanced \
@@ -26,7 +26,7 @@ uv run python scripts/run_pilot_rehearsal.py \
   --base-url http://127.0.0.1:8000 \
   --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
   --service-id ${SERVICE_ID} \
-  --environment pilot \
+  --environment prod \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
   --required-preset balanced \
@@ -44,7 +44,7 @@ uv run python scripts/run_pilot_e2e_smoke.py \
   --base-url http://127.0.0.1:8000 \
   --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
   --service-id ${SERVICE_ID} \
-  --environment ${INTENT_ROUTING_ENVIRONMENT} \
+  --environment dev \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
   --required-preset balanced \
@@ -58,7 +58,7 @@ uv run python scripts/run_pilot_readiness.py \
   --base-url http://127.0.0.1:8000 \
   --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
   --service-id ${SERVICE_ID} \
-  --environment ${INTENT_ROUTING_ENVIRONMENT} \
+  --environment dev \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
   --out-dir var/evidence/${SERVICE_ID}
@@ -94,7 +94,7 @@ uv run python scripts/export_ops_evidence.py \
   --out-dir var/evidence/${SERVICE_ID}/rehearsal/ops \
   --window-hours 24 \
   --actor-id ops-evidence \
-  --environment ${INTENT_ROUTING_ENVIRONMENT}
+  --environment dev
 ```
 
 Outputs:

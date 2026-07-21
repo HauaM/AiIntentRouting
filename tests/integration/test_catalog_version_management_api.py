@@ -60,8 +60,6 @@ def service_id(client: TestClient) -> str:
         json={
             "service_id": value,
             "display_name": "Catalog version test service",
-            "environment": "test",
-            "default_threshold_preset": "balanced",
             "max_input_tokens": 256,
         },
     )
@@ -101,13 +99,15 @@ def _create_example(
     intent_id: str,
     *,
     approved: bool,
+    example_type: str = "positive",
+    text_raw: str = "Catalog version example text",
 ) -> str:
     response = client.post(
         f"/admin/v1/services/{service_id}/intents/{intent_id}/examples",
         headers=_admin_headers(),
         json={
-            "example_type": "positive",
-            "text_raw": "Catalog version example text",
+            "example_type": example_type,
+            "text_raw": text_raw,
             "source": "catalog-version-test",
             "test_case_id": None,
         },
@@ -344,7 +344,7 @@ def test_catalog_version_deactivation_is_blocked_when_release_references_it(
          "gate_passed": True, "created_by": "test", "created_at": now}, []
     )
     repository.create_release(
-        release_version=f"release-{uuid4().hex}", service_id=service_id, environment="test",
+        release_version=f"release-{uuid4().hex}", service_id=service_id, environment="dev",
         policy_version=policy_version, intent_catalog_version=catalog_version,
         model_version=created.json()["model_version"],
         vector_index_version=created.json()["vector_index_version"],
@@ -550,7 +550,14 @@ def test_catalog_version_diff_reports_added_example(
         f"/admin/v1/services/{service_id}/catalog-versions",
         headers=_admin_headers(), json={"description": "First diff catalog"},
     ).json()["intent_catalog_version"]
-    _create_example(client, service_id, intent_id, approved=False)
+    _create_example(
+        client,
+        service_id,
+        intent_id,
+        approved=False,
+        example_type="negative",
+        text_raw="Catalog version negative example text",
+    )
     second = client.post(
         f"/admin/v1/services/{service_id}/catalog-versions",
         headers=_admin_headers(), json={"description": "Second diff catalog"},
@@ -562,4 +569,13 @@ def test_catalog_version_diff_reports_added_example(
     )
 
     assert response.status_code == 200
-    assert len(response.json()["added_examples"]) == 1
+    added_examples = response.json()["added_examples"]
+    assert added_examples == [
+        {
+            "intent_id": intent_id,
+            "intent_display_name": "Catalog version intent",
+            "route_key": "it.catalog.version",
+            "example_type": "negative",
+            "text_masked": "Catalog version negative example text",
+        }
+    ]

@@ -44,7 +44,8 @@ describe('Services page presentation contract', () => {
     const source = pageSource();
 
     expect(source).toContain('className="services-create-grid"');
-    expect(source).toContain("title: '환경'");
+    expect(source).not.toContain("title: '환경'");
+    expect(source).not.toContain('default_threshold_preset');
     expect(source).toContain("title: '상태'");
     expect(source).toContain("title: '역할'");
     expect(source).toContain('description="접근 가능한 Service가 없습니다."');

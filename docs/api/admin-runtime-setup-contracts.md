@@ -1,8 +1,9 @@
 # Admin Runtime Setup Contracts
 
-This document defines the accepted C-3 runtime setup contract for Admin API and
-Admin UI implementation. Optional validation remains future/not baseline unless
-explicitly marked otherwise.
+This document defines the accepted C-3 runtime setup contract for Admin API,
+Admin UI implementation, and the explicit runtime live-test workflow. Optional
+metadata-only validation remains future/not baseline unless explicitly marked
+otherwise.
 
 ## Common Rules
 
@@ -17,15 +18,25 @@ explicitly marked otherwise.
 - Normal browser Admin UI requests must not send `X-Service-Scope`.
 - Runtime clients do not use the Admin UI session cookie. They call
   `/v1/intent-route` with Bearer API-key authentication.
+- Admin UI live testing may call `/v1/intent-route` only after the operator
+  manually enters an API Secret for the selected key. The UI must not auto-fill,
+  persist, recover, or replay the one-time raw secret from the create response.
 - The raw API key secret is shown only once in the create response.
 - `api_key` raw secret is never present in inventory, revoke responses,
   runtime setup guidance, audit log state, runtime logs, or exported evidence.
 - Key metadata may include `key_id`, `key_fingerprint`, `environment`,
   `app_id`, `service_id`, `allowed_intents`, `allowed_route_keys`, `status`,
-  `expires_at`, `revoked_at`, `created_by`, and `created_at`.
-- C-3 baseline key lifecycle create/list/revoke requires `system_admin`.
-- Future delegation to `service_owner` or `service_operator` requires a
-  separate approved decision.
+  `expires_at`, `revoked_at`, `created_by`, and `created_at`. `expires_at` may
+  be `null` for no-expiry keys.
+- C-3 key lifecycle create/list/revoke is available to `system_admin` and the
+  selected Service's authorized `service_owner`.
+- `service_developer`, `service_operator`, and `auditor` cannot create or revoke
+  API keys.
+
+Runtime environment is resolved from the verified API key metadata. The client
+must not send an environment header. Admin API key creation chooses one of
+`dev`, `qa`, or `prod` after an active release exists for the selected Service
+and environment.
 
 The existing global `/admin/v1/api-keys` endpoints remain transitional for
 scripts and backward compatibility. New Admin UI C-3 work should use the
@@ -91,6 +102,8 @@ Request:
   "expires_in_days": 90
 }
 ```
+
+Use `"expires_in_days": null` to create a no-expiry key.
 
 Response:
 
@@ -295,11 +308,26 @@ Rules:
 - Explicit copy/export bundle actions may write
   `runtime_setup.guidance_generated`.
 
+## Admin UI Runtime Live Test
+
+The API Keys screen may provide a live test against `/v1/intent-route`.
+
+Rules:
+
+- The operator selects a key from inventory. The UI uses only selected key
+  metadata from inventory/runtime setup guidance.
+- The operator must manually input the API Secret for the request.
+- The UI must not store the API Secret in local storage, inventory state, audit
+  state, runtime setup guidance, or exported evidence.
+- The UI must clear live-test input on selected-Service or selected-key change.
+- The live test creates normal runtime log evidence with masked query behavior.
+- Failures must display runtime error code/message without echoing the secret.
+
 ## Optional Metadata-Only Validation Endpoint
 
 `POST /admin/v1/services/{service_id}/runtime-setup:validate` is future/not baseline.
-C-3 baseline uses checklist/docs guidance only and does not make a browser
-runtime sample call with the one-time secret.
+C-3 baseline uses checklist/docs guidance and the explicit live-test workflow
+above; metadata-only validation remains future/not baseline.
 
 Potential request:
 
@@ -395,11 +423,11 @@ Branch checklist:
 | Candidate source has no active release | 422 | Active release required for scoped runtime setup |
 | Unknown `allowed_intents` | 422 | Reject manual/internal ID entry |
 | Unknown `allowed_route_keys` | 422 | Reject manual/internal ID entry |
-| Invalid `environment` | 422 | Must match Service/environment policy |
-| `expires_in_days` outside policy | 422 | Prod default 90, max 180 recommended |
+| Invalid `environment` | 422 | Must be one of `dev`, `qa`, or `prod` |
+| `expires_in_days` outside policy | 422 | Null means no expiry; positive values must satisfy policy |
 | Duplicate active key with same scope | 201 | Allow rotation unless later policy changes |
 | Already revoked key | 200 | Idempotent current revoked metadata recommended |
-| Runtime wrong key/app/service/environment | 401 or 403 | Existing runtime auth contract |
+| Runtime key environment outside backend allowlist | 401 | Existing runtime auth contract |
 | Runtime disallowed route/intent | HTTP 200 | `decision=unauthorized` |
 | Runtime active release missing | 404 | `ACTIVE_RELEASE_NOT_FOUND` |
 
@@ -418,7 +446,7 @@ Required C-3 audit events:
   - Target: `target_type=api_key`, `target_id=key_id`.
   - State: previous and revoked metadata only, with no raw secret.
 
-Conditional future events:
+Conditional events:
 
 - `runtime_setup.guidance_generated`
   - Only if C-3 adds an explicit copy/export setup bundle action.
@@ -438,12 +466,14 @@ Existing evidence that remains part of C-3:
 
 ## DB And Schema Impact
 
-Baseline C-3 has no required migration. Existing schema is sufficient if
-candidate scope is validated at API time:
+Baseline C-3 uses existing runtime and audit tables, but the no-expiry API key
+option requires Alembic revision `0011_api_key_optional_expiry`:
 
 - `api_keys` already stores `key_hash`, `key_fingerprint`, `environment`,
   `app_id`, `service_id`, `allowed_intents`, `allowed_route_keys`, `status`,
   `expires_at`, `revoked_at`, `created_by`, and `created_at`.
+- `api_keys.expires_at` is nullable. `null` means the key does not expire until
+  revoked.
 - `runtime_logs` already stores trace, request, app, Service, release, decision,
   route, error, latency, and `query_masked` fields.
 - `audit_logs` already stores append-only actor, Service, target, before/after

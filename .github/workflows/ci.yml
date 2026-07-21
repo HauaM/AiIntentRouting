@@ -33,7 +33,7 @@ jobs:
       TEST_DATABASE_URL: postgresql+psycopg://intent:intent@127.0.0.1:55432/intent_routing
       ADMIN_BOOTSTRAP_TOKEN: ci-admin-token
       ADMIN_AUTH_MODE: trusted_headers
-      INTENT_ROUTING_ENVIRONMENT: dev
+      ALLOWED_RUNTIME_ENVIRONMENTS: dev,qa,prod
       RAW_TEXT_KEK_ID: ci-kek-001
       RAW_TEXT_KEK_BASE64: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       RAW_TEXT_LEGACY_KEKS_JSON: "{}"
@@ -87,7 +87,7 @@ jobs:
             --base-url http://127.0.0.1:8000 \
             --admin-token "${ADMIN_BOOTSTRAP_TOKEN}" \
             --service-id "${SERVICE_ID}" \
-            --environment "${INTENT_ROUTING_ENVIRONMENT}" \
+            --environment dev \
             --state-path "${STATE_PATH}" \
             --csv-tier standard \
             --required-preset balanced \

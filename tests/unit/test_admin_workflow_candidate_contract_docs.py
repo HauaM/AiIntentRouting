@@ -38,6 +38,12 @@ def test_workflow_candidate_contract_docs_exist_and_name_required_endpoints() ->
     for required_field in ["threshold_value", "key_fingerprint", "expires_at"]:
         assert required_field in contract_text
     assert "revoked_by" not in contract_text
+    assert (
+        "`environment`: optional release-owned environment: `dev`, `qa`, or `prod`."
+        in contract_text
+    )
+    assert "Omitted values default to `dev`." in contract_text
+    assert "`environment`: required release-owned environment" not in contract_text
 
     for phrase in [
         "Workflow candidate selectors",

@@ -42,10 +42,11 @@ def test_c3_runtime_setup_adr_records_accepted_decisions() -> None:
         "displayed once on create and never returned",
         "source=active_release",
         "`/api-keys` remains the selected-Service runtime setup workspace",
-        "no browser runtime sample call with the secret",
+        "explicit Admin UI\nlive-test workflow",
+        "operator manually enters an API Secret",
         "Runtime Logs show `query_masked` by default",
         "Audit Logs remain append-only evidence",
-        "without a required DB migration",
+        "0011_api_key_optional_expiry",
         "TEST_DATABASE_URL",
         "Alembic revision mismatch",
     ):
@@ -60,6 +61,7 @@ def test_c3_runtime_setup_contract_doc_defines_admin_api_and_runtime_guidance() 
         "## Service-Scoped API Key Lifecycle",
         "## Intent-Route Candidate Scope Contract",
         "## GET /admin/v1/services/{service_id}/runtime-setup",
+        "## Admin UI Runtime Live Test",
         "## Optional Metadata-Only Validation Endpoint",
         "## Dify And Client Setup Fields",
         "## Error Cases",
@@ -77,12 +79,17 @@ def test_c3_runtime_setup_contract_doc_defines_admin_api_and_runtime_guidance() 
         "GET /admin/v1/services/{service_id}/api-keys",
         "POST /admin/v1/services/{service_id}/api-keys",
         "POST /admin/v1/services/{service_id}/api-keys/{key_id}:revoke",
+        "C-3 key lifecycle create/list/revoke is available to `system_admin` and the\n"
+        "  selected Service's authorized `service_owner`.",
+        "`service_developer`, `service_operator`, and `auditor` cannot create or "
+        "revoke\n  API keys.",
         "`api_key` is present only in the create response",
         "`api_key` raw secret is never present in inventory",
         '"selected_key"',
         "`source=active_release`",
         "GET /admin/v1/services/{service_id}/runtime-setup",
         "future/not baseline",
+        "The operator must manually input the API Secret",
         "Authorization: Bearer {{intent_routing_api_key}}",
         "X-Key-Id",
         "X-App-Id",
@@ -96,7 +103,14 @@ def test_c3_runtime_setup_contract_doc_defines_admin_api_and_runtime_guidance() 
         "api_key.created",
         "api_key.revoked",
         "runtime_setup.guidance_generated",
-        "no required migration",
+        "0011_api_key_optional_expiry",
+        "`api_keys.expires_at` is nullable",
         "optional hardening",
     ):
         assert phrase in text
+
+    for stale_phrase in (
+        "C-3 baseline key lifecycle create/list/revoke requires `system_admin`",
+        "Future delegation to `service_owner` or `service_operator`",
+    ):
+        assert stale_phrase not in text

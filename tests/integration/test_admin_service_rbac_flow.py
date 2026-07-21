@@ -221,8 +221,12 @@ def test_application_admin_service_roles_can_read_assigned_service_logs(
 
             assert runtime_logs.status_code == 200, role
             assert runtime_logs.json() == []
-            assert audit_logs.status_code == 200, role
-            assert audit_logs.json() == []
+            if role in {"service_operator", "auditor"}:
+                assert audit_logs.status_code == 200, role
+                assert audit_logs.json() == []
+            else:
+                assert audit_logs.status_code == 403, role
+                assert audit_logs.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
 
         denied_runtime_logs = client.get(
             f"/admin/v1/services/{service_id}/runtime-logs",
@@ -384,7 +388,6 @@ def test_me_services_reflects_role_grant_and_revoke_from_membership_api(
             {
                 "service_id": service_id,
                 "display_name": f"RBAC {service_id}",
-                "environment": "test",
                 "status": "active",
                 "roles": ["service_developer"],
             }
@@ -615,6 +618,7 @@ def test_non_system_admin_cannot_grant_or_revoke_service_roles(
     unrelated_user = f"unrelated-c2-{uuid4().hex}"
     all_user_ids = [target_user, unrelated_user, *actor_by_role.values()]
     now = datetime.now(UTC)
+    system_admin_session_id: str | None = None
 
     _purge_rows(db_session, user_ids=all_user_ids, service_ids=[service_id])
     try:
@@ -649,11 +653,35 @@ def test_non_system_admin_cannot_grant_or_revoke_service_roles(
             now=now,
             grant_application_admin_access=False,
         )
+        (
+            system_admin_token,
+            _system_admin_user_id,
+            system_admin_session_id,
+        ) = _create_system_admin_session(
+            repository,
+            now=now,
+        )
         db_session.commit()
 
         client = _client(db_session)
 
+        system_admin_lookup_response = client.get(
+            f"/admin/v1/services/{service_id}/users",
+            cookies={ADMIN_SESSION_COOKIE_NAME: system_admin_token},
+            params={"query": target_user},
+        )
+        assert system_admin_lookup_response.status_code == 200
+        assert [user["user_id"] for user in system_admin_lookup_response.json()] == [
+            target_user
+        ]
+
+        role_by_actor = {user_id: role for role, user_id in actor_by_role.items()}
         for actor_user, token in tokens_by_actor.items():
+            lookup_response = client.get(
+                f"/admin/v1/services/{service_id}/users",
+                cookies={ADMIN_SESSION_COOKIE_NAME: token},
+                params={"query": target_user},
+            )
             grant_response = client.post(
                 f"/admin/v1/services/{service_id}/members/{target_user}/roles",
                 cookies={ADMIN_SESSION_COOKIE_NAME: token},
@@ -672,13 +700,22 @@ def test_non_system_admin_cannot_grant_or_revoke_service_roles(
                 assert grant_response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
                 assert revoke_response.status_code == 401, actor_user
                 assert revoke_response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
+            elif role_by_actor[actor_user] == "service_owner":
+                assert lookup_response.status_code == 200, actor_user
+                assert [user["user_id"] for user in lookup_response.json()] == [
+                    target_user
+                ]
+                assert grant_response.status_code == 200, actor_user
+                assert revoke_response.status_code == 200, actor_user
             else:
+                assert lookup_response.status_code == 403, actor_user
+                assert lookup_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
                 assert grant_response.status_code == 403, actor_user
                 assert grant_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
                 assert revoke_response.status_code == 403, actor_user
                 assert revoke_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
 
-        absent_grant_role = db_session.scalar(
+        granted_developer_role = db_session.scalar(
             select(models.UserServiceRole)
             .where(models.UserServiceRole.user_id == target_user)
             .where(models.UserServiceRole.service_id == service_id)
@@ -702,14 +739,25 @@ def test_non_system_admin_cannot_grant_or_revoke_service_roles(
                         ]
                     )
                 )
+                .order_by(models.AuditLog.created_at, models.AuditLog.audit_id)
             )
         )
 
-        assert absent_grant_role is None
-        assert existing_revoke_target_role is not None
-        assert membership_audit_logs == []
+        assert granted_developer_role is not None
+        assert existing_revoke_target_role is None
+        assert [log.event_type for log in membership_audit_logs] == [
+            "service_membership.role_granted",
+            "service_membership.role_revoked",
+        ]
     finally:
-        _purge_rows(db_session, user_ids=all_user_ids, service_ids=[service_id])
+        _purge_rows(
+            db_session,
+            user_ids=all_user_ids,
+            service_ids=[service_id],
+            session_only_session_ids=(
+                [system_admin_session_id] if system_admin_session_id is not None else None
+            ),
+        )
 
 
 def _client(db_session: Session) -> TestClient:
@@ -731,8 +779,6 @@ def _create_service(
     repository.create_service(
         service_id=service_id,
         display_name=f"RBAC {service_id}",
-        environment="test",
-        default_threshold_preset="balanced",
         max_input_tokens=256,
         status="active",
         created_by="integration-test",

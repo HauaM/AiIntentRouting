@@ -84,8 +84,6 @@ def test_repository_returns_catalog_version_diagnostic_stats(db_session: Session
     service = models.Service(
         service_id=f"diagnostics-service-{suffix}",
         display_name="Diagnostics Service",
-        environment="test",
-        default_threshold_preset="balanced",
         max_input_tokens=256,
         status="active",
         created_by="test",
@@ -241,8 +239,6 @@ def test_repository_distinguishes_stale_selected_vector_index(
     service = models.Service(
         service_id=f"diagnostics-stale-index-service-{suffix}",
         display_name="Diagnostics Stale Index Service",
-        environment="test",
-        default_threshold_preset="balanced",
         max_input_tokens=256,
         status="active",
         created_by="test",
@@ -356,8 +352,6 @@ def test_get_test_run_diagnostics_reports_stale_selected_vector_index(
     service = models.Service(
         service_id=f"diagnostics-api-stale-index-service-{suffix}",
         display_name="Diagnostics API Stale Index Service",
-        environment="test",
-        default_threshold_preset="balanced",
         max_input_tokens=256,
         status="active",
         created_by="test",
@@ -507,8 +501,6 @@ def test_get_test_run_diagnostics_reports_selected_catalog_readiness(
     service = models.Service(
         service_id=f"diagnostics-api-service-{suffix}",
         display_name="Diagnostics API Service",
-        environment="test",
-        default_threshold_preset="balanced",
         max_input_tokens=256,
         status="active",
         created_by="test",

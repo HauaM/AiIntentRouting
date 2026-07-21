@@ -18,7 +18,7 @@ import {
   grantServiceRole,
   listServiceMembers,
   revokeServiceRole,
-  searchAdminUsers,
+  searchServiceUsers,
 } from '@/services/adminServices';
 import {
   isCurrentServiceRequest,
@@ -108,7 +108,7 @@ export function ServiceMembershipPanel({
       setMembers([]);
       setMembershipError(
         isForbidden(error)
-          ? '멤버 목록을 보려면 system_admin 권한이 필요합니다.'
+          ? '멤버 목록을 보려면 system_admin 또는 Service owner 권한이 필요합니다.'
           : 'Service 멤버 목록을 불러오지 못했습니다.',
       );
     } finally {
@@ -151,7 +151,7 @@ export function ServiceMembershipPanel({
 
     setSearchingUsers(true);
     try {
-      const users = await searchAdminUsers({ query, limit: 25 });
+      const users = await searchServiceUsers(expectedServiceId, { query, limit: 25 });
       if (!isCurrentRequest()) return;
       setUserOptions(users.map(toUserOption));
     } catch (error) {
@@ -159,7 +159,7 @@ export function ServiceMembershipPanel({
       setUserOptions([]);
       message.error(
         isForbidden(error)
-          ? '관리자 계정 검색에는 system_admin 권한이 필요합니다.'
+          ? '관리자 계정 검색에는 system_admin 또는 Service owner 권한이 필요합니다.'
           : '관리자 계정을 검색하지 못했습니다.',
       );
     } finally {
@@ -321,7 +321,7 @@ export function ServiceMembershipPanel({
           <Alert
             type="info"
             showIcon
-            message="멤버십 관리는 system_admin 권한이 필요합니다"
+            message="멤버십 관리는 system_admin 또는 선택한 Service의 service_owner 권한이 필요합니다"
             description="선택한 Service의 멤버십을 조회할 수 있지만 역할 부여와 회수는 사용할 수 없습니다."
           />
         ) : null}

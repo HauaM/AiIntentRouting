@@ -150,8 +150,6 @@ def _create_service(client: TestClient, service_id: str) -> None:
         json={
             "service_id": service_id,
             "display_name": "Runtime Setup Service",
-            "environment": "dev",
-            "default_threshold_preset": "balanced",
             "max_input_tokens": 256,
         },
     )
@@ -436,6 +434,46 @@ def test_service_scoped_api_key_lifecycle_never_replays_secret(
         _purge_session_fixture(db_session, session_fixture)
 
 
+def test_service_scoped_api_key_can_be_created_without_expiry(
+    db_session: Session,
+) -> None:
+    client, session_fixture = _system_admin_client(db_session)
+    service_id = f"svc-runtime-no-expiry-{uuid4().hex}"
+    try:
+        _create_service(client, service_id)
+        _seed_active_release(db_session, service_id)
+
+        created = client.post(
+            f"/admin/v1/services/{service_id}/api-keys",
+            json=_api_key_payload(expires_in_days=None),
+        )
+
+        assert created.status_code == 201
+        created_body = created.json()
+        key_id = created_body["key_id"]
+        assert created_body["expires_at"] is None
+        persisted_key = db_session.get(models.ApiKey, key_id)
+        assert persisted_key is not None
+        assert persisted_key.expires_at is None
+
+        inventory = client.get(
+            f"/admin/v1/services/{service_id}/api-keys",
+            params={"environment": "dev", "status": "active"},
+        )
+        assert inventory.status_code == 200
+        assert inventory.json()[0]["expires_at"] is None
+
+        guidance = client.get(
+            f"/admin/v1/services/{service_id}/runtime-setup",
+            params={"environment": "dev", "app_id": "dify-helpdesk", "key_id": key_id},
+        )
+        assert guidance.status_code == 200
+        assert guidance.json()["selected_key"]["expires_at"] is None
+    finally:
+        _purge_rows(db_session, service_ids=[service_id])
+        _purge_session_fixture(db_session, session_fixture)
+
+
 def test_service_scoped_key_creation_requires_active_release_candidates(
     db_session: Session,
 ) -> None:
@@ -470,13 +508,13 @@ def test_service_scoped_key_creation_requires_active_release_candidates(
         assert unknown_route.status_code == 422
         assert "allowed_route_keys" in unknown_route.json()["error"]["message"]
         assert wrong_environment.status_code == 422
-        assert "environment" in wrong_environment.json()["error"]["message"]
+        assert "active release" in wrong_environment.json()["error"]["message"].lower()
     finally:
         _purge_rows(db_session, service_ids=[service_id])
         _purge_session_fixture(db_session, session_fixture)
 
 
-def test_application_admin_service_developer_can_manage_assigned_service_api_keys(
+def test_application_admin_service_developer_cannot_manage_assigned_service_api_keys(
     db_session: Session,
 ) -> None:
     system_admin_client, system_admin_session_fixture = _system_admin_client(db_session)
@@ -504,10 +542,8 @@ def test_application_admin_service_developer_can_manage_assigned_service_api_key
             json=_api_key_payload(),
         )
 
-        assert created.status_code == 201
-        created_body = created.json()
-        key_id = created_body["key_id"]
-        assert created_body["service_id"] == service_a
+        assert created.status_code == 403
+        assert created.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
 
         inventory = client.get(
             f"/admin/v1/services/{service_a}/api-keys",
@@ -515,10 +551,7 @@ def test_application_admin_service_developer_can_manage_assigned_service_api_key
         )
         guidance = client.get(
             f"/admin/v1/services/{service_a}/runtime-setup",
-            params={"environment": "dev", "app_id": "dify-helpdesk", "key_id": key_id},
-        )
-        revoked = client.post(
-            f"/admin/v1/services/{service_a}/api-keys/{key_id}:revoke",
+            params={"environment": "dev"},
         )
         denied_other_create = client.post(
             f"/admin/v1/services/{service_b}/api-keys",
@@ -536,13 +569,9 @@ def test_application_admin_service_developer_can_manage_assigned_service_api_key
             ),
         )
 
-        assert inventory.status_code == 200
-        assert any(row["key_id"] == key_id for row in inventory.json())
-        assert guidance.status_code == 200
-        assert guidance.json()["selected_key"]["key_id"] == key_id
-        assert revoked.status_code == 200
-        assert revoked.json()["status"] == "revoked"
         for denied in (
+            inventory,
+            guidance,
             denied_other_create,
             denied_other_list,
             denied_other_guidance,

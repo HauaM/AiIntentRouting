@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from intent_routing.api.dependencies import (
     AuthContext,
-    get_runtime_environment,
     require_api_key,
 )
 from intent_routing.db.repositories import IntentRoutingRepository
@@ -90,7 +89,6 @@ def intent_route(
     runtime_request: RuntimeRequest,
     auth: Annotated[AuthContext, Depends(require_api_key)],
     session: Annotated[Session, Depends(get_runtime_session)],
-    environment: Annotated[str, Depends(get_runtime_environment)],
     example_search: Annotated[ExampleSearch, Depends(get_example_search)],
 ) -> RuntimeResponse:
     trace_id = build_trace_id()
@@ -103,7 +101,7 @@ def intent_route(
         release = _load_active_release(
             repository,
             service_id=auth.service_id,
-            environment=environment,
+            environment=auth.environment,
         )
         route_scope = RouteScope(
             allowed_intents=auth.allowed_intents,
@@ -133,6 +131,7 @@ def intent_route(
             request_id=auth.request_id,
             app_id=auth.app_id,
             service_id=auth.service_id,
+            environment=auth.environment,
             release=release,
             decision=decision,
             query_raw=runtime_request.query,
@@ -148,6 +147,7 @@ def intent_route(
             request_id=auth.request_id,
             app_id=auth.app_id,
             service_id=auth.service_id,
+            environment=auth.environment,
             release=exc.release if exc.release is not None else release,
             query=runtime_request.query,
             error=RuntimeErrorLog(
@@ -168,6 +168,7 @@ def intent_route(
             request_id=auth.request_id,
             app_id=auth.app_id,
             service_id=auth.service_id,
+            environment=auth.environment,
             release=release,
             query=runtime_request.query,
             error=RuntimeErrorLog(
@@ -188,6 +189,7 @@ def intent_route(
             request_id=auth.request_id,
             app_id=auth.app_id,
             service_id=auth.service_id,
+            environment=auth.environment,
             release=release,
             query=runtime_request.query,
             error=RuntimeErrorLog(
@@ -468,6 +470,7 @@ def _log_and_raise(
     request_id: str | None,
     app_id: str | None,
     service_id: str | None,
+    environment: str | None,
     release: ActiveReleaseContext | None,
     query: str | None,
     error: RuntimeErrorLog,
@@ -493,6 +496,7 @@ def _log_and_raise(
             request_id=request_id,
             app_id=app_id,
             service_id=service_id,
+            environment=environment,
             release=release,
             error=error,
             http_status=http_status,

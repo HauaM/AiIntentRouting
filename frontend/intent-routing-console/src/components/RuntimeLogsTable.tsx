@@ -6,12 +6,13 @@ import { fetchRuntimeLog, listRuntimeLogs } from '@/services/adminServices';
 
 type RuntimeLogsTableProps = {
   serviceId: string;
+  environment?: 'dev' | 'qa' | 'prod';
 };
 
 const runtimeDecisionStatus = (decision?: string | null) =>
   decision === 'risk' ? 'risk' : decision ?? 'none';
 
-export function RuntimeLogsTable({ serviceId }: RuntimeLogsTableProps) {
+export function RuntimeLogsTable({ serviceId, environment }: RuntimeLogsTableProps) {
   const [selected, setSelected] = useState<API.RuntimeLog>();
   const [open, setOpen] = useState(false);
 
@@ -41,6 +42,17 @@ export function RuntimeLogsTable({ serviceId }: RuntimeLogsTableProps) {
       dataIndex: 'query_masked',
       search: false,
       render: (text) => <span className="masked-query">{text}</span>,
+    },
+    {
+      title: 'Environment',
+      dataIndex: 'environment',
+      width: 120,
+      render: (_, row) =>
+        row.environment ? (
+          <StatusTag status={row.environment} label={row.environment} />
+        ) : (
+          '환경 미상'
+        ),
     },
     {
       title: 'Route',
@@ -77,7 +89,8 @@ export function RuntimeLogsTable({ serviceId }: RuntimeLogsTableProps) {
       <ProTable<API.RuntimeLog>
         rowKey="trace_id"
         columns={columns}
-        request={(params) => listRuntimeLogs(serviceId, params)}
+        request={(params) => listRuntimeLogs(serviceId, { ...params, environment })}
+        params={{ serviceId, environment }}
         pagination={false}
         locale={{
           emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No recent runtime logs" />,

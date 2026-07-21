@@ -7,6 +7,7 @@ from os import environ as process_environ
 from typing import Any
 
 DEFAULT_RAW_TEXT_KEK_ID = "local-kek-001"
+SUPPORTED_RUNTIME_ENVIRONMENTS = frozenset({"dev", "qa", "prod"})
 
 
 class RawTextKeyringConfigError(ValueError):
@@ -15,6 +16,29 @@ class RawTextKeyringConfigError(ValueError):
 
 class MissingRawTextKekError(RawTextKeyringConfigError):
     pass
+
+
+class RuntimeEnvironmentConfigError(ValueError):
+    """Raised when runtime environment allowlist configuration is invalid."""
+
+
+def get_allowed_runtime_environments(
+    environ: Mapping[str, str] | None = None,
+) -> frozenset[str]:
+    env = process_environ if environ is None else environ
+    values = frozenset(
+        value.strip()
+        for value in env.get("ALLOWED_RUNTIME_ENVIRONMENTS", "dev,qa,prod").split(",")
+        if value.strip()
+    )
+    unknown = values - SUPPORTED_RUNTIME_ENVIRONMENTS
+    if unknown:
+        raise RuntimeEnvironmentConfigError(
+            "unsupported runtime environment values: " + ", ".join(sorted(unknown))
+        )
+    if not values:
+        raise RuntimeEnvironmentConfigError("ALLOWED_RUNTIME_ENVIRONMENTS must not be empty")
+    return values
 
 
 @dataclass(frozen=True, slots=True)

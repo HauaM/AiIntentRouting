@@ -25,9 +25,9 @@ class CatalogVersionDiff:
     added_intents: list[str]
     removed_intents: list[str]
     changed_intents: list[str]
-    added_examples: list[str]
-    removed_examples: list[str]
-    changed_examples: list[str]
+    added_examples: list[dict[str, str]]
+    removed_examples: list[dict[str, str]]
+    changed_examples: list[dict[str, str]]
 
 
 def next_display_version(repository: IntentRoutingRepository, service_id: str) -> str:
@@ -162,9 +162,15 @@ def build_catalog_version_diff(
         added_intents=sorted(set(after[0]) - set(before[0])),
         removed_intents=sorted(set(before[0]) - set(after[0])),
         changed_intents=_changed(before[0], after[0]),
-        added_examples=sorted(set(after[1]) - set(before[1])),
-        removed_examples=sorted(set(before[1]) - set(after[1])),
-        changed_examples=_changed(before[1], after[1]),
+        added_examples=_example_diff_entries(
+            sorted(set(after[1]) - set(before[1])), after[1]
+        ),
+        removed_examples=_example_diff_entries(
+            sorted(set(before[1]) - set(after[1])), before[1]
+        ),
+        changed_examples=_example_diff_entries(
+            _changed_examples(before[1], after[1]), after[1]
+        ),
     )
 
 
@@ -211,7 +217,9 @@ def _vector_index_version_id(
     return f"{prefix}{max(numbers, default=0) + 1:03d}"
 
 
-def _snapshot_items(snapshot: object) -> tuple[dict[str, object], dict[str, object]]:
+def _snapshot_items(
+    snapshot: object,
+) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
     if not isinstance(snapshot, dict):
         return {}, {}
     intents = snapshot.get("intents", [])
@@ -222,15 +230,58 @@ def _snapshot_items(snapshot: object) -> tuple[dict[str, object], dict[str, obje
         for item in intents
         if isinstance(item, dict) and "intent_id" in item
     }
-    examples: dict[str, object] = {
-        str(example["example_id"]): example
-        for item in intents
-        if isinstance(item, dict) and isinstance(item.get("examples"), list)
-        for example in item["examples"]
-        if isinstance(example, dict) and "example_id" in example
-    }
+    examples: dict[str, dict[str, object]] = {}
+    for item in intents:
+        if not isinstance(item, dict) or not isinstance(item.get("examples"), list):
+            continue
+        for example in item["examples"]:
+            if not isinstance(example, dict) or "example_id" not in example:
+                continue
+            examples[str(example["example_id"])] = {
+                **example,
+                "intent_id": item.get("intent_id"),
+                "intent_display_name": item.get("display_name"),
+                "route_key": item.get("route_key"),
+            }
     return intent_items, examples
 
 
 def _changed(before: dict[str, object], after: dict[str, object]) -> list[str]:
     return sorted(key for key in set(before) & set(after) if before[key] != after[key])
+
+
+def _changed_examples(
+    before: dict[str, dict[str, object]],
+    after: dict[str, dict[str, object]],
+) -> list[str]:
+    return sorted(
+        key
+        for key in set(before) & set(after)
+        if _example_comparison_state(before[key]) != _example_comparison_state(after[key])
+    )
+
+
+def _example_comparison_state(example: dict[str, object]) -> dict[str, object]:
+    return {
+        "intent_id": example.get("intent_id"),
+        "example_type": example.get("example_type"),
+        "text_masked": example.get("text_masked"),
+        "approved": example.get("approved"),
+    }
+
+
+def _example_diff_entries(
+    example_ids: list[str],
+    examples: dict[str, dict[str, object]],
+) -> list[dict[str, str]]:
+    return [
+        {
+            "intent_id": str(example.get("intent_id") or "-"),
+            "intent_display_name": str(example.get("intent_display_name") or "-"),
+            "route_key": str(example.get("route_key") or "-"),
+            "example_type": str(example.get("example_type") or "-"),
+            "text_masked": str(example.get("text_masked") or "-"),
+        }
+        for example_id in example_ids
+        if (example := examples.get(example_id)) is not None
+    ]

@@ -20,6 +20,7 @@ MASKED_RUNTIME_LOG_FIELD_NAMES = (
     "request_id",
     "app_id",
     "service_id",
+    "environment",
     "release_version",
     "policy_version",
     "intent_catalog_version",
@@ -2312,6 +2313,19 @@ class IntentRoutingRepository:
             .where(models.Release.release_version == release_version)
         )
 
+    def get_release_for_test_run_environment(
+        self,
+        service_id: str,
+        environment: str,
+        test_run_id: str,
+    ) -> models.Release | None:
+        return self.session.scalar(
+            select(models.Release)
+            .where(models.Release.service_id == service_id)
+            .where(models.Release.environment == environment)
+            .where(models.Release.test_run_id == test_run_id)
+        )
+
     def list_releases(
         self,
         service_id: str,
@@ -2627,6 +2641,7 @@ class IntentRoutingRepository:
         self,
         service_id: str,
         *,
+        environment: str | None = None,
         window_hours: int,
     ) -> dict[str, Any]:
         from intent_routing.ops.metrics import runtime_metrics_for_service
@@ -2634,6 +2649,7 @@ class IntentRoutingRepository:
         return runtime_metrics_for_service(
             self.session,
             service_id,
+            environment=environment,
             window_hours=window_hours,
         )
 
@@ -2706,14 +2722,16 @@ class IntentRoutingRepository:
         self,
         service_id: str,
         *,
+        environment: str | None = None,
         limit: int,
     ) -> list[Mapping[str, Any]]:
         columns = _masked_runtime_log_columns()
+        statement = select(*columns).where(models.RuntimeLog.service_id == service_id)
+        if environment is not None:
+            statement = statement.where(models.RuntimeLog.environment == environment)
         rows = (
             self.session.execute(
-                select(*columns)
-                .where(models.RuntimeLog.service_id == service_id)
-                .order_by(
+                statement.order_by(
                     models.RuntimeLog.created_at.desc(),
                     models.RuntimeLog.trace_id,
                 )
@@ -2729,6 +2747,7 @@ class IntentRoutingRepository:
         service_id: str,
         *,
         trace_id: str | None = None,
+        environment: str | None = None,
         limit: int = 500,
     ) -> list[Mapping[str, Any]]:
         statement = select(*_masked_runtime_log_columns()).where(
@@ -2736,6 +2755,8 @@ class IntentRoutingRepository:
         )
         if trace_id is not None:
             statement = statement.where(models.RuntimeLog.trace_id == trace_id)
+        if environment is not None:
+            statement = statement.where(models.RuntimeLog.environment == environment)
         rows = self.session.execute(
             statement.order_by(
                 models.RuntimeLog.created_at.desc(),

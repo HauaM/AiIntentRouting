@@ -507,8 +507,6 @@ def test_repository_ensures_and_deletes_user_service_roles(
         repository.create_service(
             service_id=service_id,
             display_name="Repository Membership Service",
-            environment="test",
-            default_threshold_preset="balanced",
             max_input_tokens=256,
             status="active",
             created_by="test",

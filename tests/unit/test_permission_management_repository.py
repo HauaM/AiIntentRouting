@@ -485,8 +485,6 @@ def test_repository_lists_permission_service_role_summaries_with_metadata_and_fi
         repository.create_service(
             service_id=service_id,
             display_name="Repository Service Roles Service",
-            environment="test",
-            default_threshold_preset="balanced",
             max_input_tokens=256,
             status="active",
             created_by="unit-test",
@@ -496,8 +494,6 @@ def test_repository_lists_permission_service_role_summaries_with_metadata_and_fi
         repository.create_service(
             service_id=other_service_id,
             display_name="Repository Service Roles Other Service",
-            environment="test",
-            default_threshold_preset="balanced",
             max_input_tokens=256,
             status="active",
             created_by="unit-test",
@@ -685,8 +681,6 @@ def test_repository_lists_permission_admin_user_summaries_with_metadata_and_risk
         repository.create_service(
             service_id=service_id,
             display_name="Permission Repository Service",
-            environment="test",
-            default_threshold_preset="balanced",
             max_input_tokens=256,
             status="active",
             created_by="unit-test",

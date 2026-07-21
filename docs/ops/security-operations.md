@@ -78,7 +78,7 @@ uv run python scripts/export_ops_evidence.py \
   --out-dir var/evidence/${SERVICE_ID}/ops \
   --window-hours 24 \
   --actor-id ops-evidence \
-  --environment ${INTENT_ROUTING_ENVIRONMENT:-dev}
+  --environment dev
 ```
 
 ## Raw query decrypt

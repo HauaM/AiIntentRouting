@@ -32,7 +32,7 @@ docker compose up -d postgres
 export DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:5432/intent_routing
 export TEST_DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:5432/intent_routing
 export ADMIN_BOOTSTRAP_TOKEN=ci-admin-token
-export INTENT_ROUTING_ENVIRONMENT=dev
+export ALLOWED_RUNTIME_ENVIRONMENTS=dev,qa,prod
 export RAW_TEXT_KEK_ID=ci-kek-001
 export RAW_TEXT_KEK_BASE64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 export RAW_TEXT_LEGACY_KEKS_JSON="{}"
@@ -63,7 +63,7 @@ uv run python scripts/run_pilot_e2e_smoke.py \
   --base-url http://127.0.0.1:8000 \
   --admin-token "${ADMIN_BOOTSTRAP_TOKEN}" \
   --service-id "${SERVICE_ID}" \
-  --environment "${INTENT_ROUTING_ENVIRONMENT}" \
+  --environment dev \
   --state-path "var/pilot/${SERVICE_ID}.state.secret.json" \
   --csv-tier standard \
   --required-preset balanced \

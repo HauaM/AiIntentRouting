@@ -26,7 +26,7 @@ class ApiKeyRecord:
     allowed_intents: list[str]
     allowed_route_keys: list[str]
     status: str
-    expires_at: datetime
+    expires_at: datetime | None
     revoked_at: datetime | None
 
 

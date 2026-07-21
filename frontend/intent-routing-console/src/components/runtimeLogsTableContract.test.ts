@@ -16,4 +16,11 @@ describe('RuntimeLogsTable contract', () => {
     expect(text).not.toContain('row-risk');
     expect(text).not.toContain('query_raw');
   });
+
+  it('renders a null environment as 환경 미상', () => {
+    const text = source();
+
+    expect(text).toContain("dataIndex: 'environment'");
+    expect(text).toContain('환경 미상');
+  });
 });

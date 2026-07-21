@@ -29,10 +29,6 @@ class Service(Base):
 
     service_id: Mapped[str] = mapped_column(Text, primary_key=True)
     display_name: Mapped[str] = mapped_column(Text)
-    environment: Mapped[str] = mapped_column(Text)
-    default_threshold_preset: Mapped[str] = mapped_column(
-        Text, server_default=text("'balanced'")
-    )
     max_input_tokens: Mapped[int] = mapped_column(server_default=text("256"))
     status: Mapped[str] = mapped_column(Text, server_default=text("'active'"))
     created_by: Mapped[str] = mapped_column(Text)
@@ -52,7 +48,7 @@ class ApiKey(Base):
     allowed_intents: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     allowed_route_keys: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     status: Mapped[str] = mapped_column(Text)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -568,6 +564,8 @@ class Release(Base):
     released_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     rollback_target: Mapped[str | None] = mapped_column(Text)
 
+    __table_args__ = (UniqueConstraint("service_id", "environment", "test_run_id"),)
+
 
 class RuntimeLog(Base):
     __tablename__ = "runtime_logs"
@@ -576,6 +574,7 @@ class RuntimeLog(Base):
     request_id: Mapped[str | None] = mapped_column(Text)
     app_id: Mapped[str | None] = mapped_column(Text)
     service_id: Mapped[str | None] = mapped_column(Text)
+    environment: Mapped[str | None] = mapped_column(Text)
     release_version: Mapped[str | None] = mapped_column(Text)
     policy_version: Mapped[str | None] = mapped_column(Text)
     intent_catalog_version: Mapped[str | None] = mapped_column(Text)

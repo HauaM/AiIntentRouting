@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from importlib import import_module
@@ -15,7 +16,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from intent_routing.api.dependencies import get_api_key_lookup, get_runtime_environment
+from intent_routing.api.dependencies import get_api_key_lookup
 from intent_routing.db import models
 from intent_routing.db.repositories import ExampleSearchResult, IntentRoutingRepository
 from intent_routing.embedding.fake import FakeEmbeddingProvider
@@ -81,12 +82,9 @@ def _record_for(
 
 def _client_with_key_lookup(
     lookup: Any,
-    *,
-    environment: str = "prod",
 ) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_api_key_lookup] = lambda: lookup
-    app.dependency_overrides[get_runtime_environment] = lambda: environment
     return TestClient(app)
 
 
@@ -220,11 +218,10 @@ def test_intent_route_wrong_secret_returns_authentication_failed() -> None:
     assert response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
 
 
-def test_intent_route_environment_mismatch_returns_authentication_failed() -> None:
+def test_intent_route_unsupported_api_key_environment_returns_authentication_failed() -> None:
     secret = "valid-runtime-secret"
     client = _client_with_key_lookup(
-        lambda _key_id: _record_for(secret, environment="dev"),
-        environment="prod",
+        lambda _key_id: _record_for(secret, environment="test"),
     )
 
     response = client.post(
@@ -316,6 +313,22 @@ def test_intent_route_expired_key_returns_authentication_failed() -> None:
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
+
+
+def test_intent_route_unlimited_key_is_not_treated_as_expired() -> None:
+    secret = "unlimited-runtime-secret"
+    client = _client_with_key_lookup(
+        lambda _key_id: replace(_record_for(secret), expires_at=None)
+    )
+
+    response = client.post(
+        "/v1/intent-route",
+        headers=_headers(secret, **{"X-Service-Id": "svc-b"}),
+        json=_runtime_payload(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
 
 
 def test_intent_route_revoked_key_returns_authentication_failed() -> None:
@@ -917,6 +930,81 @@ def test_intent_route_uses_release_catalog_version_and_model_for_semantic_search
     }
 
 
+def test_intent_route_selects_active_release_by_api_key_environment_not_process_env(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prod_secret = _seed_runtime_state(db_session)
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(db_session)
+    qa_secret = "irt_runtime_qa_secret"
+    qa_key_id = "key-live-it-runtime-helpdesk-qa"
+    qa_release_version = "rel-it-runtime-helpdesk-20260625-qa-001"
+    repository.create_api_key(
+        key_id=qa_key_id,
+        key_hash=hash_secret(qa_secret),
+        key_fingerprint=fingerprint_secret(qa_secret),
+        environment="qa",
+        app_id=APP_ID,
+        service_id=SERVICE_ID,
+        allowed_intents=[],
+        allowed_route_keys=[],
+        status="active",
+        expires_at=now + timedelta(days=30),
+        revoked_at=None,
+        created_by="runtime-test",
+        created_at=now,
+    )
+    repository.create_release(
+        release_version=qa_release_version,
+        service_id=SERVICE_ID,
+        environment="qa",
+        policy_version="pol-it-runtime-helpdesk-20260625-001",
+        intent_catalog_version="cat-it-runtime-helpdesk-20260625-001",
+        model_version="emb-fake-v1",
+        vector_index_version="vec-it-runtime-helpdesk-20260625-001",
+        test_dataset_version="ds-it-runtime-helpdesk-20260625-001",
+        test_run_id="tr-it-runtime-helpdesk-20260625-001",
+        pass_rate=Decimal("0.95"),
+        risk_pass_rate=Decimal("1.00"),
+        active=True,
+        released_by="runtime-test",
+        released_at=now,
+        rollback_target=None,
+    )
+    db_session.commit()
+    client = _runtime_client(db_session, monkeypatch)
+
+    prod_response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(prod_secret, request_id="req-runtime-env-prod"),
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+    qa_response = client.post(
+        "/v1/intent-route",
+        headers=_runtime_headers(
+            qa_secret,
+            key_id=qa_key_id,
+            request_id="req-runtime-env-qa",
+        ),
+        json=_dify_request(query="api timeout gateway incident latency"),
+    )
+
+    assert prod_response.status_code == 200
+    assert prod_response.json()["release_version"] == RELEASE_VERSION
+    assert qa_response.status_code == 200
+    assert qa_response.json()["release_version"] == qa_release_version
+
+    prod_log = _runtime_log(db_session, prod_response.json()["trace_id"])
+    qa_log = _runtime_log(db_session, qa_response.json()["trace_id"])
+    assert prod_log is not None
+    assert prod_log.environment == "prod"
+    assert prod_log.release_version == RELEASE_VERSION
+    assert qa_log is not None
+    assert qa_log.environment == "qa"
+    assert qa_log.release_version == qa_release_version
+
+
 def test_intent_route_provider_release_model_mismatch_returns_service_unavailable(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -1251,18 +1339,24 @@ def _runtime_client(
         yield db_session
 
     app.dependency_overrides[get_api_key_lookup] = lambda: runtime_lookup
-    app.dependency_overrides[get_runtime_environment] = lambda: "prod"
     app.dependency_overrides[runtime_module.get_runtime_session] = override_runtime_session
     app.state.runtime_log_session_factory = override_runtime_log_session
     return TestClient(app, raise_server_exceptions=raise_server_exceptions)
 
 
-def _runtime_headers(secret: str, *, request_id: str | None = None) -> dict[str, str]:
+def _runtime_headers(
+    secret: str,
+    *,
+    key_id: str = KEY_ID,
+    app_id: str = APP_ID,
+    service_id: str = SERVICE_ID,
+    request_id: str | None = None,
+) -> dict[str, str]:
     headers = {
         "Authorization": f"Bearer {secret}",
-        "X-Key-Id": KEY_ID,
-        "X-App-Id": APP_ID,
-        "X-Service-Id": SERVICE_ID,
+        "X-Key-Id": key_id,
+        "X-App-Id": app_id,
+        "X-Service-Id": service_id,
     }
     if request_id is not None:
         headers["X-Request-Id"] = request_id
@@ -1298,8 +1392,6 @@ def _seed_runtime_state(
     repository.create_service(
         service_id=SERVICE_ID,
         display_name="IT Helpdesk",
-        environment="prod",
-        default_threshold_preset="balanced",
         max_input_tokens=256,
         status="active",
         created_by="runtime-test",

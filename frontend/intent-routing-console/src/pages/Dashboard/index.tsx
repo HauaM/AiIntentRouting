@@ -1,6 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useModel } from '@umijs/max';
-import { Alert, Button, Card, Col, Row, Segmented, Skeleton, Space, Statistic, Table } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  Row,
+  Segmented,
+  Select,
+  Skeleton,
+  Space,
+  Statistic,
+  Table,
+} from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
@@ -15,12 +27,22 @@ const windowOptions = [
   { label: '31d', value: 744 },
 ];
 
+const environmentOptions = [
+  { label: '전체 환경', value: '' },
+  { label: 'dev', value: 'dev' },
+  { label: 'qa', value: 'qa' },
+  { label: 'prod', value: 'prod' },
+];
+
 export default function DashboardPage() {
   const { session } = useModel('adminSession');
   const [windowHours, setWindowHours] = useState<number>(24);
+  const [selectedEnvironment, setSelectedEnvironment] =
+    useState<'dev' | 'qa' | 'prod' | ''>('');
   const [metrics, setMetrics] = useState<API.RuntimeMetrics>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const metricRequestSeqRef = useRef(0);
   const ready = isAdminSessionReady(session);
   const scopedMetrics = getScopedRuntimeMetrics({
     metrics,
@@ -35,16 +57,25 @@ export default function DashboardPage() {
 
   const loadMetrics = useCallback(async () => {
     if (!ready) return;
+    const requestSeq = (metricRequestSeqRef.current += 1);
     setLoading(true);
     setError(undefined);
+    setMetrics(undefined);
     try {
-      setMetrics(await fetchRuntimeMetrics(session.serviceId, windowHours));
+      const nextMetrics = await fetchRuntimeMetrics(
+        session.serviceId,
+        windowHours,
+        selectedEnvironment || undefined,
+      );
+      if (requestSeq !== metricRequestSeqRef.current) return;
+      setMetrics(nextMetrics);
     } catch (err: any) {
+      if (requestSeq !== metricRequestSeqRef.current) return;
       setError(err?.message ?? 'Failed to load runtime metrics.');
     } finally {
-      setLoading(false);
+      if (requestSeq === metricRequestSeqRef.current) setLoading(false);
     }
-  }, [ready, session.serviceId, windowHours]);
+  }, [ready, selectedEnvironment, session.serviceId, windowHours]);
 
   useEffect(() => {
     loadMetrics();
@@ -81,6 +112,13 @@ export default function DashboardPage() {
         {viewState === 'session-required' ? <AdminSessionRequired /> : null}
         {viewState === 'session-required' ? null : (
           <div className="toolbar-line">
+            <Select
+              aria-label="Environment"
+              value={selectedEnvironment}
+              options={environmentOptions}
+              onChange={setSelectedEnvironment}
+              style={{ width: 180 }}
+            />
             <Segmented
               options={windowOptions}
               value={windowHours}

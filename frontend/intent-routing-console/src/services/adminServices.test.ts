@@ -32,6 +32,7 @@ import {
   listManagedAdminUsers,
   listExamples,
   listIntentRouteCandidates,
+  listRuntimeLogs,
   listOrganizationUsers,
   listPermissionAdminUsers,
   listPermissionAuditLogs,
@@ -54,10 +55,12 @@ import {
   revokeApiKey,
   deleteDepartment,
   deleteOrganizationUser,
+  fetchRuntimeMetrics,
   revokeServiceRole,
   revokeServiceApiKey,
   rollbackRelease,
   searchAdminUsers,
+  searchServiceUsers,
   transferSystemAdmin,
   loadCatalogVersionToDraft,
 } from './adminServices';
@@ -78,8 +81,6 @@ describe('admin service Phase 1 write flow requests', () => {
     const payload: API.ServiceCreateRequest = {
       service_id: 'svc-c1-onboarding',
       display_name: 'C1 Onboarding',
-      environment: 'dev',
-      default_threshold_preset: 'balanced',
       max_input_tokens: 256,
     };
 
@@ -370,8 +371,27 @@ describe('admin service Phase 1 write flow requests', () => {
     }
   });
 
-  it('uses C-2 membership endpoints without trusted headers', async () => {
+  it('omits the runtime log environment query parameter when environment is undefined', async () => {
+    requestMock.mockResolvedValueOnce([]);
+
+    await listRuntimeLogs('svc/admin', { environment: undefined });
+
+    const [url, options] = requestMock.mock.calls[0] as unknown as [
+      string,
+      { method: string; params?: Record<string, unknown> },
+    ];
+    expect(requestMock).toHaveBeenCalledTimes(1);
+    expect(url).toBe('/services/svc%2Fadmin/runtime-logs');
+    expect(options).toMatchObject({
+      method: 'GET',
+      params: { limit: 100 },
+    });
+    expect(Object.keys(options.params ?? {})).not.toContain('environment');
+  });
+
+  it('uses scoped membership endpoints without trusted headers', async () => {
     await searchAdminUsers({ query: 'developer@example.com' });
+    await searchServiceUsers('svc/admin', { query: 'developer@example.com' });
     await listServiceMembers('svc/admin');
     await grantServiceRole('svc/admin', 'user/a', { role: 'service_developer' });
     await revokeServiceRole('svc/admin', 'user/a', 'service_developer');
@@ -382,11 +402,19 @@ describe('admin service Phase 1 write flow requests', () => {
     });
     expect(requestMock).toHaveBeenNthCalledWith(
       2,
+      '/services/svc%2Fadmin/users',
+      {
+        method: 'GET',
+        params: { query: 'developer@example.com', limit: 25 },
+      },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      3,
       '/services/svc%2Fadmin/members',
       { method: 'GET' },
     );
     expect(requestMock).toHaveBeenNthCalledWith(
-      3,
+      4,
       '/services/svc%2Fadmin/members/user%2Fa/roles',
       {
         method: 'POST',
@@ -394,7 +422,7 @@ describe('admin service Phase 1 write flow requests', () => {
       },
     );
     expect(requestMock).toHaveBeenNthCalledWith(
-      4,
+      5,
       '/services/svc%2Fadmin/members/user%2Fa/roles/service_developer',
       { method: 'DELETE' },
     );
@@ -404,6 +432,22 @@ describe('admin service Phase 1 write flow requests', () => {
     for (const [, options] of calls) {
       expect(options).not.toHaveProperty('headers');
     }
+  });
+
+  it('filters runtime metrics by environment only when one is selected', async () => {
+    await fetchRuntimeMetrics('svc/admin', 24, 'qa');
+    await fetchRuntimeMetrics('svc/admin', 24);
+
+    expect(requestMock).toHaveBeenNthCalledWith(
+      1,
+      '/services/svc%2Fadmin/runtime-metrics',
+      { method: 'GET', params: { window_hours: 24, environment: 'qa' } },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      2,
+      '/services/svc%2Fadmin/runtime-metrics',
+      { method: 'GET', params: { window_hours: 24 } },
+    );
   });
 
   it('uses organization directory endpoints without trusted headers', async () => {
@@ -659,6 +703,80 @@ describe('admin service Phase 1 write flow requests', () => {
       '/services/svc%2Fadmin/catalog-versions/cat%2Fv2:load-to-draft',
       { method: 'POST' },
     );
+  });
+
+  it('hydrates legacy catalog version diff example ids from catalog snapshots', async () => {
+    requestMock
+      .mockResolvedValueOnce({
+        service_id: 'svc/admin',
+        from_version: 'cat/v1',
+        to_version: 'cat/v2',
+        added_intents: [],
+        removed_intents: [],
+        changed_intents: [],
+        added_examples: ['ex-added'],
+        removed_examples: ['ex-removed'],
+        changed_examples: [],
+      })
+      .mockResolvedValueOnce({
+        snapshot: {
+          intents: [
+            {
+              intent_id: 't1',
+              display_name: '테스트 문의',
+              route_key: 'test.route',
+              examples: [
+                {
+                  example_id: 'ex-added',
+                  example_type: 'positive',
+                  text_masked: '추가된 예시 내용',
+                },
+              ],
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        snapshot: {
+          intents: [
+            {
+              intent_id: 't1',
+              display_name: '테스트 문의',
+              route_key: 'test.route',
+              examples: [
+                {
+                  example_id: 'ex-removed',
+                  example_type: 'negative',
+                  text_masked: '삭제된 예시 내용',
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+    const diff = await fetchCatalogVersionDiff('svc/admin', 'cat/v2', {
+      compare_to: 'cat/v1',
+    });
+
+    expect(diff.added_examples).toEqual([
+      {
+        intent_id: 't1',
+        intent_display_name: '테스트 문의',
+        route_key: 'test.route',
+        example_type: 'positive',
+        text_masked: '추가된 예시 내용',
+      },
+    ]);
+    expect(diff.removed_examples).toEqual([
+      {
+        intent_id: 't1',
+        intent_display_name: '테스트 문의',
+        route_key: 'test.route',
+        example_type: 'negative',
+        text_masked: '삭제된 예시 내용',
+      },
+    ]);
   });
 
   it('uses Permission Management read endpoints with GET query params only', async () => {

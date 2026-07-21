@@ -34,7 +34,11 @@ from intent_routing.api.admin_dependencies import (
     require_admin_context,
     require_admin_session_context,
 )
-from intent_routing.config import DEFAULT_RAW_TEXT_KEK_ID, MissingRawTextKekError
+from intent_routing.config import (
+    DEFAULT_RAW_TEXT_KEK_ID,
+    SUPPORTED_RUNTIME_ENVIRONMENTS,
+    MissingRawTextKekError,
+)
 from intent_routing.db.models import (
     AdminAccessRequest,
     AdminUser,
@@ -123,6 +127,7 @@ from intent_routing.versions.catalogs import (
 )
 
 router = APIRouter(prefix="/admin/v1", tags=["admin"])
+RuntimeEnvironment = Literal["dev", "qa", "prod"]
 
 __all__ = ("get_admin_session", "router")
 
@@ -132,16 +137,12 @@ class ServiceCreateRequest(BaseModel):
 
     service_id: str = Field(min_length=1)
     display_name: str = Field(min_length=1)
-    environment: str = Field(min_length=1)
-    default_threshold_preset: ThresholdPreset = ThresholdPreset.balanced
     max_input_tokens: int = Field(default=256, ge=1)
 
 
 class ServiceResponse(BaseModel):
     service_id: str
     display_name: str
-    environment: str
-    default_threshold_preset: str
     max_input_tokens: int
     status: str
     created_by: str
@@ -152,7 +153,6 @@ class ServiceResponse(BaseModel):
 class AccessibleServiceResponse(BaseModel):
     service_id: str
     display_name: str
-    environment: str
     status: str
     roles: list[str]
 
@@ -544,21 +544,37 @@ class ApiKeyCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     service_id: str = Field(min_length=1)
-    environment: str = Field(min_length=1)
+    environment: RuntimeEnvironment
     app_id: str = Field(min_length=1)
     allowed_intents: list[str] = Field(default_factory=list)
     allowed_route_keys: list[str] = Field(default_factory=list)
-    expires_in_days: int = Field(ge=1)
+    expires_in_days: int | None = Field(default=None, ge=1)
+
+    @field_validator("app_id", mode="before")
+    @classmethod
+    def normalize_app_id(cls, value: Any) -> str:
+        normalized = str(value).strip() if value is not None else ""
+        if not normalized:
+            raise ValueError("app_id must not be blank")
+        return normalized
 
 
 class ServiceApiKeyCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    environment: str = Field(min_length=1)
+    environment: RuntimeEnvironment
     app_id: str = Field(min_length=1)
     allowed_intents: list[str] = Field(default_factory=list)
     allowed_route_keys: list[str] = Field(default_factory=list)
-    expires_in_days: int = Field(ge=1)
+    expires_in_days: int | None = Field(default=None, ge=1)
+
+    @field_validator("app_id", mode="before")
+    @classmethod
+    def normalize_app_id(cls, value: Any) -> str:
+        normalized = str(value).strip() if value is not None else ""
+        if not normalized:
+            raise ValueError("app_id must not be blank")
+        return normalized
 
 
 class ApiKeyCreateResponse(BaseModel):
@@ -572,7 +588,7 @@ class ApiKeyCreateResponse(BaseModel):
     allowed_intents: list[str]
     allowed_route_keys: list[str]
     status: str
-    expires_at: datetime
+    expires_at: datetime | None
     revoked_at: datetime | None
     created_by: str
     created_at: datetime
@@ -587,7 +603,7 @@ class ApiKeyResponse(BaseModel):
     allowed_intents: list[str]
     allowed_route_keys: list[str]
     status: str
-    expires_at: datetime
+    expires_at: datetime | None
     revoked_at: datetime | None
     created_by: str
     created_at: datetime
@@ -605,7 +621,7 @@ class RuntimeSetupSelectedKeyResponse(BaseModel):
     key_fingerprint: str
     app_id: str
     status: str
-    expires_at: datetime
+    expires_at: datetime | None
     allowed_intents: list[str]
     allowed_route_keys: list[str]
 
@@ -951,15 +967,10 @@ class ReleaseCreateRequest(BaseModel):
     test_run_id: str = Field(min_length=1)
     rollback_target: str | None = None
 
-    @field_validator("environment", mode="before")
+    @field_validator("environment")
     @classmethod
-    def environment_must_not_be_blank(cls, value: Any) -> Any:
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                raise ValueError("release environment must not be blank")
-            return stripped
-        return value
+    def normalize_environment(cls, value: str) -> str:
+        return value.strip()
 
 
 class ReleaseResponse(BaseModel):
@@ -1111,6 +1122,7 @@ class RuntimeLogResponse(BaseModel):
     request_id: str | None
     app_id: str | None
     service_id: str | None
+    environment: str | None
     release_version: str | None
     policy_version: str | None
     intent_catalog_version: str | None
@@ -1394,16 +1406,16 @@ def _require_system_admin(context: AdminContext) -> None:
         raise_admin_forbidden("system_admin role is required for this action.")
 
 
-SERVICE_WRITE_ROLES = frozenset({"service_owner", "service_developer"})
+SERVICE_CATALOG_WRITE_ROLES = frozenset({"service_owner", "service_developer"})
+SERVICE_RELEASE_WRITE_ROLES = frozenset({"service_owner"})
+SERVICE_API_KEY_WRITE_ROLES = frozenset({"service_owner"})
 SERVICE_LOG_READ_ROLES = frozenset(
     {"service_owner", "service_developer", "service_operator", "auditor"}
 )
 SERVICE_METRICS_READ_ROLES = frozenset(
     {"service_owner", "service_developer", "service_operator"}
 )
-SERVICE_AUDIT_LOG_READ_ROLES = frozenset(
-    {"service_owner", "service_developer", "service_operator", "auditor"}
-)
+SERVICE_AUDIT_LOG_READ_ROLES = frozenset({"service_operator", "auditor"})
 
 
 def _department_or_404(session: Session, department_id: UUID) -> Department:
@@ -1514,7 +1526,7 @@ def _department_has_active_organization_users(
 def _require_service_catalog_access(context: AdminContext, service_id: str) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_any_service_role(service_id, SERVICE_WRITE_ROLES):
+    if context.has_any_service_role(service_id, SERVICE_CATALOG_WRITE_ROLES):
         return
     raise_admin_forbidden("Service catalog scope is required for this action.")
 
@@ -1525,7 +1537,7 @@ def _require_api_key_management_access(
 ) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_any_service_role(service_id, SERVICE_WRITE_ROLES):
+    if context.has_any_service_role(service_id, SERVICE_API_KEY_WRITE_ROLES):
         return
     raise_admin_forbidden("API key management scope is required for this action.")
 
@@ -1536,7 +1548,7 @@ def _require_release_management_access(
 ) -> None:
     if context.has_role("system_admin"):
         return
-    if context.has_any_service_role(service_id, SERVICE_WRITE_ROLES):
+    if context.has_any_service_role(service_id, SERVICE_RELEASE_WRITE_ROLES):
         return
     raise_admin_forbidden("Release management scope is required for this action.")
 
@@ -1552,15 +1564,19 @@ def _require_release_review_access(context: AdminContext, service_id: str) -> No
     raise_admin_forbidden("Release review scope is required for this action.")
 
 
-def _require_publish_request_access(context: AdminContext, service_id: str) -> None:
-    if context.has_role("system_admin"):
-        return
-    if context.has_any_service_role(
-        service_id,
-        {"service_developer", "service_owner"},
+def _require_service_membership_management_access(
+    context: AdminContext,
+    service_id: str,
+) -> None:
+    if context.has_role("system_admin") or context.has_service_role(
+        service_id, "service_owner"
     ):
         return
-    raise_admin_forbidden("Publish request scope is required for this action.")
+    raise_admin_forbidden("Service owner scope is required for membership management.")
+
+
+def _require_publish_request_access(context: AdminContext, service_id: str) -> None:
+    _require_release_management_access(context, service_id)
 
 
 def _require_publish_decision_access(context: AdminContext, service_id: str) -> None:
@@ -1572,14 +1588,7 @@ def _require_publish_decision_access(context: AdminContext, service_id: str) -> 
 
 
 def _require_publish_activation_access(context: AdminContext, service_id: str) -> None:
-    if context.has_role("system_admin"):
-        return
-    if context.has_any_service_role(
-        service_id,
-        {"service_developer", "service_owner"},
-    ):
-        return
-    raise_admin_forbidden("Publish activation scope is required for this action.")
+    _require_release_management_access(context, service_id)
 
 
 def _require_runtime_log_access(context: AdminContext, service_id: str) -> None:
@@ -1753,8 +1762,6 @@ def _service_response(service: Service) -> ServiceResponse:
     return ServiceResponse(
         service_id=service.service_id,
         display_name=service.display_name,
-        environment=service.environment,
-        default_threshold_preset=service.default_threshold_preset,
         max_input_tokens=service.max_input_tokens,
         status=service.status,
         created_by=service.created_by,
@@ -1771,7 +1778,6 @@ def _accessible_service_response(
     return AccessibleServiceResponse(
         service_id=service.service_id,
         display_name=service.display_name,
-        environment=service.environment,
         status=service.status,
         roles=sorted(roles),
     )
@@ -2055,10 +2061,10 @@ def _api_key_after_state(api_key: ApiKey) -> dict[str, object]:
     }
 
 
-def _runtime_setup_environment(service: Service, environment: str | None) -> str:
-    target_environment = environment or service.environment
-    if target_environment != service.environment:
-        _raise_validation_failed("environment must match the selected Service environment.")
+def _runtime_setup_environment(environment: str | None) -> str:
+    target_environment = environment or "dev"
+    if target_environment not in SUPPORTED_RUNTIME_ENVIRONMENTS:
+        _raise_validation_failed("environment must be one of dev, qa, prod.")
     return target_environment
 
 
@@ -2102,9 +2108,9 @@ def _active_release_intent_route_candidates(
 def _validate_runtime_api_key_scope(
     repository: IntentRoutingRepository,
     service: Service,
-    request: ServiceApiKeyCreateRequest,
+    request: ApiKeyCreateRequest | ServiceApiKeyCreateRequest,
 ) -> Release:
-    environment = _runtime_setup_environment(service, request.environment)
+    environment = _runtime_setup_environment(request.environment)
     release, candidates = _active_release_intent_route_candidates(
         repository,
         service,
@@ -2140,7 +2146,7 @@ def _create_api_key_for_service(
     app_id: str,
     allowed_intents: list[str],
     allowed_route_keys: list[str],
-    expires_in_days: int,
+    expires_in_days: int | None,
     actor_id: str,
     now: datetime,
 ) -> tuple[ApiKey, str]:
@@ -2155,7 +2161,11 @@ def _create_api_key_for_service(
         allowed_intents=allowed_intents,
         allowed_route_keys=allowed_route_keys,
         status=ApiKeyStatus.active.value,
-        expires_at=now + timedelta(days=expires_in_days),
+        expires_at=(
+            now + timedelta(days=expires_in_days)
+            if expires_in_days is not None
+            else None
+        ),
         revoked_at=None,
         created_by=actor_id,
         created_at=now,
@@ -2577,11 +2587,11 @@ def _safe_export_filter_keys(
 ) -> set[str]:
     if resource_type != "runtime_log":
         return set()
-    return set(filters) & {"trace_id"}
+    return set(filters) & {"environment", "trace_id"}
 
 
 def _runtime_log_export_trace_id(filters: Mapping[str, object]) -> str | None:
-    unknown_filters = set(filters) - {"trace_id"}
+    unknown_filters = set(filters) - {"environment", "trace_id"}
     if unknown_filters:
         _raise_bad_request("Unsupported export filter.")
     trace_id = filters.get("trace_id")
@@ -2590,6 +2600,15 @@ def _runtime_log_export_trace_id(filters: Mapping[str, object]) -> str | None:
     if not isinstance(trace_id, str) or not _safe_export_trace_id(trace_id):
         _raise_bad_request("Unsupported export filter.")
     return trace_id
+
+
+def _runtime_log_export_environment(filters: Mapping[str, object]) -> str | None:
+    environment = filters.get("environment")
+    if environment is None:
+        return None
+    if not isinstance(environment, str) or environment not in SUPPORTED_RUNTIME_ENVIRONMENTS:
+        _raise_bad_request("Unsupported export filter.")
+    return environment
 
 
 def _safe_export_trace_id(trace_id: str) -> bool:
@@ -3865,6 +3884,30 @@ def list_admin_users(
 
 
 @router.get(
+    "/services/{service_id}/users",
+    response_model=list[AdminUserLookupResponse],
+)
+def list_service_admin_users(
+    service_id: str,
+    session_context: Annotated[
+        AdminSessionContextRecord,
+        Depends(require_admin_session_context),
+    ],
+    session: Annotated[Session, Depends(get_admin_session)],
+    query: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=25)] = 25,
+) -> list[AdminUserLookupResponse]:
+    context = admin_context_from_session_record(session_context)
+    repository = IntentRoutingRepository(session)
+    _ensure_service_exists(repository, service_id)
+    _require_service_membership_management_access(context, service_id)
+    return [
+        _admin_user_lookup_response(user)
+        for user in repository.list_admin_users(query=query, limit=limit)
+    ]
+
+
+@router.get(
     "/services/{service_id}/members",
     response_model=list[ServiceMemberResponse],
 )
@@ -3877,7 +3920,7 @@ def list_service_members(
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> list[ServiceMemberResponse]:
     context = admin_context_from_session_record(session_context)
-    _require_system_admin(context)
+    _require_service_membership_management_access(context, service_id)
     repository = IntentRoutingRepository(session)
     if repository.get_service(service_id) is None:
         _raise_not_found("Service does not exist.")
@@ -3900,7 +3943,7 @@ def grant_service_member_role(
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> ServiceRoleGrantResponse:
     context = admin_context_from_session_record(session_context)
-    _require_system_admin(context)
+    _require_service_membership_management_access(context, service_id)
     repository = IntentRoutingRepository(session)
     if repository.get_service(service_id) is None:
         _raise_not_found("Service does not exist.")
@@ -3952,7 +3995,7 @@ def revoke_service_member_role(
     session: Annotated[Session, Depends(get_admin_session)],
 ) -> ServiceRoleRevokeResponse:
     context = admin_context_from_session_record(session_context)
-    _require_system_admin(context)
+    _require_service_membership_management_access(context, service_id)
     repository = IntentRoutingRepository(session)
     if repository.get_service(service_id) is None:
         _raise_not_found("Service does not exist.")
@@ -4000,8 +4043,6 @@ def create_service(
         service = repository.create_service(
             service_id=request.service_id,
             display_name=request.display_name,
-            environment=request.environment,
-            default_threshold_preset=request.default_threshold_preset.value,
             max_input_tokens=request.max_input_tokens,
             status="active",
             created_by=context.actor_id,
@@ -4044,6 +4085,8 @@ def list_api_keys(
         _require_api_key_management_access(context, service_id)
         if repository.get_service(service_id) is None:
             _raise_not_found("Service does not exist.")
+    if environment is not None:
+        environment = _runtime_setup_environment(environment)
     return [
         _api_key_response(api_key)
         for api_key in repository.list_api_keys(
@@ -4072,6 +4115,7 @@ def create_api_key(
     if service is None:
         _raise_not_found("Service does not exist.")
 
+    _validate_runtime_api_key_scope(repository, service, request)
     api_key, api_key_secret = _create_api_key_for_service(
         repository,
         service_id=request.service_id,
@@ -4119,7 +4163,7 @@ def list_service_api_keys(
     service_id: str,
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
-    environment: str | None = None,
+    environment: RuntimeEnvironment | None = None,
     status: ApiKeyStatus | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[ApiKeyResponse]:
@@ -4129,7 +4173,7 @@ def list_service_api_keys(
         _raise_not_found("Service does not exist.")
     _require_api_key_management_access(context, service_id)
     if environment is not None:
-        _runtime_setup_environment(service, environment)
+        _runtime_setup_environment(environment)
     return [
         _api_key_response(api_key)
         for api_key in repository.list_api_keys(
@@ -4229,7 +4273,7 @@ def get_runtime_setup(
     if service is None:
         _raise_not_found("Service does not exist.")
 
-    target_environment = _runtime_setup_environment(service, environment)
+    target_environment = _runtime_setup_environment(environment)
     release, _ = _active_release_intent_route_candidates(
         repository,
         service,
@@ -4330,6 +4374,7 @@ def list_runtime_logs(
     service_id: str,
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
+    environment: Literal["dev", "qa", "prod"] | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[RuntimeLogResponse]:
     _require_runtime_log_access(context, service_id)
@@ -4337,7 +4382,9 @@ def list_runtime_logs(
     _ensure_service_exists(repository, service_id)
     return [
         _runtime_log_response(runtime_log)
-        for runtime_log in repository.list_masked_runtime_logs(service_id, limit=limit)
+        for runtime_log in repository.list_masked_runtime_logs(
+            service_id, environment=environment, limit=limit
+        )
     ]
 
 
@@ -4349,13 +4396,18 @@ def get_runtime_metrics(
     service_id: str,
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
+    environment: Literal["dev", "qa", "prod"] | None = None,
     window_hours: Annotated[int, Query(ge=1, le=24 * 31)] = 24,
 ) -> RuntimeMetricsResponse:
     _require_runtime_metrics_access(context, service_id)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
     return RuntimeMetricsResponse.model_validate(
-        repository.runtime_metrics(service_id, window_hours=window_hours)
+        repository.runtime_metrics(
+            service_id,
+            environment=environment,
+            window_hours=window_hours,
+        )
     )
 
 
@@ -4457,6 +4509,7 @@ def create_export(
         if request.resource_type != "runtime_log":
             _raise_bad_request("Unsupported export resource type.")
         trace_id = _runtime_log_export_trace_id(request.filters)
+        environment = _runtime_log_export_environment(request.filters)
     except HTTPException:
         rejected_at = datetime.now(UTC)
         rejected_response = ExportResponse(
@@ -4496,6 +4549,7 @@ def create_export(
     rows = repository.list_masked_runtime_logs_for_export(
         service_id,
         trace_id=trace_id,
+        environment=environment,
     )
     response = ExportResponse(
         export_id=export_id,
@@ -4940,7 +4994,9 @@ def list_intent_route_candidates(
             for intent in repository.list_active_intents(service_id)
         ]
     if source == "active_release":
-        release = repository.get_active_release(service_id, environment or service.environment)
+        if environment is None or environment not in SUPPORTED_RUNTIME_ENVIRONMENTS:
+            _raise_validation_failed("environment must be one of dev, qa, prod.")
+        release = repository.get_active_release(service_id, environment)
         if release is None:
             return []
         catalog_version = repository.get_catalog_version(
@@ -6012,8 +6068,6 @@ def create_release(
     service = repository.get_service(service_id)
     if service is None:
         _raise_not_found("Service does not exist.")
-    if request.environment != service.environment:
-        _raise_bad_request("Release environment must match service environment.")
     try:
         model_version = get_embedding_provider().model_version
         release = release_service.create_release(
@@ -6079,13 +6133,14 @@ def list_release_candidates(
     environment: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[ReleaseCandidateResponse]:
-    _require_service_catalog_access(context, service_id)
+    _require_release_review_access(context, service_id)
     repository = IntentRoutingRepository(session)
     service = repository.get_service(service_id)
     if service is None:
         _raise_not_found("Service does not exist.")
-    target_environment = environment or service.environment
-    environment_matches_service = target_environment == service.environment
+    target_environment = environment or "dev"
+    if target_environment not in SUPPORTED_RUNTIME_ENVIRONMENTS:
+        _raise_validation_failed("environment must be one of dev, qa, prod.")
     existing_releases = {
         release.test_run_id: release
         for release in repository.list_releases(service_id, target_environment)
@@ -6098,15 +6153,12 @@ def list_release_candidates(
         existing_release = existing_releases.get(test_run.test_run_id)
         risk_passed = Decimal(str(test_run.risk_pass_rate)) == Decimal("1.0")
         block_reasons = list(summary.block_reasons)
-        if not environment_matches_service:
-            block_reasons.append("release environment must match service environment")
         if not risk_passed:
             block_reasons.append("risk pass rate must be 100%")
         if existing_release is not None:
             block_reasons.append("test run already has a release")
         eligible = (
-            environment_matches_service
-            and test_run.gate_passed
+            test_run.gate_passed
             and risk_passed
             and existing_release is None
         )
@@ -6173,9 +6225,11 @@ def list_releases(
     session: Annotated[Session, Depends(get_admin_session)],
     environment: str | None = None,
 ) -> list[ReleaseResponse]:
-    _require_service_catalog_access(context, service_id)
+    _require_release_review_access(context, service_id)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
+    if environment is not None:
+        environment = _runtime_setup_environment(environment)
     return [
         _release_response(release)
         for release in repository.list_releases(service_id, environment)
@@ -6192,9 +6246,10 @@ def get_active_release(
     session: Annotated[Session, Depends(get_admin_session)],
     environment: str = "prod",
 ) -> ReleaseResponse:
-    _require_service_catalog_access(context, service_id)
+    _require_release_review_access(context, service_id)
     repository = IntentRoutingRepository(session)
     _ensure_service_exists(repository, service_id)
+    environment = _runtime_setup_environment(environment)
     release = repository.get_active_release(service_id, environment)
     if release is None:
         _raise_not_found("Active release does not exist.")

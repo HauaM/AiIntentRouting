@@ -65,19 +65,23 @@ are scoped to released behavior rather than draft catalog state.
 may later add only a compact next-step panel that points the user to
 `/api-keys` after C-2 role assignment and release readiness are complete.
 
-The C-3 baseline uses checklist/docs Dify/client guidance. There is no browser runtime sample call with the secret.
-No browser workflow may call `/v1/intent-route` using the one-time raw API key
-secret.
+The C-3 baseline uses checklist/docs client guidance plus an explicit Admin UI
+live-test workflow. The live test may call `/v1/intent-route` only after the
+operator manually enters an API Secret. The UI must not auto-fill, persist,
+replay, or recover the one-time raw API key secret from the create response.
+The secret must not be written to local storage, inventory responses, runtime
+setup guidance, audit state, runtime logs, or exported evidence.
 
 Runtime Logs show `query_masked` by default and must not expose raw query text
 in baseline runtime setup views. Audit Logs remain append-only evidence for API
 key lifecycle, runtime setup bundle generation if added, and any future
 metadata-only validation event.
 
-Baseline C-3 can proceed without a required DB migration because existing
-`api_keys`, `runtime_logs`, and `audit_logs` fields are sufficient if
-candidate validation is enforced at API time. Optional hardening constraints
-and indexes are documented for later review.
+Baseline C-3 mostly uses existing `api_keys`, `runtime_logs`, and `audit_logs`
+fields if candidate validation is enforced at API time. The accepted no-expiry
+API key option requires Alembic revision `0011_api_key_optional_expiry`, which
+makes `api_keys.expires_at` nullable. Optional hardening constraints and indexes
+remain documented for later review.
 
 ## Alternatives Considered
 

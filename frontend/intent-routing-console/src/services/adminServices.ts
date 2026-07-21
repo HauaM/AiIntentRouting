@@ -12,6 +12,15 @@ const RECENT_AUDIT_LOG_LIMIT = 100;
 const servicePath = (serviceId: string, suffix: string) =>
   `/services/${encodeURIComponent(serviceId)}${suffix}`;
 
+type LegacyCatalogVersionDiff = Omit<
+  API.CatalogVersionDiff,
+  'added_examples' | 'removed_examples' | 'changed_examples'
+> & {
+  added_examples: unknown[];
+  removed_examples: unknown[];
+  changed_examples: unknown[];
+};
+
 export async function createService(payload: API.ServiceCreateRequest) {
   return request<API.Service>('/services', {
     method: 'POST',
@@ -23,6 +32,19 @@ export async function searchAdminUsers(
   params: { query?: string; limit?: number } = {},
 ) {
   return request<API.AdminUserLookup[]>('/users', {
+    method: 'GET',
+    params: {
+      query: params.query,
+      limit: params.limit ?? 25,
+    },
+  });
+}
+
+export async function searchServiceUsers(
+  serviceId: string,
+  params: { query?: string; limit?: number } = {},
+) {
+  return request<API.AdminUserLookup[]>(servicePath(serviceId, '/users'), {
     method: 'GET',
     params: {
       query: params.query,
@@ -232,10 +254,20 @@ export async function revokeServiceRole(
   );
 }
 
-export async function fetchRuntimeMetrics(serviceId: string, windowHours: number) {
+export async function fetchRuntimeMetrics(
+  serviceId: string,
+  windowHours: number,
+  environment?: 'dev' | 'qa' | 'prod',
+) {
+  const params: { window_hours: number; environment?: 'dev' | 'qa' | 'prod' } = {
+    window_hours: windowHours,
+  };
+  if (environment) {
+    params.environment = environment;
+  }
   return request<API.RuntimeMetrics>(servicePath(serviceId, '/runtime-metrics'), {
     method: 'GET',
-    params: { window_hours: windowHours },
+    params,
   });
 }
 
@@ -382,7 +414,7 @@ export async function fetchCatalogVersionDiff(
   catalogVersion: string,
   params: { compare_to?: string | null } = {},
 ) {
-  return request<API.CatalogVersionDiff>(
+  const diff = await request<API.CatalogVersionDiff | LegacyCatalogVersionDiff>(
     servicePath(
       serviceId,
       `/catalog-versions/${encodeURIComponent(catalogVersion)}/diff`,
@@ -392,6 +424,111 @@ export async function fetchCatalogVersionDiff(
       params: { compare_to: params.compare_to || undefined },
     },
   );
+  return hydrateLegacyCatalogVersionDiff(serviceId, catalogVersion, params.compare_to, diff);
+}
+
+const isCatalogVersionDiffExample = (
+  value: unknown,
+): value is API.CatalogVersionDiffExample => {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.intent_id === 'string' &&
+    typeof record.intent_display_name === 'string' &&
+    typeof record.route_key === 'string' &&
+    (record.example_type === 'positive' || record.example_type === 'negative') &&
+    typeof record.text_masked === 'string'
+  );
+};
+
+const usesLegacyExampleIds = (diff: LegacyCatalogVersionDiff) =>
+  ['added_examples', 'removed_examples', 'changed_examples'].some((key) => {
+    const values = diff[key as keyof Pick<
+      LegacyCatalogVersionDiff,
+      'added_examples' | 'removed_examples' | 'changed_examples'
+    >] as unknown[];
+    return Array.isArray(values) && values.some((value) => typeof value === 'string');
+  });
+
+const catalogVersionExampleMap = (snapshot: unknown) => {
+  const examples = new Map<string, API.CatalogVersionDiffExample>();
+  if (!snapshot || typeof snapshot !== 'object') return examples;
+  const intents = (snapshot as Record<string, unknown>).intents;
+  if (!Array.isArray(intents)) return examples;
+
+  intents.forEach((intent) => {
+    if (!intent || typeof intent !== 'object') return;
+    const intentRecord = intent as Record<string, unknown>;
+    const intentExamples = intentRecord.examples;
+    if (!Array.isArray(intentExamples)) return;
+
+    intentExamples.forEach((example) => {
+      if (!example || typeof example !== 'object') return;
+      const exampleRecord = example as Record<string, unknown>;
+      const exampleId = exampleRecord.example_id;
+      const exampleType = exampleRecord.example_type;
+      const textMasked = exampleRecord.text_masked;
+      if (
+        typeof exampleId !== 'string' ||
+        (exampleType !== 'positive' && exampleType !== 'negative') ||
+        typeof textMasked !== 'string'
+      ) {
+        return;
+      }
+      examples.set(exampleId, {
+        intent_id: String(intentRecord.intent_id ?? '-'),
+        intent_display_name: String(intentRecord.display_name ?? '-'),
+        route_key: String(intentRecord.route_key ?? '-'),
+        example_type: exampleType,
+        text_masked: textMasked,
+      });
+    });
+  });
+
+  return examples;
+};
+
+const hydrateExampleDiffItems = (
+  items: unknown[],
+  primary: Map<string, API.CatalogVersionDiffExample>,
+  fallback?: Map<string, API.CatalogVersionDiffExample>,
+) =>
+  items.flatMap((item) => {
+    if (isCatalogVersionDiffExample(item)) return [item];
+    if (typeof item !== 'string') return [];
+    const hydrated = primary.get(item) ?? fallback?.get(item);
+    return hydrated ? [hydrated] : [];
+  });
+
+async function hydrateLegacyCatalogVersionDiff(
+  serviceId: string,
+  catalogVersion: string,
+  compareTo: string | null | undefined,
+  diff: API.CatalogVersionDiff | LegacyCatalogVersionDiff,
+): Promise<API.CatalogVersionDiff> {
+  const legacyDiff = diff as LegacyCatalogVersionDiff;
+  if (!usesLegacyExampleIds(legacyDiff)) return diff as API.CatalogVersionDiff;
+
+  const [targetVersion, baselineVersion] = await Promise.all([
+    fetchCatalogVersion(serviceId, catalogVersion),
+    compareTo ? fetchCatalogVersion(serviceId, compareTo) : Promise.resolve(undefined),
+  ]);
+  const targetExamples = catalogVersionExampleMap(targetVersion.snapshot);
+  const baselineExamples = catalogVersionExampleMap(baselineVersion?.snapshot);
+
+  return {
+    ...diff,
+    added_examples: hydrateExampleDiffItems(legacyDiff.added_examples, targetExamples),
+    removed_examples: hydrateExampleDiffItems(
+      legacyDiff.removed_examples,
+      baselineExamples,
+    ),
+    changed_examples: hydrateExampleDiffItems(
+      legacyDiff.changed_examples,
+      targetExamples,
+      baselineExamples,
+    ),
+  };
 }
 
 export async function deactivateCatalogVersion(
@@ -609,9 +746,15 @@ export async function fetchRuntimeSetupGuidance(
 }
 
 export async function listRuntimeLogs(serviceId: string, params: TableRequestParams) {
+  const requestParams: { limit: number; environment?: string } = {
+    limit: RECENT_RUNTIME_LOG_LIMIT,
+  };
+  if (params.environment) {
+    requestParams.environment = params.environment;
+  }
   const rows = await request<API.RuntimeLog[]>(servicePath(serviceId, '/runtime-logs'), {
     method: 'GET',
-    params: { limit: RECENT_RUNTIME_LOG_LIMIT },
+    params: requestParams,
   });
   return toReadOnlyTableResult(filterRuntimeLogs(rows, params));
 }

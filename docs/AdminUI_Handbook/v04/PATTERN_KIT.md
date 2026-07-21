@@ -66,11 +66,9 @@ future C-2 and C-3 work begins.
 - C-2 Service Membership / Role Assignment UI/API is in implementation scope:
   user search, selected-Service member listing, Service role grant, Service role
   revoke, and post-change scope refresh.
-- Baseline C-2 membership administration is `system_admin` only:
-  `system_admin` can search users, list members, grant roles, and revoke roles.
-- `service_owner delegation` is future/non-baseline. Do not let
-  `service_owner` search users, list members, grant roles, or revoke roles until
-  a later decision and guardrail tests explicitly approve owner delegation.
+- Baseline C-2 membership administration is accepted for `system_admin` and
+  authorized `service_owner`: both can use the selected-Service user lookup,
+  list members, grant roles, and revoke roles inside that Service boundary.
 - Grant and revoke must write append-only audit events:
   `service_membership.role_granted` and
   `service_membership.role_revoked`.
@@ -200,14 +198,16 @@ Keep using `FutureFeatureNotice` for unsupported capabilities:
 
 ## Current Role Gates
 
-- `system_admin`: all Services, service creation, C-3 runtime setup and API key
-  lifecycle, release create/activate/rollback, emergency operations.
-- `service_owner`: scoped Service catalog work and future owner approval flows.
-- `service_developer`: scoped Intent Catalog, examples, policy/catalog versions,
-  and test runs.
-- `service_operator`: scoped runtime metrics and runtime log inspection.
+- `system_admin`: all permissions, Service creation, initial service_owner grants, system monitoring.
+- `service_owner`: assigned-Service membership, Intent Catalog, Test Runs, Releases, API Keys, Runtime Logs.
+- `service_developer`: assigned-Service Intent Catalog and Test Runs writes, Releases read, Runtime Logs read.
+- `service_operator`: scoped runtime metrics, runtime log inspection, and audit
+  log inspection.
 - `auditor`: scoped runtime log inspection, audit log inspection, security
   lifecycle read, raw-query approval/review paths, and masked export.
+
+Organization Directory and Permission Management are system-admin-only. Audit
+Logs are not shown to `service_owner` or `service_developer`.
 
 ## Visual Tokens
 

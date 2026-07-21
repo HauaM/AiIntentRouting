@@ -29,7 +29,6 @@ def test_admin_account_repository_flow_uses_global_and_service_scoped_roles(
         repository.create_service(
             service_id=service_id,
             display_name="Account Auth IT",
-            environment="test",
             created_by="integration-test",
             created_at=now,
             updated_at=now,
@@ -198,7 +197,6 @@ def test_admin_auth_api_bootstrap_login_me_logout_flow(
         repository.create_service(
             service_id=service_id,
             display_name="Admin Auth API",
-            environment="test",
             created_by="integration-test",
             created_at=now,
             updated_at=now,

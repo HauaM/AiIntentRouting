@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 from intent_routing.api.admin_dependencies import get_admin_session
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
+from intent_routing.embedding.provider import clear_embedding_provider_cache
 from intent_routing.main import create_app
 from intent_routing.security.admin_sessions import (
     ADMIN_SESSION_COOKIE_NAME,
@@ -79,8 +81,6 @@ def _create_service(client: TestClient, service_id: str) -> None:
         json={
             "service_id": service_id,
             "display_name": "Workflow Candidate Service",
-            "environment": "dev",
-            "default_threshold_preset": "balanced",
             "max_input_tokens": 256,
         },
     )
@@ -275,7 +275,12 @@ def _restore_system_admin_roles(
     db_session.commit()
 
 
-def test_lists_policy_and_catalog_versions(db_session: Session) -> None:
+def test_lists_policy_and_catalog_versions(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    clear_embedding_provider_cache()
     client, user_id, system_admin_role_rows = _system_admin_client(db_session)
     service_id = f"svc-workflow-{uuid4().hex}"
     try:
@@ -434,7 +439,7 @@ def test_release_candidates_require_exact_full_risk_pass_rate(
             _restore_system_admin_roles(db_session, system_admin_role_rows)
 
 
-def test_release_candidates_block_environment_mismatch(
+def test_release_candidates_can_target_requested_environment(
     db_session: Session,
 ) -> None:
     client, user_id, system_admin_role_rows = _system_admin_client(db_session)
@@ -452,8 +457,8 @@ def test_release_candidates_block_environment_mismatch(
         row = response.json()[0]
         assert row["test_run_id"] == test_run_id
         assert row["environment"] == "prod"
-        assert row["eligible"] is False
-        assert "release environment must match service environment" in row[
+        assert row["eligible"] is True
+        assert "release environment must match service environment" not in row[
             "block_reasons"
         ]
     finally:
@@ -510,7 +515,7 @@ def test_intent_route_candidates_are_selectable_scope_values(
         )
         active_release_response = client.get(
             f"/admin/v1/services/{service_id}/intent-route-candidates",
-            params={"source": "active_release"},
+            params={"source": "active_release", "environment": "dev"},
         )
 
         assert response.status_code == 200

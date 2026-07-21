@@ -91,6 +91,15 @@ export const getDisplayRoles = (session: AdminSession) => {
   return Array.from(new Set([...session.globalRoles, ...serviceRoles]));
 };
 
+export const getNavigationRoles = (session: AdminSession) =>
+  Array.from(
+    new Set([
+      ...session.globalRoles,
+      ...session.serviceRoles.map((role) => role.role),
+      ...session.services.flatMap((service) => service.roles),
+    ]),
+  );
+
 export const hasAnyDisplayRole = (session: AdminSession, roles: string[]) => {
   const roleSet = new Set(getDisplayRoles(session));
   return roles.some((role) => roleSet.has(role));
@@ -100,10 +109,10 @@ export const canEditCatalog = (session: AdminSession) =>
   hasAnyDisplayRole(session, ['system_admin', 'service_owner', 'service_developer']);
 
 export const canManageReleases = (session: AdminSession) =>
-  hasAnyDisplayRole(session, ['system_admin', 'service_owner', 'service_developer']);
+  hasAnyDisplayRole(session, ['system_admin', 'service_owner']);
 
 export const canManageApiKeys = (session: AdminSession) =>
-  hasAnyDisplayRole(session, ['system_admin', 'service_owner', 'service_developer']);
+  hasAnyDisplayRole(session, ['system_admin', 'service_owner']);
 
 export const canManageRuntimeSetup = (session: AdminSession) =>
   canManageApiKeys(session);
@@ -112,7 +121,7 @@ export const canCreateServices = (session: AdminSession) =>
   session.globalRoles.includes('system_admin');
 
 export const canManageServiceMembers = (session: AdminSession) =>
-  session.globalRoles.includes('system_admin');
+  hasAnyDisplayRole(session, ['system_admin', 'service_owner']);
 
 export const canUseServicesPage = (session: AdminSession) =>
   Boolean(
