@@ -129,11 +129,21 @@ def test_api_key_secret_reveal_contract_is_documented() -> None:
         "api_key.secret_revealed",
         "api_key_revealed",
         "authorization_header",
+        "both `api_key` and `authorization_header`, plus any\n"
+        "  response field derived from the raw secret, must be omitted or recorded only\n"
+        "  as `REDACTED`.",
+        "Audit state must omit `api_key`, `authorization_header`, and any response\n"
+        "  field derived from the raw secret, or record each only as `REDACTED`.",
+        "Outside that successful reveal response, inventory, revoke, runtime setup\n"
+        "  guidance, audit logs, runtime logs, exports, and persisted or UI state must\n"
+        "  omit or redact `api_key`, `authorization_header`, and any response field\n"
+        "  derived from the raw secret.",
+        "reveal metadata only; `api_key`, `authorization_header`, and any\n"
+        "    response field derived from the raw secret must be omitted or `REDACTED`.",
         "Legacy keys without encrypted secret material cannot be revealed",
         "return `409 Conflict`",
         "API key secret is unavailable; rotate or reissue this legacy key.",
         "Operators must rotate or reissue legacy keys",
-        "Inventory, revoke, runtime setup guidance, audit logs, runtime logs, and exports never include raw `api_key`.",
     ):
         assert phrase in text
 

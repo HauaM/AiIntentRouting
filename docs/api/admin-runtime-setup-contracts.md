@@ -26,7 +26,10 @@ otherwise.
   explicitly reveal encrypted secret material through the audited reveal
   endpoint documented below.
 - Inventory, revoke responses, runtime setup guidance, audit logs, runtime logs,
-  and exports never include raw `api_key`.
+  and exports never include raw secret material. In audit, log, export, and
+  persisted or UI state, both `api_key` and `authorization_header`, plus any
+  response field derived from the raw secret, must be omitted or recorded only
+  as `REDACTED`.
 - Key metadata may include `key_id`, `key_fingerprint`, `environment`,
   `app_id`, `service_id`, `allowed_intents`, `allowed_route_keys`, `status`,
   `expires_at`, `revoked_at`, `created_by`, and `created_at`. `expires_at` may
@@ -135,7 +138,8 @@ Rules:
 - The secret must not be stored in plaintext; encrypted secret material is
   retained for authorized audited reveal, alongside hash/fingerprint fields
   used for runtime authentication.
-- Audit state must omit `api_key` or record it only as `REDACTED`.
+- Audit state must omit `api_key`, `authorization_header`, and any response
+  field derived from the raw secret, or record each only as `REDACTED`.
 - UI state must not automatically re-show or replay the secret after refresh,
   navigation, logout, selected-Service change, or selected-key change. Explicit
   reveal/copy requires the audited reveal endpoint.
@@ -202,8 +206,13 @@ Rules:
 - Legacy keys without encrypted secret material cannot be revealed.
 - Legacy keys without encrypted secret material return `409 Conflict` with the unavailable message `API key secret is unavailable; rotate or reissue this legacy key.`
 - Operators must rotate or reissue legacy keys before a secret can be revealed.
-- The response is the only place where the reveal API returns raw `api_key`.
-- Inventory, revoke, runtime setup guidance, audit logs, runtime logs, and exports never include raw `api_key`.
+- The successful reveal response is the only place where the reveal API returns
+  raw `api_key`, `authorization_header`, or any response field derived from the
+  raw secret.
+- Outside that successful reveal response, inventory, revoke, runtime setup
+  guidance, audit logs, runtime logs, exports, and persisted or UI state must
+  omit or redact `api_key`, `authorization_header`, and any response field
+  derived from the raw secret.
 - Each successful reveal writes `api_key.secret_revealed` with redacted audit state.
 
 ## Intent-Route Candidate Scope Contract
@@ -358,7 +367,9 @@ Rules:
   metadata from inventory/runtime setup guidance.
 - The operator must manually input the API Secret for the request.
 - The UI must not store the API Secret in local storage, inventory state, audit
-  state, runtime setup guidance, or exported evidence.
+  state, runtime setup guidance, or exported evidence. These state and
+  evidence surfaces must omit or redact `api_key`, `authorization_header`, and
+  any response field derived from the raw secret.
 - The UI must clear live-test input on selected-Service or selected-key change.
 - The live test creates normal runtime log evidence with masked query behavior.
 - Failures must display runtime error code/message without echoing the secret.
@@ -485,6 +496,12 @@ Required C-3 audit events:
   - Service: key `service_id`.
   - Target: `target_type=api_key`, `target_id=key_id`.
   - State: previous and revoked metadata only, with no raw secret.
+- `api_key.secret_revealed`
+  - Actor: authenticated Admin session actor.
+  - Service: key `service_id`.
+  - Target: `target_type=api_key`, `target_id=key_id`.
+  - State: reveal metadata only; `api_key`, `authorization_header`, and any
+    response field derived from the raw secret must be omitted or `REDACTED`.
 
 Conditional events:
 
