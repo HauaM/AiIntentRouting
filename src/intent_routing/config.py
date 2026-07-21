@@ -7,6 +7,7 @@ from os import environ as process_environ
 from typing import Any
 
 DEFAULT_RAW_TEXT_KEK_ID = "local-kek-001"
+DEFAULT_API_KEY_SECRET_KEK_ID = "local-api-key-secret-kek-001"
 SUPPORTED_RUNTIME_ENVIRONMENTS = frozenset({"dev", "qa", "prod"})
 
 
@@ -15,6 +16,14 @@ class RawTextKeyringConfigError(ValueError):
 
 
 class MissingRawTextKekError(RawTextKeyringConfigError):
+    pass
+
+
+class ApiKeySecretKeyringConfigError(ValueError):
+    pass
+
+
+class MissingApiKeySecretKekError(ApiKeySecretKeyringConfigError):
     pass
 
 
@@ -56,6 +65,13 @@ class RawTextKeyringConfig:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ApiKeySecretKeyringConfig:
+    active_key_id: str
+    active_kek_base64: str = field(repr=False)
+    legacy_keks: dict[str, str] = field(default_factory=dict, repr=False)
+
+
 def load_raw_text_keyring_config(
     environ: Mapping[str, str] | None = None,
 ) -> RawTextKeyringConfig:
@@ -70,6 +86,31 @@ def load_raw_text_keyring_config(
     if active_key_id in legacy_keks:
         raise ValueError("active key_id must not appear in RAW_TEXT_LEGACY_KEKS_JSON")
     return RawTextKeyringConfig(
+        active_key_id=active_key_id,
+        active_kek_base64=active_kek_base64,
+        legacy_keks=legacy_keks,
+    )
+
+
+def load_api_key_secret_keyring_config(
+    environ: Mapping[str, str] | None = None,
+) -> ApiKeySecretKeyringConfig:
+    env = process_environ if environ is None else environ
+    active_key_id = env.get(
+        "API_KEY_SECRET_KEK_ID",
+        DEFAULT_API_KEY_SECRET_KEK_ID,
+    ).strip()
+    if not active_key_id:
+        raise ValueError("API_KEY_SECRET_KEK_ID must not be blank")
+    active_kek_base64 = env.get("API_KEY_SECRET_KEK_BASE64")
+    if active_kek_base64 is None or not active_kek_base64.strip():
+        raise MissingApiKeySecretKekError("API_KEY_SECRET_KEK_BASE64 is required")
+    legacy_keks = _parse_legacy_keks(env.get("API_KEY_SECRET_LEGACY_KEKS_JSON", "{}"))
+    if active_key_id in legacy_keks:
+        raise ValueError(
+            "active key_id must not appear in API_KEY_SECRET_LEGACY_KEKS_JSON"
+        )
+    return ApiKeySecretKeyringConfig(
         active_key_id=active_key_id,
         active_kek_base64=active_kek_base64,
         legacy_keks=legacy_keks,
