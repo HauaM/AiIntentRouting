@@ -451,6 +451,43 @@ body {
   min-width: 0;
 }
 
+.test-run-step-grid {
+  align-items: start;
+  display: grid;
+  gap: 16px 24px;
+  grid-template-columns: minmax(328px, 552px) minmax(328px, 552px);
+  justify-content: start;
+}
+
+.test-run-step-field {
+  min-width: 0;
+}
+
+.test-run-step-field-label {
+  color: #334155;
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.test-run-step-field-help {
+  display: block;
+  margin-top: 6px;
+}
+
+.test-run-step-select {
+  max-width: 552px;
+  width: 100%;
+}
+
+.test-run-step-summary {
+  background: #f7f9fb;
+  border: 1px solid #e6eaef;
+  border-radius: 8px;
+  max-width: 552px;
+  padding: 12px;
+}
+
 @media (max-width: 640px) {
   .services-onboarding-progress,
   .services-create-grid {
@@ -479,6 +516,39 @@ body {
   .toolbar-line {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .service-scope-bar > .ant-space {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .service-scope-bar > .ant-space:first-child {
+    flex-direction: column;
+  }
+
+  .service-scope-bar .ant-select {
+    min-width: 0 !important;
+    width: 100%;
+  }
+
+  .service-scope-bar .ant-typography,
+  .service-scope-bar .ant-typography code {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .service-scope-bar .ant-typography code {
+    display: inline-block;
+    vertical-align: bottom;
+  }
+}
+
+@media (max-width: 900px) {
+  .test-run-step-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
