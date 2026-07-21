@@ -33,8 +33,10 @@ import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
 import { TestRunHistorySelect } from './TestRunHistorySelect';
 import { TestPolicyPanel } from './TestPolicyPanel';
 import {
+  formatBlockReason,
   formatDecisionLabel,
   formatIntentLabel,
+  formatRecommendation,
   formatResultReason,
 } from './testRunResultCopy';
 import {
@@ -462,12 +464,12 @@ export default function TestRunsPage() {
                             </Descriptions.Item>
                             <Descriptions.Item label="차단 사유">
                               {summary.block_reasons.length
-                                ? summary.block_reasons.join(', ')
+                                ? summary.block_reasons.map(formatBlockReason).join(', ')
                                 : '없음'}
                             </Descriptions.Item>
                             <Descriptions.Item label="권장 조치">
                               {summary.recommendations.length
-                                ? summary.recommendations.join(', ')
+                                ? summary.recommendations.map(formatRecommendation).join(', ')
                                 : '없음'}
                             </Descriptions.Item>
                           </Descriptions>

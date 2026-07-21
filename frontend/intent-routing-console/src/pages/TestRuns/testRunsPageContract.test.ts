@@ -144,6 +144,15 @@ it('localizes test run summary state and gate labels', () => {
   expect(page).not.toContain('label="Gate"');
 });
 
+it('renders summary block reasons and recommendations in Korean', () => {
+  const source = read('index.tsx');
+
+  expect(source).toContain('formatBlockReason');
+  expect(source).toContain('formatRecommendation');
+  expect(source).not.toContain('summary.block_reasons.join');
+  expect(source).not.toContain('summary.recommendations.join');
+});
+
 it('handles create and history request failures with clear messages', () => {
   const page = read('index.tsx');
 
