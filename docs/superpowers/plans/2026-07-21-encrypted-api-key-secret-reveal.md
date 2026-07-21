@@ -903,7 +903,7 @@ def _raise_if_api_key_not_revealable(api_key: ApiKey, now: datetime) -> None:
     if api_key.expires_at is not None and api_key.expires_at <= now:
         _raise_bad_request("Expired API key secrets cannot be revealed.")
     if encrypted_api_key_secret(api_key) is None:
-        _raise_conflict("API key encrypted secret material is unavailable. Rotate or reissue this key.")
+        _raise_conflict("API key secret is unavailable; rotate or reissue this legacy key.")
 ```
 
 - [ ] **Step 6: Add reveal endpoint**
@@ -936,7 +936,7 @@ def reveal_service_api_key(
 
     encrypted = encrypted_api_key_secret(api_key)
     if encrypted is None:
-        _raise_conflict("API key encrypted secret material is unavailable. Rotate or reissue this key.")
+        _raise_conflict("API key secret is unavailable; rotate or reissue this legacy key.")
     api_key_secret = load_api_key_secret_keyring().decrypt_text(encrypted)
     repository.insert_audit_log(
         event_type="api_key.secret_revealed",
@@ -948,7 +948,7 @@ def reveal_service_api_key(
         view_reason="runtime_setup_authorization_copy",
         source_ip=None,
         before_state=None,
-        after_state=_api_key_after_state(api_key),
+        after_state=_api_key_reveal_audit_state(api_key),
         created_at=now,
     )
     session.commit()
@@ -962,6 +962,13 @@ def reveal_service_api_key(
         api_key_revealed=True,
     )
 ```
+
+The reveal audit state must be metadata-only. Use a dedicated helper such as
+`_api_key_reveal_audit_state(api_key)` and include only fields needed to explain
+the event, for example `key_id`, `service_id`, `environment`, `app_id`, and
+`status`. Do not include raw `api_key`, `authorization_header`, `key_hash`,
+`key_fingerprint`, encrypted ciphertext, nonce, tag, or key version in the
+secret-reveal audit payload.
 
 - [ ] **Step 7: Run backend tests**
 
