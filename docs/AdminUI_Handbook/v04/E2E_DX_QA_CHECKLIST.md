@@ -38,7 +38,7 @@
 
 - [ ] 새 Service ID 준비: 예시 `qa-e2e-helpdesk`
 - [ ] 새 Service 표시 이름 준비: 예시 `QA E2E Helpdesk`
-- [ ] Environment 준비: 예시 `dev`
+- [ ] Release target Environment 준비: 예시 `dev`
 - [ ] Intent 후보 2개 이상 준비
 - [ ] 각 Intent별 approved example 후보 3개 이상 준비
 - [ ] CSV test run용 정상/실패/모호 케이스 준비
@@ -99,17 +99,13 @@
 ### TC-005 Service 생성 폼 기본값
 
 - [ ] Service 생성 폼이 보인다.
-- [ ] Environment 기본값 또는 선택지가 표시된다.
-- [ ] Default threshold preset 기본값 또는 선택지가 표시된다.
 - [ ] Max input tokens 기본값이 표시된다.
-- [ ] 검토: 개발자가 threshold 숫자 의미를 몰라도 preset을 선택할 수 있다.
+- [ ] 검토: Service ID, 표시 이름, 입력 토큰 한도를 한 화면에서 이해할 수 있다.
 
 ### TC-006 Service 생성 성공
 
 - [ ] Service ID를 입력한다.
 - [ ] Display name을 입력한다.
-- [ ] Environment를 선택한다.
-- [ ] Default preset을 선택한다.
 - [ ] Max input tokens를 입력한다.
 - [ ] Service 등록 버튼을 누른다.
 - [ ] 성공 메시지가 표시된다.
@@ -324,6 +320,7 @@
 
 - [ ] 검증 완료된 후보를 선택한다.
 - [ ] Release version 또는 표시 정보를 입력한다.
+- [ ] Release 생성 시 passed test candidate에서 Environment를 지정한다.
 - [ ] Release를 생성한다.
 - [ ] 생성된 Release가 목록에 표시된다.
 - [ ] 검토: Release가 어떤 검증 결과를 기반으로 만들어졌는지 알 수 있다.
@@ -529,18 +526,21 @@
 - [ ] 다른 Service의 이름, 멤버, key, runtime log가 노출되지 않는다.
 - [ ] 검토: 다중 Service 환경에서 데이터 경계가 유지된다.
 
-### TC-056 Non-system-admin 권한 관리 시도
+### TC-056 Service membership 권한 경계
 
-- [ ] `service_owner`, `service_developer`, `service_operator`, `auditor` 계정으로 membership grant/revoke를 시도한다.
-- [ ] baseline C-2에서는 모두 차단된다.
-- [ ] 차단 메시지가 `system_admin` 권한이 필요하다고 설명한다.
-- [ ] 검토: 향후 owner delegation이 추가되기 전까지 권한 경계가 명확하다.
+- [ ] 선택한 Service의 `service_owner` 계정으로 user lookup, membership list, grant/revoke를 시도한다.
+- [ ] 같은 Service 범위에서는 성공하고, 권한 없는 다른 Service에서는 403 또는 404가 발생한다.
+- [ ] `service_developer`, `service_operator`, `auditor` 계정으로 membership grant/revoke를 시도한다.
+- [ ] `service_developer`, `service_operator`, `auditor`는 차단되고, 차단 메시지는 Service owner scope가 필요하다고 설명한다.
+- [ ] 검토: `system_admin`과 인가된 `service_owner`만 membership을 관리할 수 있다.
 
 ### TC-059 Non-system-admin API Key 관리 시도
 
+- [ ] 선택한 Service의 `service_owner` 계정으로 API key 생성 또는 revoke를 시도한다.
+- [ ] 같은 Service 범위에서는 성공하고, 권한 없는 다른 Service에서는 403 또는 404가 발생한다.
 - [ ] `service_developer`, `service_operator`, `auditor` 계정으로 API key 생성 또는 revoke를 시도한다.
-- [ ] baseline C-3에서는 차단된다.
-- [ ] 검토: runtime key lifecycle이 엄격하게 통제된다.
+- [ ] `service_developer`, `service_operator`, `auditor`는 차단된다.
+- [ ] 검토: runtime key lifecycle은 `system_admin`과 인가된 `service_owner`로 통제된다.
 
 ### TC-060 Secret 노출 검색
 

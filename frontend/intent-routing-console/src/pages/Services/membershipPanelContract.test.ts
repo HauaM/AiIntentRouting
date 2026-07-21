@@ -52,7 +52,8 @@ describe('Services membership panel contract', () => {
     const revokeReloadIndex = source.indexOf('await loadMembers(expectedServiceId);', revokeIndex);
     const revokeRefreshIndex = source.indexOf('await onMembershipChanged();', revokeReloadIndex);
 
-    expect(source).toContain('searchAdminUsers({ query, limit: 25 })');
+    expect(source).toContain('searchServiceUsers(expectedServiceId, { query, limit: 25 })');
+    expect(source).not.toContain('searchAdminUsers');
     expect(source).toContain('listServiceMembers(expectedServiceId)');
     expect(grantSuccessIndex).toBeGreaterThan(grantCurrentCheckIndex);
     expect(grantClearIndex).toBeGreaterThan(grantSuccessIndex);

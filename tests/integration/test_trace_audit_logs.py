@@ -17,7 +17,7 @@ from sqlalchemy import delete, or_, select, text
 from sqlalchemy.orm import Session
 
 from intent_routing.api.admin import get_admin_session
-from intent_routing.api.dependencies import get_api_key_lookup, get_runtime_environment
+from intent_routing.api.dependencies import get_api_key_lookup
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.embedding.fake import FakeEmbeddingProvider
@@ -55,6 +55,7 @@ def test_runtime_call_stores_masked_and_encrypted_raw_query(
     assert response.status_code == 200
     persisted = _runtime_log(db_session, body["trace_id"])
     assert persisted is not None
+    assert persisted.environment == "prod"
     assert persisted.query_masked == "api timeout gateway incident latency 전화 010-****-5678"
     assert persisted.query_raw_ciphertext is not None
     assert persisted.query_raw_encrypted_dek is not None
@@ -73,6 +74,7 @@ def test_masked_runtime_log_endpoints_never_return_raw_query_fields(
         "request_id",
         "app_id",
         "service_id",
+        "environment",
         "release_version",
         "policy_version",
         "intent_catalog_version",
@@ -584,7 +586,6 @@ def _client(
 
     app.dependency_overrides[get_admin_session] = override_session
     app.dependency_overrides[get_api_key_lookup] = lambda: runtime_lookup
-    app.dependency_overrides[get_runtime_environment] = lambda: "prod"
     app.dependency_overrides[runtime_module.get_runtime_session] = override_session
     app.state.runtime_log_session_factory = override_runtime_log_session
     return TestClient(app, raise_server_exceptions=raise_server_exceptions)
@@ -713,8 +714,6 @@ def _seed_runtime_state(db_session: Session) -> str:
     repository.create_service(
         service_id=SERVICE_ID,
         display_name="Trace Audit Helpdesk",
-        environment="prod",
-        default_threshold_preset="balanced",
         max_input_tokens=256,
         status="active",
         created_by="trace-audit-test",
@@ -724,8 +723,6 @@ def _seed_runtime_state(db_session: Session) -> str:
     repository.create_service(
         service_id=OTHER_SERVICE_ID,
         display_name="Other Trace Audit Helpdesk",
-        environment="prod",
-        default_threshold_preset="balanced",
         max_input_tokens=256,
         status="active",
         created_by="trace-audit-test",

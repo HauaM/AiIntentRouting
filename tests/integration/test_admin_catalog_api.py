@@ -52,8 +52,6 @@ def _service_payload(service_id: str) -> dict[str, object]:
     return {
         "service_id": service_id,
         "display_name": "Admin API test service",
-        "environment": "test",
-        "default_threshold_preset": "balanced",
         "max_input_tokens": 256,
     }
 
@@ -61,10 +59,10 @@ def _service_payload(service_id: str) -> dict[str, object]:
 def _api_key_payload(service_id: str) -> dict[str, object]:
     return {
         "service_id": service_id,
-        "environment": "test",
+        "environment": "prod",
         "app_id": f"app-{uuid4().hex}",
-        "allowed_intents": ["intent-a"],
-        "allowed_route_keys": ["route.a"],
+        "allowed_intents": [],
+        "allowed_route_keys": [],
         "expires_in_days": 90,
     }
 
@@ -281,6 +279,70 @@ def _seed_csv_runner_state(
     return policy_version, catalog_version
 
 
+def _seed_active_release_for_api_key(
+    db_session: Session,
+    client: TestClient,
+    service_id: str,
+) -> None:
+    policy_version, catalog_version = _seed_csv_runner_state(
+        db_session,
+        client,
+        service_id,
+    )
+    now = datetime.now(UTC)
+    dataset_version = f"tds-{service_id}-{uuid4().hex[:8]}"
+    test_run_id = f"tr-{service_id}-{uuid4().hex[:8]}"
+    repository = IntentRoutingRepository(db_session)
+    repository.create_test_dataset(
+        {
+            "test_dataset_version": dataset_version,
+            "service_id": service_id,
+            "source_filename": "api-key-release.csv",
+            "content_sha256": f"sha256-{uuid4().hex}",
+            "created_by": "integration-test",
+            "created_at": now,
+        }
+    )
+    repository.create_test_run_with_results(
+        {
+            "test_run_id": test_run_id,
+            "service_id": service_id,
+            "test_dataset_version": dataset_version,
+            "policy_version": policy_version,
+            "intent_catalog_version": catalog_version,
+            "model_version": "emb-fake-v1",
+            "vector_index_version": f"vec-{catalog_version}-emb-fake-v1-001",
+            "threshold_preset": "balanced",
+            "threshold_value": Decimal("0.8"),
+            "pass_rate": Decimal("1.0"),
+            "review_rate": Decimal("0.0"),
+            "risk_pass_rate": Decimal("1.0"),
+            "gate_passed": True,
+            "created_by": "integration-test",
+            "created_at": now,
+        },
+        [],
+    )
+    repository.create_release(
+        release_version=f"rel-{service_id}-{uuid4().hex[:8]}",
+        service_id=service_id,
+        environment="prod",
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        model_version="emb-fake-v1",
+        vector_index_version=f"vec-{catalog_version}-emb-fake-v1-001",
+        test_dataset_version=dataset_version,
+        test_run_id=test_run_id,
+        pass_rate=Decimal("1.0"),
+        risk_pass_rate=Decimal("1.0"),
+        active=True,
+        released_by="integration-test",
+        released_at=now,
+        rollback_target=None,
+    )
+    db_session.commit()
+
+
 def test_admin_can_create_service_and_api_key(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -289,12 +351,7 @@ def test_admin_can_create_service_and_api_key(
     client = _client(db_session)
     service_id = f"svc-admin-{uuid4().hex}"
 
-    service_response = client.post(
-        "/admin/v1/services",
-        headers=_admin_headers(),
-        json=_service_payload(service_id),
-    )
-    assert service_response.status_code == 201
+    _seed_active_release_for_api_key(db_session, client, service_id)
 
     key_response = client.post(
         "/admin/v1/api-keys",
@@ -323,7 +380,7 @@ def test_revoke_endpoint_persists_revoked_status_and_audit_log(
     monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
     client = _client(db_session)
     service_id = f"svc-admin-{uuid4().hex}"
-    _create_service(client, service_id)
+    _seed_active_release_for_api_key(db_session, client, service_id)
     key_response = client.post(
         "/admin/v1/api-keys",
         headers=_admin_headers(),
@@ -455,7 +512,7 @@ def test_api_key_raw_secret_is_not_persisted_in_db_or_audit_log(
     monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
     client = _client(db_session)
     service_id = f"svc-admin-{uuid4().hex}"
-    _create_service(client, service_id)
+    _seed_active_release_for_api_key(db_session, client, service_id)
 
     key_response = client.post(
         "/admin/v1/api-keys",

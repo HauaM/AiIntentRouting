@@ -82,20 +82,7 @@ def _seed_pilot_with_api(
         json={
             "service_id": service_id,
             "display_name": catalog.display_name,
-            "environment": environment,
-            "default_threshold_preset": catalog_threshold_preset,
             "max_input_tokens": 256,
-        },
-    )
-    api_key = api.post(
-        "/admin/v1/api-keys",
-        json={
-            "service_id": service_id,
-            "environment": environment,
-            "app_id": catalog.app_id,
-            "allowed_intents": [intent.intent_id for intent in catalog.intents],
-            "allowed_route_keys": [intent.route_key for intent in catalog.intents],
-            "expires_in_days": 365,
         },
     )
     for intent in catalog.intents:
@@ -176,6 +163,16 @@ def _seed_pilot_with_api(
     )
     active_release = api.post(
         f"/admin/v1/services/{service_id}/releases/{release['release_version']}:activate"
+    )
+    api_key = api.post(
+        f"/admin/v1/services/{service_id}/api-keys",
+        json={
+            "environment": environment,
+            "app_id": catalog.app_id,
+            "allowed_intents": [intent.intent_id for intent in catalog.intents],
+            "allowed_route_keys": [intent.route_key for intent in catalog.intents],
+            "expires_in_days": 365,
+        },
     )
 
     return {

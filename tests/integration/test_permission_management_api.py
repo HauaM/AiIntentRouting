@@ -191,8 +191,6 @@ def test_system_admin_lists_permission_summaries_without_user_authorization_flag
         repository.create_service(
             service_id=service_id,
             display_name="Permission API Service",
-            environment="test",
-            default_threshold_preset="balanced",
             max_input_tokens=256,
             status="active",
             created_by="integration-test",
@@ -364,8 +362,6 @@ def test_system_admin_lists_permission_service_roles_with_filters_and_metadata(
         repository.create_service(
             service_id=service_id,
             display_name="Permission Service Roles Service",
-            environment="test",
-            default_threshold_preset="balanced",
             max_input_tokens=256,
             status="active",
             created_by="integration-test",
@@ -375,8 +371,6 @@ def test_system_admin_lists_permission_service_roles_with_filters_and_metadata(
         repository.create_service(
             service_id=other_service_id,
             display_name="Permission Service Roles Other Service",
-            environment="test",
-            default_threshold_preset="balanced",
             max_input_tokens=256,
             status="active",
             created_by="integration-test",
@@ -496,8 +490,6 @@ def test_permission_management_audit_logs_filter_groups_and_sanitize_states(
         repository.create_service(
             service_id=service_id,
             display_name="Permission Audit Service",
-            environment="test",
-            default_threshold_preset="balanced",
             max_input_tokens=256,
             status="active",
             created_by="integration-test",
@@ -686,8 +678,6 @@ def test_permission_management_risk_findings_returns_baseline_findings(
         repository.create_service(
             service_id=service_id,
             display_name="Permission Risk Service",
-            environment="test",
-            default_threshold_preset="balanced",
             max_input_tokens=256,
             status="active",
             created_by="integration-test",

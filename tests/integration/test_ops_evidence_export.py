@@ -29,6 +29,54 @@ FORBIDDEN_MARKERS = (
 )
 
 
+def test_export_ops_evidence_args_default_to_release_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("RELEASE_ENVIRONMENT", "qa")
+    monkeypatch.setenv("INTENT_ROUTING_ENVIRONMENT", "prod")
+
+    args = export_ops_evidence._parse_args(
+        [
+            "--base-url",
+            "http://example.test",
+            "--service-id",
+            "svc-evidence",
+            "--out-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert args.environment == "qa"
+
+    with pytest.raises(SystemExit):
+        export_ops_evidence._parse_args(
+            [
+                "--base-url",
+                "http://example.test",
+                "--service-id",
+                "svc-evidence",
+                "--out-dir",
+                str(tmp_path),
+                "--environment",
+                "staging",
+            ]
+        )
+
+    monkeypatch.setenv("RELEASE_ENVIRONMENT", "pilot")
+    with pytest.raises(SystemExit):
+        export_ops_evidence._parse_args(
+            [
+                "--base-url",
+                "http://example.test",
+                "--service-id",
+                "svc-evidence",
+                "--out-dir",
+                str(tmp_path),
+            ]
+        )
+
+
 def test_export_ops_evidence_writes_redacted_json_and_markdown(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -80,6 +128,7 @@ def test_export_ops_evidence_writes_redacted_json_and_markdown(
             )
         if request.url.path == f"/admin/v1/services/{service_id}/runtime-metrics":
             assert request.url.params["window_hours"] == "24"
+            assert request.url.params["environment"] == "dev"
             return httpx.Response(
                 200,
                 json={

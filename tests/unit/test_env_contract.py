@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from pytest import MonkeyPatch
 
 from intent_routing.db.session import get_database_url
@@ -12,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_LOCAL_ENV = {
     "DATABASE_URL": "postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing",
     "APP_ENV": "local",
-    "INTENT_ROUTING_ENVIRONMENT": "dev",
+    "ALLOWED_RUNTIME_ENVIRONMENTS": "dev,qa,prod",
     "ADMIN_AUTH_MODE": "trusted_headers",
     "ADMIN_BOOTSTRAP_TOKEN": "local-admin-token",
     "RAW_TEXT_KEK_ID": "local-kek-001",
@@ -65,6 +66,27 @@ def test_database_url_fallback_matches_local_compose_port(
         get_database_url()
         == "postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing"
     )
+
+
+def test_runtime_environment_allowlist_defaults_to_dev_qa_prod(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ALLOWED_RUNTIME_ENVIRONMENTS", raising=False)
+
+    from intent_routing.config import get_allowed_runtime_environments
+
+    assert get_allowed_runtime_environments() == frozenset({"dev", "qa", "prod"})
+
+
+def test_runtime_environment_allowlist_rejects_unknown_values(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ALLOWED_RUNTIME_ENVIRONMENTS", "dev,test,prod")
+
+    from intent_routing.config import get_allowed_runtime_environments
+
+    with pytest.raises(ValueError, match="unsupported runtime environment"):
+        get_allowed_runtime_environments()
 
 
 def test_closed_network_env_uses_secret_placeholders_without_live_key_material() -> None:

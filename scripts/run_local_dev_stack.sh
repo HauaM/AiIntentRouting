@@ -19,7 +19,8 @@ ADMIN_SYSTEM_ADMIN_DISPLAY_NAME_WAS_SET=0
 
 export DATABASE_URL="${DATABASE_URL:-${DEFAULT_DATABASE_URL}}"
 export APP_ENV="${APP_ENV:-local}"
-export INTENT_ROUTING_ENVIRONMENT="${INTENT_ROUTING_ENVIRONMENT:-dev}"
+export ALLOWED_RUNTIME_ENVIRONMENTS="${ALLOWED_RUNTIME_ENVIRONMENTS:-dev,qa,prod}"
+RELEASE_ENVIRONMENT="${RELEASE_ENVIRONMENT:-dev}"
 export ADMIN_AUTH_MODE="${ADMIN_AUTH_MODE:-trusted_headers}"
 export ADMIN_BOOTSTRAP_TOKEN="${ADMIN_BOOTSTRAP_TOKEN:-local-admin-token}"
 export ADMIN_SYSTEM_ADMIN_EMAIL="${ADMIN_SYSTEM_ADMIN_EMAIL:-local-admin@example.com}"
@@ -256,7 +257,7 @@ seed_local_admin_service() {
       --base-url "http://${HOST}:${BACKEND_PORT}" \
       --admin-token "${ADMIN_BOOTSTRAP_TOKEN}" \
       --service-id "${ADMIN_UI_SERVICE_ID}" \
-      --environment "${INTENT_ROUTING_ENVIRONMENT}" \
+      --environment "${RELEASE_ENVIRONMENT}" \
       --state-path "${state_path}"
   ) 2>&1 | prefix_logs backend
 }

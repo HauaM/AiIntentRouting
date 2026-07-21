@@ -42,7 +42,7 @@ Use `.env.example` as the local contract. For local smoke tests, set:
 
 ```bash
 export DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing
-export INTENT_ROUTING_ENVIRONMENT=dev
+export ALLOWED_RUNTIME_ENVIRONMENTS=dev,qa,prod
 export ADMIN_BOOTSTRAP_TOKEN=local-admin-token
 export RAW_TEXT_KEK_ID=local-kek-001
 export RAW_TEXT_KEK_BASE64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=

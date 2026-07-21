@@ -74,6 +74,54 @@ def test_masked_runtime_log_export_excludes_raw_query_and_secret_material(
     assert audit_events == ["export.requested", "export.completed"]
 
 
+def test_runtime_log_export_can_filter_by_environment(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trace_id = _create_runtime_trace(db_session, monkeypatch)
+    client = _client(db_session, monkeypatch)
+
+    response = client.post(
+        f"/admin/v1/services/{SERVICE_ID}/exports",
+        headers=_auditor_headers(SERVICE_ID, actor_id="export-env-auditor"),
+        json={
+            "resource_type": "runtime_log",
+            "format": "jsonl",
+            "filters": {"trace_id": trace_id, "environment": "prod"},
+            "reason": "Investigating masked runtime log export environment filter",
+        },
+    )
+
+    assert response.status_code == 200
+    rows = [json.loads(line) for line in response.json()["content"].splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["trace_id"] == trace_id
+    assert rows[0]["environment"] == "prod"
+
+
+def test_runtime_log_export_rejects_unsupported_environment_filter(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trace_id = _create_runtime_trace(db_session, monkeypatch)
+    client = _client(db_session, monkeypatch)
+
+    response = client.post(
+        f"/admin/v1/services/{SERVICE_ID}/exports",
+        headers=_auditor_headers(SERVICE_ID, actor_id="export-env-reject-auditor"),
+        json={
+            "resource_type": "runtime_log",
+            "format": "jsonl",
+            "filters": {"trace_id": trace_id, "environment": "pilot"},
+            "reason": "Investigating unsupported export environment filter rejection",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["status"] == "error"
+    assert response.json()["error"]["code"] == "INVALID_REQUEST"
+
+
 def test_export_audit_metadata_redacts_user_reason_text(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,

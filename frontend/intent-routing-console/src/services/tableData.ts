@@ -5,6 +5,7 @@ export type TableRequestParams = {
   decision?: string;
   event_type?: string;
   trace_id?: string;
+  environment?: string;
 };
 
 export type TableResult<T> = {

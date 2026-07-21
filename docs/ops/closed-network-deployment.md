@@ -1,6 +1,6 @@
 # Closed-Network Deployment Runbook
 
-This runbook is the Compose-based pilot deployment path for `INTENT_ROUTING_ENVIRONMENT=pilot`.
+This runbook is the Compose-based production-like deployment path for `ALLOWED_RUNTIME_ENVIRONMENTS=dev,qa,prod`.
 Use `docs/ops/intent-routing-local-runbook.md` for developer-local fake-embedding runs.
 After the image, model, environment file, migration, and API are ready, use
 `docs/ops/pilot-rehearsal.md` as the top-level Sprint 5 execution path before
@@ -70,7 +70,7 @@ chmod 600 .env.closed-network
 Set:
 
 ```dotenv
-INTENT_ROUTING_ENVIRONMENT=pilot
+ALLOWED_RUNTIME_ENVIRONMENTS=dev,qa,prod
 EMBEDDING_PROVIDER=bge-m3
 BGE_M3_MODEL_PATH=/models/bge-m3
 BGE_M3_BATCH_SIZE=16
@@ -129,7 +129,7 @@ uv run python scripts/run_pilot_rehearsal.py \
   --base-url http://127.0.0.1:8000 \
   --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
   --service-id ${SERVICE_ID} \
-  --environment pilot \
+  --environment prod \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
   --required-preset balanced \
@@ -176,7 +176,7 @@ uv run python scripts/export_ops_evidence.py \
   --out-dir var/evidence/${SERVICE_ID}/ops \
   --window-hours 24 \
   --actor-id ops-evidence \
-  --environment pilot
+  --environment prod
 ```
 
 Expected outputs are `ops-evidence.json` and `ops-evidence.md`.

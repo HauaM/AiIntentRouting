@@ -20,6 +20,7 @@ import {
   getAdminShellRouteSpecs,
   type AdminShellRouteIcon,
 } from './adminShellNavigation';
+import { getNavigationRoles } from '@/models/adminSession';
 import { ServiceScopeBar } from './ServiceScopeBar';
 
 const adminUiTheme = {
@@ -96,6 +97,7 @@ export function AdminShell({ title, children, notificationHolder }: AdminShellPr
     setServiceId,
     logout,
   } = useModel('adminSession');
+  const navigationRoles = getNavigationRoles(session);
 
   useEffect(() => {
     if (!restoring && !session.authenticated) {
@@ -117,7 +119,7 @@ export function AdminShell({ title, children, notificationHolder }: AdminShellPr
         siderWidth={188}
         location={{ pathname: location.pathname }}
         route={{
-          routes: getAdminShellRouteSpecs(session.globalRoles).map((route) => ({
+          routes: getAdminShellRouteSpecs(navigationRoles).map((route) => ({
             path: route.path,
             name: route.name,
             icon: routeIcons[route.icon],

@@ -17,7 +17,7 @@ from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session
 
 from intent_routing.api.admin import get_admin_session
-from intent_routing.api.dependencies import get_api_key_lookup, get_runtime_environment
+from intent_routing.api.dependencies import get_api_key_lookup
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.embedding.provider import clear_embedding_provider_cache
@@ -97,7 +97,6 @@ def test_representative_column_defaults_and_nullability(db_session: Session) -> 
                 "from information_schema.columns "
                 "where table_schema = 'public' "
                 "and (table_name, column_name) in ("
-                "('services', 'default_threshold_preset'), "
                 "('services', 'max_input_tokens'), "
                 "('services', 'status'), "
                 "('services', 'service_id'), "
@@ -108,12 +107,45 @@ def test_representative_column_defaults_and_nullability(db_session: Session) -> 
         )
     }
 
-    assert "'balanced'" in columns[("services", "default_threshold_preset")]["default"]
     assert columns[("services", "max_input_tokens")]["default"] == "256"
     assert "'active'" in columns[("services", "status")]["default"]
     assert columns[("services", "service_id")]["nullable"] == "NO"
     assert columns[("runtime_logs", "request_id")]["nullable"] == "YES"
     assert columns[("runtime_logs", "latency_ms")]["nullable"] == "NO"
+
+
+def test_service_schema_drops_environment_and_default_preset(
+    db_session: Session,
+) -> None:
+    columns = {
+        row.column_name
+        for row in db_session.execute(
+            text(
+                "select column_name from information_schema.columns "
+                "where table_schema = 'public' and table_name = 'services'"
+            )
+        )
+    }
+
+    assert "service_id" in columns
+    assert "display_name" in columns
+    assert "max_input_tokens" in columns
+    assert "environment" not in columns
+    assert "default_threshold_preset" not in columns
+
+
+def test_runtime_logs_include_environment_column(db_session: Session) -> None:
+    columns = {
+        row.column_name: row.data_type
+        for row in db_session.execute(
+            text(
+                "select column_name, data_type from information_schema.columns "
+                "where table_schema = 'public' and table_name = 'runtime_logs'"
+            )
+        )
+    }
+
+    assert columns["environment"] == "text"
 
 
 def test_raw_text_envelope_metadata_columns_exist(db_session: Session) -> None:
@@ -634,6 +666,49 @@ def test_release_creation_succeeds_when_gate_and_versions_match(
     assert next_body["vector_index_version"] == body["vector_index_version"]
 
 
+def test_one_passed_test_run_can_create_releases_per_environment_once(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_id, policy_version, catalog_version, client = _release_setup(
+        db_session,
+        monkeypatch,
+    )
+    test_run_id = _seed_test_run(
+        db_session,
+        service_id=service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        gate_passed=True,
+        risk_pass_rate=Decimal("1.0"),
+    )
+
+    for environment in ("dev", "qa", "prod"):
+        response = _create_release_response(
+            client,
+            service_id,
+            policy_version=policy_version,
+            intent_catalog_version=catalog_version,
+            test_run_id=test_run_id,
+            environment=environment,
+        )
+        assert response.status_code == 201
+        assert response.json()["environment"] == environment
+
+    duplicate = _create_release_response(
+        client,
+        service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        test_run_id=test_run_id,
+        environment="dev",
+    )
+    assert duplicate.status_code == 400
+    assert duplicate.json()["error"]["message"] == (
+        "Test run already has a release for this environment."
+    )
+
+
 def test_release_creation_rejects_when_provider_model_has_no_ready_catalog_index(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -823,7 +898,7 @@ def test_release_creation_strips_environment_whitespace(
     assert response.json()["environment"] == "prod"
 
 
-def test_release_creation_rejects_environment_mismatch(
+def test_release_creation_rejects_unsupported_environment(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -853,7 +928,7 @@ def test_release_creation_rejects_environment_mismatch(
     assert response.status_code == 400
     assert body["status"] == "error"
     assert body["error"]["code"] == "INVALID_REQUEST"
-    assert body["error"]["message"] == "Release environment must match service environment."
+    assert body["error"]["message"] == "Release environment must be one of dev, qa, prod."
 
 
 def test_release_activation_deactivates_previous_active_release(
@@ -960,7 +1035,7 @@ def test_release_rollback_activates_rollback_target(
     assert rollback_after_state["rollback_from"] == current
 
 
-def test_application_admin_service_developer_can_manage_assigned_service_releases(
+def test_application_admin_service_owner_can_manage_assigned_service_releases(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -975,7 +1050,7 @@ def test_application_admin_service_developer_can_manage_assigned_service_release
         cookies, app_admin_user_id = _application_admin_session_cookies(
             db_session,
             service_id,
-            role="service_developer",
+            role="service_owner",
         )
         rollback_target_test_run_id = _seed_test_run(
             db_session,
@@ -1109,20 +1184,24 @@ def test_runtime_uses_active_release_versions_after_activation(
         db_session,
         monkeypatch,
     )
-    secret_response = client.post(
+    api_key_payload = {
+        "service_id": service_id,
+        "environment": "prod",
+        "app_id": "dify-platform",
+        "allowed_intents": [],
+        "allowed_route_keys": [],
+        "expires_in_days": 30,
+    }
+    missing_release_response = client.post(
         "/admin/v1/api-keys",
         headers=_admin_headers(),
-        json={
-            "service_id": service_id,
-            "environment": "prod",
-            "app_id": "dify-platform",
-            "allowed_intents": [],
-            "allowed_route_keys": [],
-            "expires_in_days": 30,
-        },
+        json=api_key_payload,
     )
-    assert secret_response.status_code == 201
-    secret_body = secret_response.json()
+    assert missing_release_response.status_code == 422
+    assert (
+        missing_release_response.json()["error"]["message"]
+        == "active release is required for scoped API key creation."
+    )
     test_run_id = _seed_test_run(
         db_session,
         service_id=service_id,
@@ -1143,6 +1222,13 @@ def test_runtime_uses_active_release_versions_after_activation(
         f"/admin/v1/services/{service_id}/releases/{release_version}:activate",
         headers=_admin_headers(),
     ).status_code == 200
+    secret_response = client.post(
+        "/admin/v1/api-keys",
+        headers=_admin_headers(),
+        json=api_key_payload,
+    )
+    assert secret_response.status_code == 201
+    secret_body = secret_response.json()
 
     runtime_response = client.post(
         "/v1/intent-route",
@@ -1184,20 +1270,6 @@ def test_sprint_zero_vertical_slice(
         client = _client(db_session)
 
         _create_service(client, SPRINT_ZERO_SERVICE_ID)
-        api_key_response = client.post(
-            "/admin/v1/api-keys",
-            headers=_admin_headers(),
-            json={
-                "service_id": SPRINT_ZERO_SERVICE_ID,
-                "environment": "prod",
-                "app_id": "dify-platform",
-                "allowed_intents": [],
-                "allowed_route_keys": [],
-                "expires_in_days": 30,
-            },
-        )
-        assert api_key_response.status_code == 201
-        api_key_body = api_key_response.json()
 
         intent_examples = {
             "it_api_timeout": {
@@ -1280,6 +1352,20 @@ def test_sprint_zero_vertical_slice(
         )
         assert activate_response.status_code == 200
         assert activate_response.json()["active"] is True
+        api_key_response = client.post(
+            "/admin/v1/api-keys",
+            headers=_admin_headers(),
+            json={
+                "service_id": SPRINT_ZERO_SERVICE_ID,
+                "environment": "prod",
+                "app_id": "dify-platform",
+                "allowed_intents": [],
+                "allowed_route_keys": [],
+                "expires_in_days": 30,
+            },
+        )
+        assert api_key_response.status_code == 201
+        api_key_body = api_key_response.json()
 
         raw_query = "api timeout gateway incident latency 전화 010-1234-5678"
         route_response = client.post(
@@ -1411,6 +1497,37 @@ def test_release_list_and_audit_logs_cover_catalog_release_activation_and_rollba
         assert "rollback_target" in after_state
 
 
+def test_release_list_and_active_lookup_reject_unsupported_environment_filter(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_id, _, _, client = _release_setup(db_session, monkeypatch)
+
+    list_response = client.get(
+        f"/admin/v1/services/{service_id}/releases",
+        headers=_admin_headers(),
+        params={"environment": "pilot"},
+    )
+    active_response = client.get(
+        f"/admin/v1/services/{service_id}/releases/active",
+        headers=_admin_headers(),
+        params={"environment": "pilot"},
+    )
+
+    assert list_response.status_code == 422
+    assert list_response.json()["error"]["code"] == "INVALID_REQUEST"
+    assert (
+        list_response.json()["error"]["message"]
+        == "environment must be one of dev, qa, prod."
+    )
+    assert active_response.status_code == 422
+    assert active_response.json()["error"]["code"] == "INVALID_REQUEST"
+    assert (
+        active_response.json()["error"]["message"]
+        == "environment must be one of dev, qa, prod."
+    )
+
+
 def test_security_lifecycle_repository_methods_filter_count_and_redact(
     db_session: Session,
 ) -> None:
@@ -1425,8 +1542,6 @@ def test_security_lifecycle_repository_methods_filter_count_and_redact(
             repository.create_service(
                 service_id=candidate_service_id,
                 display_name="Lifecycle repository service",
-                environment="prod",
-                default_threshold_preset="balanced",
                 max_input_tokens=256,
                 status="active",
                 created_by="lifecycle-test",
@@ -1758,7 +1873,6 @@ def _client(db_session: Session) -> TestClient:
     runtime_module = __import__("intent_routing.api.runtime", fromlist=["get_runtime_session"])
     app.dependency_overrides[runtime_module.get_runtime_session] = override_session
     app.dependency_overrides[get_api_key_lookup] = lambda: runtime_lookup
-    app.dependency_overrides[get_runtime_environment] = lambda: "prod"
     app.state.runtime_log_session_factory = override_runtime_log_session
     return TestClient(app, raise_server_exceptions=False)
 
@@ -1781,8 +1895,6 @@ def _service_payload(service_id: str) -> dict[str, object]:
     return {
         "service_id": service_id,
         "display_name": "Release flow service",
-        "environment": "prod",
-        "default_threshold_preset": "balanced",
         "max_input_tokens": 256,
     }
 

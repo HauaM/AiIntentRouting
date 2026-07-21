@@ -68,7 +68,7 @@ def test_release_diff_compares_candidate_to_active_release(
 
     response = client.get(
         f"/admin/v1/services/{service_id}/releases/{candidate}/diff",
-        headers=_developer_headers(service_id),
+        headers=_owner_headers(service_id),
     )
 
     assert response.status_code == 200
@@ -92,7 +92,7 @@ def test_release_diff_compares_candidate_to_active_release(
     assert body["test_run_diff"]["gate_passed"] is True
 
 
-def test_release_activation_allows_service_developer_and_publish_flow(
+def test_release_activation_denies_service_developer_governed_publish_flow(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -112,8 +112,7 @@ def test_release_activation_allows_service_developer_and_publish_flow(
         f"/admin/v1/services/{service_id}/releases/{release_version}:activate",
         headers=_developer_headers(service_id),
     )
-    assert direct.status_code == 200
-    assert direct.json()["active"] is True
+    assert direct.status_code == 403
 
     requested = client.post(
         f"/admin/v1/services/{service_id}/publish-requests",
@@ -126,41 +125,8 @@ def test_release_activation_allows_service_developer_and_publish_flow(
             "reason": "Promote tested release after green gate",
         },
     )
-    assert requested.status_code == 201
-    request_id = requested.json()["request_id"]
-    assert requested.json()["status"] == "pending"
-    assert requested.json()["requested_by"] == "developer-user"
-
-    self_approve = client.post(
-        f"/admin/v1/services/{service_id}/publish-requests/{request_id}:approve",
-        headers=_developer_headers(service_id),
-        json={"reason": "Trying to approve my own request"},
-    )
-    assert self_approve.status_code == 403
-
-    approved = client.post(
-        f"/admin/v1/services/{service_id}/publish-requests/{request_id}:approve",
-        headers=_owner_headers(service_id),
-        json={"reason": "Release gate and diff reviewed"},
-    )
-    assert approved.status_code == 200
-    assert approved.json()["status"] == "approved"
-    assert approved.json()["decided_by"] == "owner-user"
-
-    activated = client.post(
-        f"/admin/v1/services/{service_id}/publish-requests/{request_id}:activate",
-        headers=_developer_headers(service_id),
-    )
-    assert activated.status_code == 200
-    assert activated.json()["active"] is True
-
-    db_session.expire_all()
-    request_model = db_session.get(models.GovernedActionRequest, request_id)
-    assert request_model is not None
-    assert request_model.status == "activated"
-    assert _audit_log(db_session, "publish.requested", request_id) is not None
-    assert _audit_log(db_session, "publish.approved", request_id) is not None
-    assert _audit_log(db_session, "release.activated", release_version) is not None
+    assert requested.status_code == 403
+    assert requested.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
 
 
 def test_publish_request_rejects_evidence_refs_field(
@@ -181,7 +147,7 @@ def test_publish_request_rejects_evidence_refs_field(
 
     response = client.post(
         f"/admin/v1/services/{service_id}/publish-requests",
-        headers=_developer_headers(service_id),
+        headers=_owner_headers(service_id),
         json={
             "resource_type": "release",
             "resource_id": release_version,
@@ -217,7 +183,7 @@ def test_publish_request_audit_metadata_redacts_user_reason_text(
 
     requested = client.post(
         f"/admin/v1/services/{service_id}/publish-requests",
-        headers=_developer_headers(service_id),
+        headers=_owner_headers(service_id),
         json={
             "resource_type": "release",
             "resource_id": release_version,
@@ -232,7 +198,7 @@ def test_publish_request_audit_metadata_redacts_user_reason_text(
 
     approved = client.post(
         f"/admin/v1/services/{service_id}/publish-requests/{request_id}:approve",
-        headers=_owner_headers(service_id),
+        headers=_owner_headers(service_id, actor_id="reviewer-owner"),
         json={"reason": malicious_decision_reason},
     )
     assert approved.status_code == 200
@@ -288,7 +254,7 @@ def test_release_reject_is_terminal(
     )
     requested = client.post(
         f"/admin/v1/services/{service_id}/publish-requests",
-        headers=_developer_headers(service_id),
+        headers=_owner_headers(service_id),
         json={
             "resource_type": "release",
             "resource_id": release_version,
@@ -301,7 +267,7 @@ def test_release_reject_is_terminal(
 
     rejected = client.post(
         f"/admin/v1/services/{service_id}/publish-requests/{request_id}:reject",
-        headers=_owner_headers(service_id),
+        headers=_owner_headers(service_id, actor_id="reviewer-owner"),
         json={"reason": "Diff review found missing stakeholder approval"},
     )
     assert rejected.status_code == 200
@@ -316,7 +282,7 @@ def test_release_reject_is_terminal(
 
     activation = client.post(
         f"/admin/v1/services/{service_id}/publish-requests/{request_id}:activate",
-        headers=_developer_headers(service_id),
+        headers=_owner_headers(service_id),
     )
     assert activation.status_code == 409
 

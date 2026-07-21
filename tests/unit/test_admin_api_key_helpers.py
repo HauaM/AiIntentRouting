@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
+from pydantic import ValidationError
+
 from intent_routing.api import admin
 from intent_routing.db import models
 
@@ -57,6 +60,63 @@ def test_api_key_create_response_includes_revoked_at_null() -> None:
 
     assert response.revoked_at is None
     assert "revoked_at" in response.model_dump()
+
+
+def test_api_key_create_request_and_response_allow_unlimited_expiry() -> None:
+    request = admin.ServiceApiKeyCreateRequest(
+        environment="prod",
+        app_id="checkout-web",
+        expires_in_days=None,
+    )
+    now = datetime.now(UTC)
+    key = models.ApiKey(
+        key_id="key_live_unlimited",
+        key_hash="hash",
+        key_fingerprint="sha256:abcd:unlimited",
+        environment="prod",
+        app_id="checkout-web",
+        service_id="svc-a",
+        allowed_intents=[],
+        allowed_route_keys=[],
+        status="active",
+        expires_at=None,
+        revoked_at=None,
+        created_by="admin-user",
+        created_at=now,
+    )
+
+    response = admin.ApiKeyCreateResponse(
+        api_key="irt_once",
+        api_key_displayed_once=True,
+        **admin._api_key_response(key).model_dump(),
+    )
+
+    assert request.expires_in_days is None
+    assert response.expires_at is None
+    assert response.model_dump()["expires_at"] is None
+
+
+@pytest.mark.parametrize(
+    "request_type, values",
+    [
+        (
+            admin.ApiKeyCreateRequest,
+            {"service_id": "svc-a", "environment": "dev", "app_id": "  checkout-web  "},
+        ),
+        (
+            admin.ServiceApiKeyCreateRequest,
+            {"environment": "dev", "app_id": "  checkout-web  "},
+        ),
+    ],
+)
+def test_api_key_create_requests_normalize_app_id_and_reject_blank_values(
+    request_type: type[admin.ApiKeyCreateRequest | admin.ServiceApiKeyCreateRequest],
+    values: dict[str, str],
+) -> None:
+    assert request_type(**values).app_id == "checkout-web"
+
+    with pytest.raises(ValidationError):
+        request_type(**{**values, "app_id": " \t "})
 
 
 def test_revoke_api_key_record_is_idempotent_for_already_revoked_key() -> None:

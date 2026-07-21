@@ -56,6 +56,17 @@ def test_seed_pilot_runs_csv_gate_with_balanced_threshold_for_strict_catalog(
     assert "threshold_preset" not in test_run_request["json"]
     assert state["test_runs"]["balanced"]["gate_passed"] is True
     assert "strict" not in state["test_runs"]
+    api_key_request_index = next(
+        index
+        for index, request in enumerate(http_client.requests)
+        if request["path"] == "/admin/v1/services/svc-test/api-keys"
+    )
+    release_activation_index = next(
+        index
+        for index, request in enumerate(http_client.requests)
+        if request["path"].endswith(":activate")
+    )
+    assert api_key_request_index > release_activation_index
 
 
 def test_seed_pilot_creates_catalog_version_with_description(
@@ -80,6 +91,34 @@ def test_seed_pilot_creates_catalog_version_with_description(
     )
     assert catalog_version_request["json"] == {
         "description": "Pilot catalog version seed"
+    }
+
+
+def test_seed_pilot_service_creation_is_not_environment_owned(
+    tmp_path: Path,
+) -> None:
+    catalog_path = _write_catalog(tmp_path, threshold_preset="balanced")
+    csv_path = _write_csv(tmp_path)
+    http_client = _FakeHttpClient(gate_passed=True)
+
+    seed_module.seed_pilot(
+        base_url="http://testserver",
+        admin_token="local-admin-token",
+        catalog_path=catalog_path,
+        csv_path=csv_path,
+        environment="qa",
+        http_client=http_client,
+    )
+
+    service_request = next(
+        request
+        for request in http_client.requests
+        if request["path"] == "/admin/v1/services"
+    )
+    assert service_request["json"] == {
+        "service_id": "svc-test",
+        "display_name": "Seed test service",
+        "max_input_tokens": 256,
     }
 
 
@@ -221,7 +260,7 @@ def _admin_response(
     json: Mapping[str, Any] | None,
     gate_passed: bool,
 ) -> dict[str, Any]:
-    if path == "/admin/v1/api-keys":
+    if path.endswith("/api-keys"):
         return {
             "key_id": "key_live_test",
             "api_key": "irt_test_secret",

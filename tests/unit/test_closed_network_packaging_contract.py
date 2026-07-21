@@ -35,11 +35,11 @@ def test_dockerignore_excludes_local_state_and_caches() -> None:
         assert expected in dockerignore
 
 
-def test_closed_network_env_contract_uses_pilot_bge_profile() -> None:
+def test_closed_network_env_contract_uses_release_owned_bge_profile() -> None:
     env_text = (ROOT / ".env.closed-network.example").read_text(encoding="utf-8")
     values = _parse_env(env_text)
 
-    assert values["INTENT_ROUTING_ENVIRONMENT"] == "pilot"
+    assert values["ALLOWED_RUNTIME_ENVIRONMENTS"] == "dev,qa,prod"
     assert values["EMBEDDING_PROVIDER"] == "bge-m3"
     assert values["BGE_M3_MODEL_PATH"] == "/models/bge-m3"
     assert values["BGE_M3_BATCH_SIZE"] == "16"
@@ -82,7 +82,7 @@ def test_closed_network_deployment_runbook_documents_operator_sequence() -> None
         "docker compose --profile runtime up -d postgres migrate api",
         "curl -s http://127.0.0.1:8000/healthz",
         "curl -s http://127.0.0.1:8000/readyz",
-        "INTENT_ROUTING_ENVIRONMENT=pilot",
+        "ALLOWED_RUNTIME_ENVIRONMENTS=dev,qa,prod",
         "/models/bge-m3",
         "release_version",
         ".env.closed-network.example",

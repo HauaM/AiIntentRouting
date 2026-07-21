@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from intent_routing.api.admin import get_admin_session
-from intent_routing.api.dependencies import get_api_key_lookup, get_runtime_environment
+from intent_routing.api.dependencies import get_api_key_lookup
 from intent_routing.api.runtime import get_runtime_session
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
@@ -63,7 +63,6 @@ def test_api_key_rotation_smokes_new_key_revokes_old_key_and_writes_audit_log(
     app.dependency_overrides[get_admin_session] = override_session
     app.dependency_overrides[get_runtime_session] = override_session
     app.dependency_overrides[get_api_key_lookup] = lambda: runtime_lookup
-    app.dependency_overrides[get_runtime_environment] = lambda: "dev"
     app.dependency_overrides[runtime_module.get_runtime_session] = override_session
     service_id = f"it-helpdesk-rotation-{uuid4().hex}"
     out_state_path = tmp_path / "rotated.state.secret.json"

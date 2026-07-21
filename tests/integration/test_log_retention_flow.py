@@ -312,8 +312,6 @@ def test_retention_redacts_expired_partial_raw_query_material(
     repository.create_service(
         service_id=service_id,
         display_name="IT Helpdesk Pilot",
-        environment="prod",
-        default_threshold_preset="balanced",
         max_input_tokens=256,
         status="active",
         created_by="retention-test",
@@ -425,8 +423,6 @@ def test_redaction_audit_uses_actual_updated_trace_ids_when_plan_turns_stale(
     repository.create_service(
         service_id=service_id,
         display_name="IT Helpdesk Pilot",
-        environment="prod",
-        default_threshold_preset="balanced",
         max_input_tokens=256,
         status="active",
         created_by="retention-test",
@@ -603,8 +599,6 @@ def _seed_retention_fixture(
         repository.create_service(
             service_id=created_service_id,
             display_name="IT Helpdesk Pilot",
-            environment="prod",
-            default_threshold_preset="balanced",
             max_input_tokens=256,
             status="active",
             created_by="retention-test",

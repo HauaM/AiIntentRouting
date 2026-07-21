@@ -40,6 +40,40 @@ describe('adminShellNavigation', () => {
     expect(routePaths).toContain('/test-runs');
   });
 
+  it('matches service owner navigation without platform admin screens or audit logs', () => {
+    const routePaths = paths(['service_owner']);
+
+    expect(routePaths).toContain('/services');
+    expect(routePaths).toContain('/intents');
+    expect(routePaths).toContain('/test-runs');
+    expect(routePaths).toContain('/releases');
+    expect(routePaths).toContain('/api-keys');
+    expect(routePaths).toContain('/runtime-logs');
+    expect(routePaths).not.toContain('/organization-directory');
+    expect(routePaths).not.toContain('/permission-management');
+    expect(routePaths).not.toContain('/audit-logs');
+  });
+
+  it('matches service developer navigation with read-only releases and no api keys', () => {
+    const routePaths = paths(['service_developer']);
+
+    expect(routePaths).toContain('/services');
+    expect(routePaths).toContain('/intents');
+    expect(routePaths).toContain('/test-runs');
+    expect(routePaths).toContain('/releases');
+    expect(routePaths).toContain('/runtime-logs');
+    expect(routePaths).not.toContain('/api-keys');
+    expect(routePaths).not.toContain('/audit-logs');
+  });
+
+  it('keeps existing auditor audit-log navigation', () => {
+    expect(paths(['auditor'])).toContain('/audit-logs');
+  });
+
+  it('shows audit-log navigation for service operators', () => {
+    expect(paths(['service_operator'])).toContain('/audit-logs');
+  });
+
   it('does not render the Sprint phase notice globally in AdminShell', () => {
     expect(adminShellSource()).not.toContain('Sprint 11 Admin UI Phase 1');
   });
@@ -55,5 +89,9 @@ describe('adminShellNavigation', () => {
     expect(notificationHolder).toBeGreaterThan(configProvider);
     expect(notificationHolder).toBeLessThan(proLayout);
     expect(restoringBranch).toBeGreaterThan(notificationHolder);
+  });
+
+  it('derives navigation roles from every accessible service', () => {
+    expect(adminShellSource()).toContain('getNavigationRoles(session)');
   });
 });

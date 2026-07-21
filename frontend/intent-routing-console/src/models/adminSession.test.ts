@@ -36,14 +36,12 @@ const services: API.AccessibleService[] = [
   {
     service_id: 'svc-a',
     display_name: 'Service A',
-    environment: 'prod',
     status: 'active',
     roles: ['service_operator'],
   },
   {
     service_id: 'svc-b',
     display_name: 'Service B',
-    environment: 'stage',
     status: 'active',
     roles: ['service_developer'],
   },
@@ -158,7 +156,7 @@ describe('admin session model helpers', () => {
     expect(canManageRuntimeSetup(session)).toBe(true);
   });
 
-  it('allows selected service owners and developers to manage releases and API keys', () => {
+  it('allows selected service owners to manage releases, API keys, and members', () => {
     const serviceOwnerSession = normalizeAuthSession(
       { ...currentUser, global_roles: [], service_roles: [] },
       [{ ...services[0], roles: ['service_owner'] }],
@@ -173,9 +171,11 @@ describe('admin session model helpers', () => {
     expect(canManageReleases(serviceOwnerSession)).toBe(true);
     expect(canManageApiKeys(serviceOwnerSession)).toBe(true);
     expect(canManageRuntimeSetup(serviceOwnerSession)).toBe(true);
-    expect(canManageReleases(serviceDeveloperSession)).toBe(true);
-    expect(canManageApiKeys(serviceDeveloperSession)).toBe(true);
-    expect(canManageRuntimeSetup(serviceDeveloperSession)).toBe(true);
+    expect(canManageServiceMembers(serviceOwnerSession)).toBe(true);
+    expect(canManageReleases(serviceDeveloperSession)).toBe(false);
+    expect(canManageApiKeys(serviceDeveloperSession)).toBe(false);
+    expect(canManageRuntimeSetup(serviceDeveloperSession)).toBe(false);
+    expect(canManageServiceMembers(serviceDeveloperSession)).toBe(false);
   });
 
   it('does not allow read-only service roles to manage releases or API keys', () => {
@@ -227,7 +227,7 @@ describe('admin session model helpers', () => {
     expect(canCreateServices(session)).toBe(false);
   });
 
-  it('allows only system admins to manage service memberships in C-2 baseline', () => {
+  it('allows system admins and selected service owners to manage service memberships', () => {
     const systemAdminSession = normalizeAuthSession(currentUser, services, 'svc-a');
     const serviceOwnerSession = normalizeAuthSession(
       { ...currentUser, global_roles: [], service_roles: [] },
@@ -251,7 +251,7 @@ describe('admin session model helpers', () => {
     );
 
     expect(canManageServiceMembers(systemAdminSession)).toBe(true);
-    expect(canManageServiceMembers(serviceOwnerSession)).toBe(false);
+    expect(canManageServiceMembers(serviceOwnerSession)).toBe(true);
     expect(canManageServiceMembers(serviceDeveloperSession)).toBe(false);
     expect(canManageServiceMembers(serviceOperatorSession)).toBe(false);
     expect(canManageServiceMembers(auditorSession)).toBe(false);

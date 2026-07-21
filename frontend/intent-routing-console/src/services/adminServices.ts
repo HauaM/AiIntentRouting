@@ -31,6 +31,19 @@ export async function searchAdminUsers(
   });
 }
 
+export async function searchServiceUsers(
+  serviceId: string,
+  params: { query?: string; limit?: number } = {},
+) {
+  return request<API.AdminUserLookup[]>(servicePath(serviceId, '/users'), {
+    method: 'GET',
+    params: {
+      query: params.query,
+      limit: params.limit ?? 25,
+    },
+  });
+}
+
 export const listAdminUsers = searchAdminUsers;
 
 export async function listManagedAdminUsers(
@@ -232,10 +245,20 @@ export async function revokeServiceRole(
   );
 }
 
-export async function fetchRuntimeMetrics(serviceId: string, windowHours: number) {
+export async function fetchRuntimeMetrics(
+  serviceId: string,
+  windowHours: number,
+  environment?: 'dev' | 'qa' | 'prod',
+) {
+  const params: { window_hours: number; environment?: 'dev' | 'qa' | 'prod' } = {
+    window_hours: windowHours,
+  };
+  if (environment) {
+    params.environment = environment;
+  }
   return request<API.RuntimeMetrics>(servicePath(serviceId, '/runtime-metrics'), {
     method: 'GET',
-    params: { window_hours: windowHours },
+    params,
   });
 }
 
@@ -609,9 +632,15 @@ export async function fetchRuntimeSetupGuidance(
 }
 
 export async function listRuntimeLogs(serviceId: string, params: TableRequestParams) {
+  const requestParams: { limit: number; environment?: string } = {
+    limit: RECENT_RUNTIME_LOG_LIMIT,
+  };
+  if (params.environment) {
+    requestParams.environment = params.environment;
+  }
   const rows = await request<API.RuntimeLog[]>(servicePath(serviceId, '/runtime-logs'), {
     method: 'GET',
-    params: { limit: RECENT_RUNTIME_LOG_LIMIT },
+    params: requestParams,
   });
   return toReadOnlyTableResult(filterRuntimeLogs(rows, params));
 }

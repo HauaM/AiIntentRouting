@@ -106,18 +106,83 @@ def test_admin_ui_v04_records_c2_membership_role_assignment_contract() -> None:
     contract = f"{onboarding}\n{pattern_kit}"
 
     for expected in (
-        "GET /admin/v1/users?query={email_or_name}&limit=25",
+        "GET /admin/v1/services/{service_id}/users?query={email_or_name}&limit=25",
         "GET /admin/v1/services/{service_id}/members",
         "POST /admin/v1/services/{service_id}/members/{user_id}/roles",
         "DELETE /admin/v1/services/{service_id}/members/{user_id}/roles/{role}",
         "service_membership.role_granted",
         "service_membership.role_revoked",
-        "`system_admin` can search users, list members, grant roles, and revoke roles",
-        "service_owner delegation",
-        "future/non-baseline",
+        "Accepted authorization: `system_admin` and an authorized `service_owner`",
+        "service-scoped user lookup",
+        "selected-Service boundary",
         "irt_admin_session",
         "C-2 frontend must not send `X-Admin-Token`, `X-Actor-Id`, "
         "`X-Actor-Roles`, `X-Service-Scope`, or `Authorization: Bearer`",
         "Do not add React Query or axios",
     ):
         assert expected in contract
+
+    for stale_phrase in (
+        "Baseline C-2 membership administration is `system_admin` only",
+        "service_owner delegation",
+        "future/non-baseline",
+    ):
+        assert stale_phrase not in contract
+
+
+def test_admin_ui_v04_records_release_owned_environment_and_concrete_role_gates() -> None:
+    checklist = _read(V04 / "E2E_DX_QA_CHECKLIST.md")
+    pattern_kit = _read(V04 / "PATTERN_KIT.md")
+    normalized_pattern_kit = " ".join(pattern_kit.split())
+    membership_negative = checklist.split(
+        "### TC-056 Service membership 권한 경계",
+        maxsplit=1,
+    )[1].split("### TC-059", maxsplit=1)[0]
+    api_key_negative = checklist.split(
+        "### TC-059 Non-system-admin API Key 관리 시도",
+        maxsplit=1,
+    )[1].split("### TC-060", maxsplit=1)[0]
+
+    service_creation = checklist.split("### TC-008", maxsplit=1)[0]
+    release_creation = checklist.split("### TC-032 Release 생성", maxsplit=1)[1].split(
+        "### TC-033", maxsplit=1
+    )[0]
+    for expected in (
+        "Service ID",
+        "Display name",
+        "Max input tokens",
+    ):
+        assert expected in service_creation
+    assert "Release 생성 시 passed test candidate에서 Environment를 지정한다." in release_creation
+    for stale_field in (
+        "Environment 기본값",
+        "Environment를 선택한다.",
+        "Default threshold preset",
+        "Default preset",
+    ):
+        assert stale_field not in service_creation
+
+    for expected in (
+        "`service_operator`: scoped runtime metrics, runtime log inspection, and "
+        "audit log inspection.",
+        "`auditor`: scoped runtime log inspection, audit log inspection, security "
+        "lifecycle read, raw-query approval/review paths, and masked export.",
+        "Organization Directory and Permission Management are system-admin-only.",
+        "Audit Logs are not shown to `service_owner` or `service_developer`.",
+    ):
+        assert expected in normalized_pattern_kit
+
+    for expected in (
+        "선택한 Service의 `service_owner` 계정으로 user lookup, membership list, "
+        "grant/revoke를 시도한다.",
+        "`system_admin`과 인가된 `service_owner`만 membership을 관리할 수 있다.",
+    ):
+        assert expected in membership_negative
+    assert "baseline C-2에서는 모두 차단된다." not in membership_negative
+    assert "향후 owner delegation" not in membership_negative
+
+    for expected in (
+        "선택한 Service의 `service_owner` 계정으로 API key 생성 또는 revoke를 시도한다.",
+        "runtime key lifecycle은 `system_admin`과 인가된 `service_owner`로 통제된다.",
+    ):
+        assert expected in api_key_negative

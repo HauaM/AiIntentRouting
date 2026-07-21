@@ -104,7 +104,7 @@ docker compose exec postgres pg_isready -U intent -d intent_routing
 ```bash
 export DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing
 export APP_ENV=local
-export INTENT_ROUTING_ENVIRONMENT=dev
+export ALLOWED_RUNTIME_ENVIRONMENTS=dev,qa,prod
 export ADMIN_AUTH_MODE=trusted_headers
 export ADMIN_BOOTSTRAP_TOKEN=local-admin-token
 export ADMIN_SYSTEM_ADMIN_EMAIL=local-admin@example.com
@@ -294,7 +294,7 @@ Admin UI가 필요하지 않을 때 사용합니다.
 ```bash
 export DATABASE_URL=postgresql+psycopg://intent:intent@127.0.0.1:30142/intent_routing
 export APP_ENV=local
-export INTENT_ROUTING_ENVIRONMENT=dev
+export ALLOWED_RUNTIME_ENVIRONMENTS=dev,qa,prod
 export ADMIN_AUTH_MODE=trusted_headers
 export ADMIN_BOOTSTRAP_TOKEN=local-admin-token
 export RAW_TEXT_KEK_ID=local-kek-001

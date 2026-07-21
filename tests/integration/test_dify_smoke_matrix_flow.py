@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from intent_routing.api.admin import get_admin_session
-from intent_routing.api.dependencies import get_api_key_lookup, get_runtime_environment
+from intent_routing.api.dependencies import get_api_key_lookup
 from intent_routing.api.runtime import get_runtime_session
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.embedding.provider import clear_embedding_provider_cache
@@ -61,7 +61,6 @@ def test_dify_smoke_matrix_flow_writes_redacted_branch_evidence(
     app.dependency_overrides[get_admin_session] = override_session
     app.dependency_overrides[get_runtime_session] = override_session
     app.dependency_overrides[get_api_key_lookup] = lambda: runtime_lookup
-    app.dependency_overrides[get_runtime_environment] = lambda: "dev"
     app.dependency_overrides[runtime_module.get_runtime_session] = override_session
     service_id = f"it-helpdesk-dify-matrix-{uuid4().hex}"
     out_dir = tmp_path / "dify"

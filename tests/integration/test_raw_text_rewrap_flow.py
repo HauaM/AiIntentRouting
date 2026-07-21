@@ -584,8 +584,6 @@ def _seed_rewrap_fixture(
     repository.create_service(
         service_id=service_id,
         display_name="IT Helpdesk Pilot",
-        environment="dev",
-        default_threshold_preset="balanced",
         max_input_tokens=256,
         status="active",
         created_by="test",

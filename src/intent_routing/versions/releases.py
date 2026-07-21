@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+from intent_routing.config import SUPPORTED_RUNTIME_ENVIRONMENTS
 from intent_routing.db import models
 from intent_routing.db.repositories import IntentRoutingRepository
 
@@ -56,6 +57,9 @@ def validate_release_inputs(
     test_run_id: str,
     rollback_target: str | None,
 ) -> ReleaseDependencies:
+    if environment not in SUPPORTED_RUNTIME_ENVIRONMENTS:
+        raise ReleaseValidationError("Release environment must be one of dev, qa, prod.")
+
     policy = repository.get_policy_version(service_id, policy_version)
     if policy is None:
         raise ReleaseDependencyNotFoundError("Policy version does not exist.")
@@ -126,6 +130,17 @@ def create_release(
         test_run_id=test_run_id,
         rollback_target=rollback_target,
     )
+    if (
+        repository.get_release_for_test_run_environment(
+            service_id,
+            environment,
+            test_run_id,
+        )
+        is not None
+    ):
+        raise ReleaseValidationError(
+            "Test run already has a release for this environment."
+        )
 
     vector_index = repository.get_ready_vector_index_version(
         service_id,

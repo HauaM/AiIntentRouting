@@ -55,11 +55,13 @@ register a Service from the Admin UI.
 
 Expected UX:
 
-- Create Service with `service_id`, display name, environment, default threshold
-  preset, and input limit.
+- Create Service with `service_id`, display name, and input limit. Release
+  environment and policy threshold preset are selected when creating a Release,
+  not stored on the Service.
 - Refresh `/me/services` or otherwise make the newly created Service available
   in the Service picker.
-- Show Service status and environment in the scope bar.
+- Show Service status in the scope bar; show release-owned environment where a
+  Release, API key, runtime guidance, or release candidate is selected.
 - Record an audit event for Service creation.
 
 Current implementation note:
@@ -68,8 +70,8 @@ Current implementation note:
 - Admin UI `/services` lets `system_admin` create a Service, refresh
   server-derived Service scope, select the new Service, and continue to Intent
   Catalog.
-- Service membership and role assignment remain C-2 work and must not be faked
-  in C-1.
+- Service membership and role assignment are managed in the accepted C-2 flow
+  from the selected Service, using service-scoped user lookup and membership APIs.
 
 ## C-2: Service Membership, Roles, And Developer Validation
 
@@ -77,7 +79,7 @@ Goal: make authorization part of the product flow, not a setup shortcut.
 
 Expected UX:
 
-- `system_admin` or an authorized future owner assigns scoped Service roles.
+- `system_admin` or an authorized `service_owner` assigns scoped Service roles.
 - Users see only Services returned by `/me/services`.
 - `service_developer` can manage Intents, examples, policy/catalog versions,
   and test runs only for assigned Services.
@@ -95,13 +97,14 @@ Backend contract note:
   The browser UI should expose user search, selected-Service member listing,
   role grant, and role revoke from the selected Service flow.
 - C-2 API contract:
-  - `GET /admin/v1/users?query={email_or_name}&limit=25`
+  - `GET /admin/v1/services/{service_id}/users?query={email_or_name}&limit=25`
   - `GET /admin/v1/services/{service_id}/members`
   - `POST /admin/v1/services/{service_id}/members/{user_id}/roles`
   - `DELETE /admin/v1/services/{service_id}/members/{user_id}/roles/{role}`
-- Baseline authorization: `system_admin` can search users, list members, grant
-  roles, and revoke roles. `service_owner delegation` is future/non-baseline and
-  must not be enabled without a later approved decision and guardrail tests.
+- Accepted authorization: `system_admin` and an authorized `service_owner` can
+  use service-scoped user lookup, list selected-Service members, grant roles,
+  and revoke roles within their Service. Guardrail tests must preserve the
+  selected-Service boundary.
 - C-2 grant/revoke writes append-only audit events:
   `service_membership.role_granted` and
   `service_membership.role_revoked`.

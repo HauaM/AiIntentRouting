@@ -10,7 +10,7 @@ def test_readme_and_pilot_runbook_document_repeatable_local_environment() -> Non
     ]
 
     for text in texts:
-        assert "export INTENT_ROUTING_ENVIRONMENT=dev" in text
+        assert "export ALLOWED_RUNTIME_ENVIRONMENTS=dev,qa,prod" in text
         assert "export RAW_TEXT_KEK_BASE64=" in text
         assert "export ADMIN_BOOTSTRAP_TOKEN=local-admin-token" in text
         assert "export SERVICE_ID=it-helpdesk-pilot-$(date +%Y%m%d%H%M%S)" in text

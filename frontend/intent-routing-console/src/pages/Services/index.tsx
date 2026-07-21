@@ -10,7 +10,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Select,
   Space,
   Table,
   Tag,
@@ -43,29 +42,12 @@ const serviceHelp = {
   serviceId:
     '고정 Service ID입니다. 소문자, 숫자, 하이픈, 언더스코어만 사용합니다. 예: it-helpdesk',
   displayName: '운영자가 화면에서 알아보기 쉬운 서비스 이름입니다.',
-  environment: '이 Service가 사용할 환경입니다. Release와 API key environment 기준이 됩니다.',
-  preset:
-    '개발자가 숫자 threshold를 직접 다루지 않도록 제공하는 기본 분류 기준입니다.',
   maxInputTokens: 'runtime API가 받을 사용자 질의의 최대 token 수입니다.',
 };
 
 const helpLabel = (label: string, help: string) => (
   <FieldHelpLabel label={label} help={help} />
 );
-
-const environmentOptions = [
-  { label: 'dev', value: 'dev' },
-  { label: 'test', value: 'test' },
-  { label: 'stage', value: 'stage' },
-  { label: 'staging', value: 'staging' },
-  { label: 'prod', value: 'prod' },
-];
-
-const presetOptions = [
-  { label: 'strict', value: 'strict' },
-  { label: 'balanced', value: 'balanced' },
-  { label: 'exploratory', value: 'exploratory' },
-];
 
 export default function ServicesPage() {
   const { session, restoreSession, setServiceId } = useModel('adminSession');
@@ -111,15 +93,6 @@ export default function ServicesPage() {
               {row.service_id}
             </Typography.Text>
           </Tooltip>
-        ),
-      },
-      {
-        title: '환경',
-        dataIndex: 'environment',
-        width: 128,
-        className: 'admin-nowrap-cell',
-        render: (_, row) => (
-          <StatusTag status={row.environment} label={row.environment} />
         ),
       },
       {
@@ -212,12 +185,6 @@ export default function ServicesPage() {
                     <Descriptions.Item label="표시 이름">
                       {selectedService.display_name}
                     </Descriptions.Item>
-                    <Descriptions.Item label="환경">
-                      <StatusTag
-                        status={selectedService.environment}
-                        label={selectedService.environment}
-                      />
-                    </Descriptions.Item>
                     <Descriptions.Item label="상태">
                       <StatusTag status={selectedService.status} />
                     </Descriptions.Item>
@@ -292,26 +259,6 @@ export default function ServicesPage() {
                       ]}
                     >
                       <Input placeholder="IT Helpdesk" style={{ width: '100%' }} />
-                    </Form.Item>
-                    <Form.Item
-                      name="environment"
-                      label={helpLabel('환경', serviceHelp.environment)}
-                      rules={[
-                        { required: true, whitespace: true, message: 'Environment를 선택하세요.' },
-                      ]}
-                    >
-                      <Select
-                        showSearch
-                        options={environmentOptions}
-                        style={{ width: '100%' }}
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      name="default_threshold_preset"
-                      label={helpLabel('기본 preset', serviceHelp.preset)}
-                      rules={[{ required: true, message: 'Preset을 선택하세요.' }]}
-                    >
-                      <Select options={presetOptions} style={{ width: '100%' }} />
                     </Form.Item>
                     <Form.Item
                       name="max_input_tokens"

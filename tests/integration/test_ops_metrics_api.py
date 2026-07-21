@@ -142,6 +142,46 @@ def test_scoped_service_operator_can_read_runtime_metrics(
     }
 
 
+def test_runtime_metrics_can_filter_by_environment(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_ops_state(db_session)
+    repository = IntentRoutingRepository(db_session)
+    _insert_runtime_log(
+        repository,
+        trace_id="irt-ops-metrics-qa",
+        environment="qa",
+        decision="fallback",
+        route_key="it.qa.manual_lookup",
+        latency_ms=33,
+        raw_key_id=ACTIVE_KEY_ID,
+        created_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    db_session.commit()
+    client = _client(db_session, monkeypatch)
+
+    dev_response = client.get(
+        f"/admin/v1/services/{SERVICE_ID}/runtime-metrics",
+        headers=_operator_headers(SERVICE_ID),
+        params={"window_hours": 24, "environment": "dev"},
+    )
+    qa_response = client.get(
+        f"/admin/v1/services/{SERVICE_ID}/runtime-metrics",
+        headers=_operator_headers(SERVICE_ID),
+        params={"window_hours": 24, "environment": "qa"},
+    )
+
+    assert dev_response.status_code == 200
+    assert dev_response.json()["request_count"] == 4
+    assert qa_response.status_code == 200
+    assert qa_response.json()["request_count"] == 1
+    assert qa_response.json()["decision_counts"]["fallback"] == 1
+    assert qa_response.json()["top_route_keys"] == [
+        {"route_key": "it.qa.manual_lookup", "count": 1}
+    ]
+
+
 def test_runtime_metrics_and_key_summary_count_partial_material_without_key_id(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -204,7 +244,7 @@ def test_raw_text_key_summary_uses_default_active_key_id_when_env_is_omitted(
     assert response.json()["active_key_id"] == "local-kek-001"
 
 
-def test_service_developer_can_read_audit_logs_but_not_key_summary(
+def test_service_developer_cannot_read_audit_logs_or_key_summary(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -221,7 +261,8 @@ def test_service_developer_can_read_audit_logs_but_not_key_summary(
         headers=headers,
     )
 
-    assert audit_response.status_code == 200
+    assert audit_response.status_code == 403
+    assert audit_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
     assert summary_response.status_code == 403
     assert summary_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
 
@@ -572,8 +613,6 @@ def _create_service(
     repository.create_service(
         service_id=service_id,
         display_name=service_id,
-        environment="prod",
-        default_threshold_preset="balanced",
         max_input_tokens=256,
         status="active",
         created_by="ops-metrics-test",
@@ -638,6 +677,7 @@ def _insert_runtime_log(
     repository: IntentRoutingRepository,
     *,
     trace_id: str,
+    environment: str = "dev",
     decision: str,
     route_key: str | None,
     latency_ms: int,
@@ -668,6 +708,7 @@ def _insert_runtime_log(
         request_id=f"req-{trace_id}",
         app_id="ops-metrics-app",
         service_id=service_id,
+        environment=environment,
         release_version="rel-ops-metrics-001",
         policy_version="pol-ops-metrics-001",
         intent_catalog_version="cat-ops-metrics-001",

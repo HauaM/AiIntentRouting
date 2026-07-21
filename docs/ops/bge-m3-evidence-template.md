@@ -130,7 +130,7 @@ uv run python scripts/run_pilot_rehearsal.py \
   --base-url http://127.0.0.1:8000 \
   --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
   --service-id ${SERVICE_ID} \
-  --environment pilot \
+  --environment prod \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
   --required-preset balanced \

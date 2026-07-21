@@ -40,10 +40,16 @@ import {
 } from './releasePresentation';
 
 const releaseHelp = {
-  environment: '선택한 서비스의 environment를 자동 사용합니다. Release environment는 서비스 environment와 반드시 같아야 합니다.',
+  environment: 'Release가 적용될 환경입니다. 선택한 환경의 release candidate만 불러옵니다.',
   testRun: 'Test Runs summary에 표시되는 tr-... 값입니다. Gate passed이고 risk pass가 100%여야 release가 생성됩니다.',
   rollbackTarget: '선택 항목입니다. 기존 release_version으로 되돌릴 수 있게 연결할 때만 입력합니다.',
 };
+
+const environmentOptions = [
+  { label: 'dev', value: 'dev' },
+  { label: 'qa', value: 'qa' },
+  { label: 'prod', value: 'prod' },
+];
 
 const helpLabel = (label: string, help: string) => (
   <FieldHelpLabel label={label} help={help} />
@@ -72,6 +78,9 @@ const ReleaseConfirmationSummary = ({
 export default function ReleasesPage() {
   const { session } = useModel('adminSession');
   const actionRef = useRef<ActionType>();
+  const candidateRequestIdRef = useRef(0);
+  const latestCandidateServiceIdRef = useRef(session.serviceId);
+  const latestCandidateEnvironmentRef = useRef<'dev' | 'qa' | 'prod'>('dev');
   const [form] = Form.useForm<API.ReleaseCreateRequest>();
   const [creating, setCreating] = useState(false);
   const [candidates, setCandidates] = useState<API.ReleaseCandidate[]>([]);
@@ -79,8 +88,7 @@ export default function ReleasesPage() {
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const ready = isAdminSessionReady(session);
   const canManage = canManageReleases(session);
-  const selectedService = session.services.find((service) => service.service_id === session.serviceId);
-  const selectedEnvironment = selectedService?.environment || 'prod';
+  const [selectedEnvironment, setSelectedEnvironment] = useState<'dev' | 'qa' | 'prod'>('dev');
   const selectedTestRunId = Form.useWatch('test_run_id', form);
   const selectedRollbackTarget = Form.useWatch('rollback_target', form);
   const selectedCandidate = getSelectedReleaseCandidate(candidates, selectedTestRunId);
@@ -89,28 +97,45 @@ export default function ReleasesPage() {
   const reload = () => actionRef.current?.reload();
 
   useEffect(() => {
+    latestCandidateServiceIdRef.current = session.serviceId;
+    latestCandidateEnvironmentRef.current = selectedEnvironment;
+  }, [selectedEnvironment, session.serviceId]);
+
+  useEffect(() => {
+    candidateRequestIdRef.current += 1;
     form.resetFields();
-    form.setFieldsValue({ environment: selectedEnvironment });
     setCandidates([]);
     setReleaseRows([]);
     actionRef.current?.reloadAndRest?.();
   }, [form, selectedEnvironment, session.serviceId]);
 
   const loadCandidates = async () => {
+    const requestId = candidateRequestIdRef.current + 1;
+    candidateRequestIdRef.current = requestId;
+    const requestedServiceId = session.serviceId;
+    const requestedEnvironment = selectedEnvironment;
     setCandidatesLoading(true);
     try {
-      const rows = await listReleaseCandidates(session.serviceId, {
-        environment: selectedEnvironment,
+      const rows = await listReleaseCandidates(requestedServiceId, {
+        environment: requestedEnvironment,
       });
+      if (
+        candidateRequestIdRef.current !== requestId ||
+        latestCandidateServiceIdRef.current !== requestedServiceId ||
+        latestCandidateEnvironmentRef.current !== requestedEnvironment
+      ) {
+        return;
+      }
       setCandidates(rows);
     } finally {
-      setCandidatesLoading(false);
+      if (candidateRequestIdRef.current === requestId) {
+        setCandidatesLoading(false);
+      }
     }
   };
 
   const handleSelectCandidate = (candidate: API.ReleaseCandidate) => {
     form.setFieldsValue({
-      environment: candidate.environment,
       policy_version: candidate.policy_version,
       intent_catalog_version: candidate.intent_catalog_version,
       test_run_id: candidate.test_run_id,
@@ -130,7 +155,6 @@ export default function ReleasesPage() {
       });
       message.success('Release가 생성되었습니다.');
       form.resetFields();
-      form.setFieldsValue({ environment: selectedEnvironment });
       setCandidates((current) =>
         current.map((candidate) =>
           candidate.test_run_id === values.test_run_id
@@ -282,7 +306,6 @@ export default function ReleasesPage() {
                   form={form}
                   layout="vertical"
                   onFinish={handleCreate}
-                  initialValues={{ environment: selectedEnvironment }}
                 >
                   <Alert
                     type="info"
@@ -367,18 +390,13 @@ export default function ReleasesPage() {
                       </section>
                     ) : null}
                     <div className="release-form-grid">
-                      <Form.Item
-                        name="environment"
-                        label={helpLabel('Environment', releaseHelp.environment)}
-                        rules={[
-                          {
-                            required: true,
-                            whitespace: true,
-                            message: 'Environment is required.',
-                          },
-                        ]}
-                      >
-                        <Input disabled />
+                      <Form.Item label={helpLabel('Environment', releaseHelp.environment)}>
+                        <Select
+                          value={selectedEnvironment}
+                          options={environmentOptions}
+                          onChange={setSelectedEnvironment}
+                          style={{ width: '100%' }}
+                        />
                       </Form.Item>
                       <Form.Item
                         name="rollback_target"
@@ -421,7 +439,7 @@ export default function ReleasesPage() {
                 type="info"
                 showIcon
                 message="선택한 Service에 대한 Release 관리 권한이 없습니다."
-                description="system_admin 또는 선택한 Service의 service_owner/service_developer만 생성, 활성화, 롤백할 수 있습니다."
+                description="system_admin 또는 선택한 Service의 service_owner만 생성, 활성화, 롤백할 수 있습니다."
               />
             )}
             <div className="ds-page-card ds-table-card-padded ds-pro-table-card">

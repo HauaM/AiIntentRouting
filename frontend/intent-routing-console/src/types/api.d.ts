@@ -250,7 +250,6 @@ declare namespace API {
   type AccessibleService = {
     service_id: string;
     display_name: string;
-    environment: string;
     status: string;
     roles: string[];
   };
@@ -258,16 +257,12 @@ declare namespace API {
   type ServiceCreateRequest = {
     service_id: string;
     display_name: string;
-    environment: string;
-    default_threshold_preset: ThresholdPreset;
     max_input_tokens: number;
   };
 
   type Service = {
     service_id: string;
     display_name: string;
-    environment: string;
-    default_threshold_preset: string;
     max_input_tokens: number;
     status: string;
     created_by: string;
@@ -612,7 +607,7 @@ declare namespace API {
     app_id: string;
     allowed_intents?: string[];
     allowed_route_keys?: string[];
-    expires_in_days: number;
+    expires_in_days: number | null;
   };
 
   type ServiceApiKeyCreateRequest = Omit<ApiKeyCreateRequest, 'service_id'>;
@@ -626,7 +621,7 @@ declare namespace API {
     allowed_intents: string[];
     allowed_route_keys: string[];
     status: ApiKeyStatus;
-    expires_at: string;
+    expires_at: string | null;
     revoked_at: string | null;
     created_by: string;
     created_at: string;
@@ -643,7 +638,7 @@ declare namespace API {
     allowed_intents: string[];
     allowed_route_keys: string[];
     status: ApiKeyStatus;
-    expires_at: string;
+    expires_at: string | null;
     revoked_at: string | null;
     created_by: string;
     created_at: string;
@@ -661,7 +656,7 @@ declare namespace API {
     key_fingerprint: string;
     app_id: string;
     status: ApiKeyStatus;
-    expires_at: string;
+    expires_at: string | null;
     allowed_intents: string[];
     allowed_route_keys: string[];
   };
@@ -708,6 +703,7 @@ declare namespace API {
     retryable: boolean | null;
     latency_ms: number;
     query_masked: string | null;
+    environment: string | null;
     created_at: string;
   };
 

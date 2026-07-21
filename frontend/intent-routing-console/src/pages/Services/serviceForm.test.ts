@@ -8,8 +8,6 @@ import {
 describe('service onboarding form helpers', () => {
   it('provides safe defaults for C-1 Service creation', () => {
     expect(serviceFormInitialValues).toEqual({
-      environment: 'dev',
-      default_threshold_preset: 'balanced',
       max_input_tokens: 256,
     });
   });
@@ -18,16 +16,12 @@ describe('service onboarding form helpers', () => {
     const values: ServiceFormValues = {
       service_id: '  dx-review-helpdesk  ',
       display_name: '  DX Review Helpdesk  ',
-      environment: ' dev ',
-      default_threshold_preset: 'strict',
       max_input_tokens: 512,
     };
 
     expect(toServiceCreateRequest(values)).toEqual({
       service_id: 'dx-review-helpdesk',
       display_name: 'DX Review Helpdesk',
-      environment: 'dev',
-      default_threshold_preset: 'strict',
       max_input_tokens: 512,
     });
   });
@@ -36,8 +30,6 @@ describe('service onboarding form helpers', () => {
     const values: ServiceFormValues = {
       service_id: 'svc-a',
       display_name: 'Service A',
-      environment: 'prod',
-      default_threshold_preset: 'balanced',
       max_input_tokens: null,
     };
 

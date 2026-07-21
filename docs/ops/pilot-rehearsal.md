@@ -54,7 +54,7 @@ baseline argument makes the wrapper call `compare_csv_baseline.py` after
 
 ```bash
 export EMBEDDING_PROVIDER=fake
-export INTENT_ROUTING_ENVIRONMENT=dev
+export ALLOWED_RUNTIME_ENVIRONMENTS=dev,qa,prod
 export SERVICE_ID=it-helpdesk-pilot-$(date +%Y%m%d%H%M%S)
 export STATE_PATH="var/pilot/${SERVICE_ID}.state.secret.json"
 
@@ -63,7 +63,7 @@ uv run python scripts/run_pilot_rehearsal.py \
   --base-url http://127.0.0.1:8000 \
   --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
   --service-id ${SERVICE_ID} \
-  --environment ${INTENT_ROUTING_ENVIRONMENT} \
+  --environment dev \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
   --required-preset balanced \
@@ -90,7 +90,7 @@ evidence; the wrapper calls `verify_bge_m3_package.py` before
 `benchmark_bge_m3.py` and refuses to run without `--run-bge-benchmark`.
 
 ```bash
-export INTENT_ROUTING_ENVIRONMENT=pilot
+export ALLOWED_RUNTIME_ENVIRONMENTS=dev,qa,prod
 export EMBEDDING_PROVIDER=bge-m3
 export BGE_M3_MODEL_PATH=/models/bge-m3
 export SERVICE_ID=it-helpdesk-pilot-$(date +%Y%m%d%H%M%S)
@@ -101,7 +101,7 @@ uv run python scripts/run_pilot_rehearsal.py \
   --base-url http://127.0.0.1:8000 \
   --admin-token ${ADMIN_BOOTSTRAP_TOKEN} \
   --service-id ${SERVICE_ID} \
-  --environment ${INTENT_ROUTING_ENVIRONMENT} \
+  --environment prod \
   --state-path ${STATE_PATH} \
   --csv-tier standard \
   --required-preset balanced \

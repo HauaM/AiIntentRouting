@@ -3,12 +3,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from os import environ
 from typing import Annotated, NoReturn
 from uuid import uuid4
 
 from fastapi import Depends, Header, HTTPException, status
 
+from intent_routing.config import RuntimeEnvironmentConfigError, get_allowed_runtime_environments
 from intent_routing.db.models import ApiKey
 from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.db.session import session_scope
@@ -24,6 +24,7 @@ class AuthContext:
     key_id: str
     app_id: str
     service_id: str
+    environment: str
     request_id: str | None
     allowed_intents: list[str]
     allowed_route_keys: list[str]
@@ -90,10 +91,6 @@ def _record_from_model(model: ApiKey) -> ApiKeyRecord:
     )
 
 
-def get_runtime_environment() -> str:
-    return environ.get("INTENT_ROUTING_ENVIRONMENT", "prod")
-
-
 def get_api_key_lookup() -> ApiKeyLookup:
     def lookup(key_id: str) -> ApiKeyRecord | None:
         with session_scope() as session:
@@ -117,6 +114,8 @@ def _bearer_secret(authorization: str | None) -> str | None:
 
 def _is_expired(record: ApiKeyRecord, now: datetime) -> bool:
     expires_at = record.expires_at
+    if expires_at is None:
+        return False
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
     return expires_at <= now
@@ -124,7 +123,6 @@ def _is_expired(record: ApiKeyRecord, now: datetime) -> bool:
 
 def require_api_key(
     lookup: Annotated[ApiKeyLookup, Depends(get_api_key_lookup)],
-    environment: Annotated[str, Depends(get_runtime_environment)],
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
     app_id: Annotated[str | None, Header(alias="X-App-Id")] = None,
     service_id: Annotated[str | None, Header(alias="X-Service-Id")] = None,
@@ -142,11 +140,16 @@ def require_api_key(
     if not verify_secret(secret, record.key_hash):
         _raise_authentication_failed(request_id)
 
+    try:
+        allowed_environments = get_allowed_runtime_environments()
+    except RuntimeEnvironmentConfigError:
+        _raise_authentication_failed(request_id)
+
     if (
         record.status != "active"
         or record.revoked_at is not None
         or _is_expired(record, datetime.now(UTC))
-        or record.environment != environment
+        or record.environment not in allowed_environments
     ):
         _raise_authentication_failed(request_id)
 
@@ -164,6 +167,7 @@ def require_api_key(
         key_id=record.key_id,
         app_id=record.app_id,
         service_id=record.service_id,
+        environment=record.environment,
         request_id=request_id,
         allowed_intents=record.allowed_intents,
         allowed_route_keys=record.allowed_route_keys,

@@ -119,7 +119,8 @@ Lists test runs that can be considered for release creation.
 
 Query:
 
-- `environment`: optional string. Defaults to the Service environment.
+- `environment`: optional release-owned environment: `dev`, `qa`, or `prod`.
+  Omitted values default to `dev`.
 - `limit`: integer, 1 to 100, default 50.
 
 Response: `ReleaseCandidateResponse[]`.

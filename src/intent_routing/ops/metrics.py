@@ -36,11 +36,16 @@ def runtime_metrics_for_service(
     session: Session,
     service_id: str,
     *,
+    environment: str | None = None,
     window_hours: int,
     top_route_limit: int = 10,
 ) -> dict[str, Any]:
     metrics = empty_runtime_metrics(service_id, window_hours)
-    params = {"service_id": service_id, "window_hours": window_hours}
+    params = {
+        "service_id": service_id,
+        "environment": environment,
+        "window_hours": window_hours,
+    }
     summary = session.execute(
         text(
             """
@@ -89,6 +94,10 @@ def runtime_metrics_for_service(
                    ) AS redacted_count
             FROM runtime_logs
             WHERE service_id = :service_id
+              AND (
+                  CAST(:environment AS text) IS NULL
+                  OR environment = CAST(:environment AS text)
+              )
               AND created_at >= now() - (CAST(:window_hours AS integer) * interval '1 hour')
             """
         ),
@@ -113,6 +122,10 @@ def runtime_metrics_for_service(
                count(*) AS count
         FROM runtime_logs
         WHERE service_id = :service_id
+          AND (
+              CAST(:environment AS text) IS NULL
+              OR environment = CAST(:environment AS text)
+          )
           AND created_at >= now() - (CAST(:window_hours AS integer) * interval '1 hour')
           AND error_code IS NOT NULL
         GROUP BY error_code
@@ -229,6 +242,10 @@ def _decision_counts(session: Session, params: Mapping[str, object]) -> dict[str
                    count(*) AS count
             FROM runtime_logs
             WHERE service_id = :service_id
+              AND (
+                  CAST(:environment AS text) IS NULL
+                  OR environment = CAST(:environment AS text)
+              )
               AND created_at >= now() - (CAST(:window_hours AS integer) * interval '1 hour')
               AND decision IS NOT NULL
             GROUP BY decision
@@ -251,6 +268,10 @@ def _top_route_keys(
                    count(*) AS count
             FROM runtime_logs
             WHERE service_id = :service_id
+              AND (
+                  CAST(:environment AS text) IS NULL
+                  OR environment = CAST(:environment AS text)
+              )
               AND created_at >= now() - (CAST(:window_hours AS integer) * interval '1 hour')
               AND route_key IS NOT NULL
             GROUP BY route_key
