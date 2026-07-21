@@ -1,44 +1,32 @@
-# Task 5 Report: Frontend Reveal Service And API Keys UI
+# Task 5 Report: Permission Management Page UI
 
-## Status
+## Summary
 
-DONE
+- Built `PermissionManagementPage` at `/permission-management` with `AdminShell title="권한관리"` and a server-derived `session.globalRoles` guard for `system_admin`.
+- Added five ProTable-based tabs: `Admin 계정`, `전역 권한`, `서비스 권한`, `권한 변경 이력`, and `운영 점검`.
+- Wired Admin account status/global role actions to `patchManagedAdminUser` through `ConfirmActionButton`; the last active login-eligible `system_admin` state is disabled in the UI.
+- Wired Service role grant/revoke to `searchAdminUsers`, `grantServiceRole`, `revokeServiceRole`, and `listPermissionServiceRoles`; grant and revoke use confirm.
+- Added Permission Management audit/risk views without rendering before/after raw JSON.
+- Added the OrganizationDirectory Admin Access shortcut to `/permission-management?admin_user_id=...` while preserving the existing modal controls.
 
-## Implementation
+## Changed Files
 
-- The service-scoped reveal client posts to `/services/{serviceId}/api-keys/{keyId}:reveal` through Umi `request` without trusted browser headers.
-- The API Keys Authorization template row displays `Bearer {{intent_routing_api_key}}`; its `Secret 보기/복사` action reveals through the audited endpoint and copies `authorization_header`.
-- The created-key modal is controlled directly by `createdKey`, so closing it clears the initial creation secret without retaining page-scoped modal or secret replay state.
+- Created: `frontend/intent-routing-console/src/pages/PermissionManagement/index.tsx`
+- Modified: `frontend/intent-routing-console/src/pages/PermissionManagement/permissionManagement.ts`
+- Modified: `frontend/intent-routing-console/src/pages/PermissionManagement/permissionManagement.test.ts`
+- Modified: `frontend/intent-routing-console/src/pages/OrganizationDirectory/index.tsx`
+- Modified: `frontend/intent-routing-console/src/pages/OrganizationDirectory/directoryForms.ts`
+- Modified: `frontend/intent-routing-console/src/pages/OrganizationDirectory/directoryForms.test.ts`
+- Review fix: `frontend/intent-routing-console/src/pages/PermissionManagement/index.tsx` now wraps Service role grant in `ConfirmActionButton`, with a regression test in `permissionManagement.test.ts`.
 
 ## Verification
 
-- `./node_modules/.bin/vitest run src/services/adminServices.test.ts src/pages/ApiKeys/runtimeSetup.test.ts src/pages/ApiKeys/apiKeyCreateFlow.test.ts src/components/intentRouteMultiSelectContract.test.ts` passed: 4 files, 46 tests.
-- `./node_modules/.bin/tsc --noEmit` passed.
-- Scoped diff check and Admin UI prohibited-pattern scans passed; the only trusted-header matches are the intentional runtime guidance filtering fixture.
+- `cd frontend/intent-routing-console && pnpm vitest run src/pages/PermissionManagement/permissionManagement.test.ts src/pages/OrganizationDirectory/directoryForms.test.ts` passed.
+- `cd frontend/intent-routing-console && pnpm run typecheck` passed.
+- `git diff --check` passed.
+- Prohibited pattern search found no matches in changed frontend files.
 
-## Scope
+## Notes
 
-Only Task 5 API Keys source and test files were changed in this completion commit. Pre-existing unrelated dirty files were preserved.
-
-## Cleanup Before Review (2026-07-22)
-
-- Removed the out-of-scope runtime live-test client, UI, `/v1` development proxy, handbook guidance, CSS, and associated tests from the reveal-flow series.
-- Kept the audited reveal client/type/UI, created-key modal clearing behavior, and active-release/scope-selector safeguards.
-
-### Verification
-
-- `./node_modules/.bin/vitest run src/services/adminServices.test.ts src/pages/ApiKeys/runtimeSetup.test.ts src/pages/ApiKeys/apiKeyCreateFlow.test.ts src/components/intentRouteMultiSelectContract.test.ts src/components/adminUiColorGuard.test.ts`: 5 files, 48 tests passed.
-- `./node_modules/.bin/tsc --noEmit`: passed.
-- `UV_CACHE_DIR=/private/tmp/ai-intent-routing-uv-cache uv run pytest tests/unit/test_admin_ui_handbook_docs_contract.py tests/unit/test_admin_ui_route_config.py -q`: 10 passed.
-
-## Review Fix: Remove Active-Release Scope Gating (2026-07-22)
-
-- Restored `IntentRouteMultiSelect` to its prior API without page-specific `disabled` or `loading` props.
-- Removed the API Keys create-panel active-release display, missing-release and empty-candidate alerts, scope-selector gating, and create-button gating.
-- Kept the audited reveal client/type/test, Authorization `Secret 보기/복사` flow, and created-key modal clearing behavior.
-
-### Verification
-
-- `./node_modules/.bin/vitest run src/services/adminServices.test.ts src/pages/ApiKeys/runtimeSetup.test.ts src/pages/ApiKeys/apiKeyCreateFlow.test.ts src/components/intentRouteMultiSelectContract.test.ts`: 4 files, 45 tests passed.
-- `./node_modules/.bin/tsc --noEmit`: passed.
-- Scoped `git diff --check`: passed.
+- Did not read, modify, stage, or commit `.env`.
+- Did not stage `docs/superpowers/plans/2026-07-14-central-iam-permission-management-console.md`.

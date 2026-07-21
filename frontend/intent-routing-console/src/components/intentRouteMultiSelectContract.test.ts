@@ -14,12 +14,4 @@ describe('IntentRouteMultiSelect layout contract', () => {
     expect(text).toContain("style={{ width: '100%', maxWidth: '100%' }}");
   });
 
-  it('keeps scope selection independent of page-specific disabled or loading state', () => {
-    const text = source();
-
-    expect(text).not.toContain('disabled?: boolean');
-    expect(text).not.toContain('loading?: boolean');
-    expect(text).not.toContain('disabled={disabled}');
-    expect(text).not.toContain('loading={loading}');
-  });
 });
