@@ -95,10 +95,9 @@ describe('testRunResultCopy', () => {
     );
   });
 
-  it('keeps unknown result reasons readable without hiding the source value', () => {
-    expect(formatResultReason('custom backend reason')).toBe(
-      '해석되지 않은 사유: custom backend reason',
-    );
+  it('keeps unknown result reasons Korean-only in visible copy', () => {
+    expect(formatResultReason('custom backend reason')).toBe('해석되지 않은 사유입니다.');
+    expect(formatResultReason('custom backend reason')).not.toContain('custom backend reason');
     expect(formatResultReason(null)).toBe('사유 없음');
   });
 
@@ -218,7 +217,7 @@ export function formatIntentLabel(intent?: string | null) {
 
 export function formatResultReason(reason?: string | null) {
   if (!reason) return '사유 없음';
-  return resultReasonCopy[reason] ?? `해석되지 않은 사유: ${reason}`;
+  return resultReasonCopy[reason] ?? '해석되지 않은 사유입니다.';
 }
 
 export function formatIssueTitle(code: string) {

@@ -22,14 +22,24 @@ import { canEditCatalog, isAdminSessionReady } from '@/models/adminSession';
 import {
   createTestRun,
   fetchTestRun,
+  fetchTestRunDiagnostics,
   fetchTestRunResults,
 } from '@/services/adminServices';
 import { CatalogVersionStep } from './CatalogVersionStep';
 import { CsvCasesGrid } from './CsvCasesGrid';
 import { CsvImportModal } from './CsvImportModal';
+import { TestRunCatalogStatusPanel } from './TestRunCatalogStatusPanel';
 import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
 import { TestRunHistorySelect } from './TestRunHistorySelect';
 import { TestPolicyPanel } from './TestPolicyPanel';
+import { type TestRunResultsLoadState } from './testRunResultInsights';
+import {
+  formatBlockReason,
+  formatDecisionLabel,
+  formatIntentLabel,
+  formatRecommendation,
+  formatResultReason,
+} from './testRunResultCopy';
 import {
   buildCsvText,
   downloadCsvFile,
@@ -64,6 +74,10 @@ export default function TestRunsPage() {
   const [createForm] = Form.useForm<API.TestRunCreateRequest>();
   const [summary, setSummary] = useState<API.TestRunSummary>();
   const [results, setResults] = useState<API.TestRunResult[]>([]);
+  const [resultsLoadState, setResultsLoadState] = useState<TestRunResultsLoadState>('not_loaded');
+  const [diagnostics, setDiagnostics] = useState<API.TestRunDiagnostics | null>(null);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [policy, setPolicy] = useState<API.PolicyVersion>();
   const [catalogVersion, setCatalogVersion] = useState<string>();
@@ -86,6 +100,10 @@ export default function TestRunsPage() {
     setLoading(false);
     setSummary(undefined);
     setResults([]);
+    setResultsLoadState('not_loaded');
+    setDiagnostics(null);
+    setDiagnosticsLoading(false);
+    setDiagnosticsError(null);
     setPolicy(undefined);
     setCatalogVersion(undefined);
     setSelectedCatalogVersion(undefined);
@@ -98,10 +116,42 @@ export default function TestRunsPage() {
     createForm.resetFields();
   }, [createForm, session.serviceId]);
 
+  useEffect(() => {
+    const testRunId = summary?.test_run_id;
+    if (currentStep !== 2 || !testRunId) {
+      setDiagnostics(null);
+      setDiagnosticsLoading(false);
+      setDiagnosticsError(null);
+      return;
+    }
+
+    let alive = true;
+    setDiagnostics(null);
+    setDiagnosticsError(null);
+    setDiagnosticsLoading(true);
+    fetchTestRunDiagnostics(session.serviceId, testRunId)
+      .then((nextDiagnostics) => {
+        if (alive) setDiagnostics(nextDiagnostics);
+      })
+      .catch(() => {
+        if (alive) {
+          setDiagnosticsError('진단 결과를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        }
+      })
+      .finally(() => {
+        if (alive) setDiagnosticsLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [currentStep, session.serviceId, summary?.test_run_id]);
+
   const beginRunRequest = () => {
     runRequestGenerationRef.current += 1;
     setSummary(undefined);
     setResults([]);
+    setResultsLoadState('not_loaded');
     return runRequestGenerationRef.current;
   };
 
@@ -115,11 +165,14 @@ export default function TestRunsPage() {
     requestGeneration: number,
   ) => {
     const nextSummary = await fetchTestRun(serviceId, testRunId);
-    const nextResults = await fetchTestRunResults(serviceId, testRunId);
     if (!isCurrentRunRequest(requestGeneration, serviceId)) return false;
     setSummary(nextSummary);
-    setResults(nextResults);
     setCurrentStep(2);
+    setResultsLoadState('loading');
+    const nextResults = await fetchTestRunResults(serviceId, testRunId);
+    if (!isCurrentRunRequest(requestGeneration, serviceId)) return false;
+    setResults(nextResults);
+    setResultsLoadState('loaded');
     return true;
   };
 
@@ -149,13 +202,16 @@ export default function TestRunsPage() {
       if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
       setSummary(created);
       setCurrentStep(2);
+      setResultsLoadState('loading');
       const nextResults = await fetchTestRunResults(serviceId, created.test_run_id);
       if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
       setResults(nextResults);
+      setResultsLoadState('loaded');
       message.success('테스트 실행을 생성했습니다.');
     } catch {
       if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
       if (testRunCreated) {
+        setResultsLoadState('error');
         message.error('테스트 실행은 생성되었지만 결과를 불러오지 못했습니다.');
       } else {
         message.error('테스트 실행 생성에 실패했습니다.');
@@ -169,6 +225,7 @@ export default function TestRunsPage() {
     setSelectedHistoryRun(testRun);
     setSummary(testRun);
     setResults([]);
+    setResultsLoadState('not_loaded');
   };
 
   const handleHistoryResultOpen = async () => {
@@ -185,6 +242,7 @@ export default function TestRunsPage() {
       if (loaded) message.success('테스트 실행 결과를 불러왔습니다.');
     } catch {
       if (isCurrentRunRequest(requestGeneration, serviceId)) {
+        setResultsLoadState('error');
         message.error('테스트 실행 결과를 불러오지 못했습니다.');
       }
     } finally {
@@ -211,8 +269,8 @@ export default function TestRunsPage() {
       search: false,
       render: (_, row) => (
         <Space direction="vertical" size={0}>
-          <span>{row.expected_decision}</span>
-          <span className="muted-small">{row.expected_intent ?? '인텐트 없음'}</span>
+          <span>{formatDecisionLabel(row.expected_decision)}</span>
+          <span className="muted-small">{formatIntentLabel(row.expected_intent)}</span>
         </Space>
       ),
     },
@@ -221,9 +279,9 @@ export default function TestRunsPage() {
       search: false,
       render: (_, row) => (
         <Space direction="vertical" size={0}>
-          <span>{row.actual_decision}</span>
+          <span>{formatDecisionLabel(row.actual_decision)}</span>
           <span className="muted-small">
-            {row.actual_intent ?? row.actual_route_key ?? '없음'}
+            {formatIntentLabel(row.actual_intent ?? row.actual_route_key)}
           </span>
         </Space>
       ),
@@ -261,6 +319,7 @@ export default function TestRunsPage() {
       dataIndex: 'reason',
       search: false,
       ellipsis: true,
+      render: (_, row) => <span title={row.reason}>{formatResultReason(row.reason)}</span>,
     },
   ];
 
@@ -417,12 +476,12 @@ export default function TestRunsPage() {
                             </Descriptions.Item>
                             <Descriptions.Item label="차단 사유">
                               {summary.block_reasons.length
-                                ? summary.block_reasons.join(', ')
+                                ? summary.block_reasons.map(formatBlockReason).join(', ')
                                 : '없음'}
                             </Descriptions.Item>
                             <Descriptions.Item label="권장 조치">
                               {summary.recommendations.length
-                                ? summary.recommendations.join(', ')
+                                ? summary.recommendations.map(formatRecommendation).join(', ')
                                 : '없음'}
                             </Descriptions.Item>
                           </Descriptions>
@@ -442,24 +501,45 @@ export default function TestRunsPage() {
                         />
                       )}
                       <TestRunDiagnosticsPanel
-                        serviceId={session.serviceId}
                         testRunId={summary?.test_run_id}
+                        diagnostics={diagnostics}
+                        diagnosticsLoading={diagnosticsLoading}
+                        diagnosticsError={diagnosticsError}
+                        results={results}
+                        resultsLoadState={resultsLoadState}
                       />
-                      <ProTable<API.TestRunResult>
-                        rowKey="case_id"
-                        columns={columns}
-                        dataSource={results}
-                        search={false}
-                        pagination={false}
-                        options={{ density: true, fullScreen: false, reload: false, setting: true }}
-                        locale={{
-                          emptyText: (
-                            <Empty
-                              image={Empty.PRESENTED_IMAGE_SIMPLE}
-                              description="조회된 테스트 실행 결과가 없습니다."
-                            />
-                          ),
-                        }}
+                      <section>
+                        <Typography.Title level={5} style={{ marginTop: 0 }}>
+                          상세 결과
+                        </Typography.Title>
+                        <ProTable<API.TestRunResult>
+                          rowKey="case_id"
+                          columns={columns}
+                          dataSource={results}
+                          loading={resultsLoadState === 'loading'}
+                          search={false}
+                          pagination={false}
+                          options={{ density: true, fullScreen: false, reload: false, setting: true }}
+                          locale={{
+                            emptyText: (
+                              <Empty
+                                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                description={
+                                  resultsLoadState === 'error'
+                                    ? '상세 결과를 불러오지 못했습니다.'
+                                    : resultsLoadState === 'not_loaded'
+                                      ? '상세 결과를 아직 불러오지 않았습니다.'
+                                      : '조회된 테스트 실행 결과가 없습니다.'
+                                }
+                              />
+                            ),
+                          }}
+                        />
+                      </section>
+                      <TestRunCatalogStatusPanel
+                        diagnostics={diagnostics}
+                        diagnosticsLoading={diagnosticsLoading}
+                        diagnosticsError={diagnosticsError}
                       />
                     </Space>
                   ) : null}

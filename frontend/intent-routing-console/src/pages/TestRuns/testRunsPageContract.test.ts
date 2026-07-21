@@ -116,6 +116,25 @@ it('normalizes uppercase backend result values before rendering semantic StatusT
   expect(page).toContain('resultLabel[normalizedResult] ?? row.result');
 });
 
+it('localizes detailed result reasons while retaining raw reasons only as tooltip detail', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain('formatResultReason');
+  expect(page).toContain('title={row.reason}');
+  expect(page).toContain('{formatResultReason(row.reason)}');
+});
+
+it('renders detailed result decisions and reasons with Korean copy helpers', () => {
+  const source = read('index.tsx');
+
+  expect(source).toContain('formatDecisionLabel');
+  expect(source).toContain('formatIntentLabel');
+  expect(source).toContain('formatResultReason');
+  expect(source).toContain('title={row.reason}');
+  expect(source).toContain('render: (_, row) => (');
+  expect(source).toContain('{formatResultReason(row.reason)}');
+});
+
 it('localizes test run summary state and gate labels', () => {
   const page = read('index.tsx');
 
@@ -123,6 +142,15 @@ it('localizes test run summary state and gate labels', () => {
   expect(page).toContain('label="검증 게이트"');
   expect(page).not.toContain('blocked 사유');
   expect(page).not.toContain('label="Gate"');
+});
+
+it('renders summary block reasons and recommendations in Korean', () => {
+  const source = read('index.tsx');
+
+  expect(source).toContain('formatBlockReason');
+  expect(source).toContain('formatRecommendation');
+  expect(source).not.toContain('summary.block_reasons.join');
+  expect(source).not.toContain('summary.recommendations.join');
 });
 
 it('handles create and history request failures with clear messages', () => {
@@ -138,7 +166,7 @@ it('keeps a successfully created run summary visible when its results request fa
   const page = read('index.tsx');
 
   expect(page).toContain(
-    'setSummary(created);\n      setCurrentStep(2);\n      const nextResults = await fetchTestRunResults',
+    "setSummary(created);\n      setCurrentStep(2);\n      setResultsLoadState('loading');\n      const nextResults = await fetchTestRunResults",
   );
 });
 
@@ -167,6 +195,58 @@ it('wires diagnostics to the selected test run in the results step', () => {
   const page = read('index.tsx');
 
   expect(page).toContain('<TestRunDiagnosticsPanel');
-  expect(page).toContain('serviceId={session.serviceId}');
   expect(page).toContain('testRunId={summary?.test_run_id}');
+  expect(page).toContain('diagnostics={diagnostics}');
+  expect(page).toContain('diagnosticsLoading={diagnosticsLoading}');
+  expect(page).toContain('diagnosticsError={diagnosticsError}');
+  expect(page).toContain('results={results}');
+});
+
+it('loads and resets diagnostics in page state for the selected test run', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain('fetchTestRunDiagnostics');
+  expect(page).toContain('const [diagnostics, setDiagnostics] = useState<API.TestRunDiagnostics | null>(null);');
+  expect(page).toContain('const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);');
+  expect(page).toContain('const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);');
+  expect(page).toContain("setDiagnosticsError('진단 결과를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');");
+});
+
+it('tracks result rows separately for not-loaded, loading, error, and loaded states', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain("import { type TestRunResultsLoadState } from './testRunResultInsights';");
+  expect(page).toContain("const [resultsLoadState, setResultsLoadState] = useState<TestRunResultsLoadState>('not_loaded');");
+  expect(page).toContain("setResultsLoadState('loading');");
+  expect(page).toContain("setResultsLoadState('error');");
+  expect(page).toContain("setResultsLoadState('loaded');");
+  expect(page).toContain('resultsLoadState={resultsLoadState}');
+});
+
+it('renders the required six result sections in literal scan order', () => {
+  const source = read('index.tsx');
+  const summaryIndex = source.indexOf('테스트 요약');
+  const diagnosticsIndex = source.indexOf('<TestRunDiagnosticsPanel');
+  const detailsHeadingIndex = source.indexOf('상세 결과');
+  const tableIndex = source.indexOf('<ProTable<API.TestRunResult>');
+  const catalogStatusIndex = source.indexOf('<TestRunCatalogStatusPanel');
+
+  expect(diagnosticsIndex).toBeGreaterThan(summaryIndex);
+  expect(detailsHeadingIndex).toBeGreaterThan(diagnosticsIndex);
+  expect(tableIndex).toBeGreaterThan(detailsHeadingIndex);
+  expect(catalogStatusIndex).toBeGreaterThan(tableIndex);
+});
+
+it('passes shared diagnostic state to catalog and vector status after the detailed results table', () => {
+  const source = read('index.tsx');
+
+  const diagnosticsIndex = source.indexOf('<TestRunDiagnosticsPanel');
+  const tableIndex = source.indexOf('<ProTable<API.TestRunResult>');
+  const catalogStatusIndex = source.indexOf('<TestRunCatalogStatusPanel');
+
+  expect(diagnosticsIndex).toBeGreaterThan(-1);
+  expect(tableIndex).toBeGreaterThan(diagnosticsIndex);
+  expect(catalogStatusIndex).toBeGreaterThan(tableIndex);
+  expect(source).toContain('diagnosticsLoading={diagnosticsLoading}');
+  expect(source).toContain('diagnosticsError={diagnosticsError}');
 });
