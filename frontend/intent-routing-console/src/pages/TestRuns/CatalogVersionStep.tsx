@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TableProps } from 'antd';
 import {
   Alert,
+  Button,
   Descriptions,
   Empty,
   Input,
+  Modal,
   Select,
   Space,
   Table,
@@ -17,6 +19,7 @@ import { VersionChip } from '@/components/VersionChip';
 import { fetchCatalogVersion, listCatalogVersions } from '@/services/adminServices';
 import {
   extractCatalogSnapshotIntents,
+  type CatalogSnapshotExample,
   type CatalogSnapshotIntent,
 } from './catalogSnapshot';
 
@@ -43,6 +46,11 @@ const catalogVersionSearchLabel = (version: API.CatalogVersionListItem) =>
 const catalogVersionOptionLabel = (version: API.CatalogVersionListItem) =>
   version.display_version || version.intent_catalog_version;
 
+type ExampleModalState = {
+  intent: CatalogSnapshotIntent;
+  type: 'positive' | 'negative';
+};
+
 export function CatalogVersionStep({
   serviceId,
   value,
@@ -55,6 +63,7 @@ export function CatalogVersionStep({
   const [snapshotError, setSnapshotError] = useState<string>();
   const [intentKeyword, setIntentKeyword] = useState('');
   const [intentStatus, setIntentStatus] = useState<string>();
+  const [exampleModal, setExampleModal] = useState<ExampleModalState>();
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
   const versionRequestRef = useRef(0);
@@ -98,6 +107,51 @@ export function CatalogVersionStep({
       ),
     [snapshotIntents],
   );
+  const openExampleModal = useCallback(
+    (intent: CatalogSnapshotIntent, type: ExampleModalState['type']) => {
+      setExampleModal({ intent, type });
+    },
+    [],
+  );
+  const exampleModalExamples = useMemo<CatalogSnapshotExample[]>(() => {
+    if (!exampleModal) return [];
+    return exampleModal.type === 'positive'
+      ? exampleModal.intent.positive_examples
+      : exampleModal.intent.negative_examples;
+  }, [exampleModal]);
+  const exampleModalTitle = exampleModal
+    ? `${exampleModal.intent.intent_id || exampleModal.intent.route_key} ${
+        exampleModal.type === 'positive' ? 'Positive' : 'Negative'
+      } examples`
+    : 'Examples';
+  const exampleModalColumns: TableProps<CatalogSnapshotExample>['columns'] = [
+    {
+      title: 'Example',
+      dataIndex: 'text_masked',
+      render: (value: string) => (
+        <Typography.Text className="test-run-example-text">
+          {value || '-'}
+        </Typography.Text>
+      ),
+    },
+    {
+      title: 'Source',
+      dataIndex: 'source',
+      width: 120,
+      render: (value: string) => value || '-',
+    },
+    {
+      title: 'Status',
+      dataIndex: 'approved',
+      width: 112,
+      render: (approved: boolean) =>
+        approved ? (
+          <StatusTag status="approved" label="승인됨" />
+        ) : (
+          <StatusTag status="pending" label="대기" />
+        ),
+    },
+  ];
   const snapshotIntentColumns: TableProps<CatalogSnapshotIntent>['columns'] = [
     {
       title: 'Intent',
@@ -121,10 +175,28 @@ export function CatalogVersionStep({
       ),
     },
     {
-      title: '예시 수',
-      width: 144,
-      render: (_, row) =>
-        `포함 ${row.positive_example_count} · 제외 ${row.negative_example_count}`,
+      title: 'Example',
+      width: 184,
+      render: (_, row) => (
+        <Space size={4} wrap>
+          <Button
+            type="link"
+            size="small"
+            className="test-run-example-count-button"
+            onClick={() => openExampleModal(row, 'positive')}
+          >
+            Positive {row.positive_example_count}
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            className="test-run-example-count-button"
+            onClick={() => openExampleModal(row, 'negative')}
+          >
+            Negative {row.negative_example_count}
+          </Button>
+        </Space>
+      ),
     },
     {
       title: 'Status',
@@ -369,6 +441,31 @@ export function CatalogVersionStep({
           />
         )}
       </Space>
+      <Modal
+        title={exampleModalTitle}
+        open={Boolean(exampleModal)}
+        footer={null}
+        width={760}
+        destroyOnHidden
+        onCancel={() => setExampleModal(undefined)}
+      >
+        <Table<CatalogSnapshotExample>
+          rowKey={(row, index) => row.example_id || `${row.example_type}-${index}`}
+          size="small"
+          className="test-run-example-modal-table"
+          columns={exampleModalColumns}
+          dataSource={exampleModalExamples}
+          pagination={false}
+          locale={{
+            emptyText: (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="표시할 Example이 없습니다."
+              />
+            ),
+          }}
+        />
+      </Modal>
     </Space>
   );
 }
