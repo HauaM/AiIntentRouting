@@ -119,9 +119,20 @@ it('normalizes uppercase backend result values before rendering semantic StatusT
 it('localizes detailed result reasons while retaining raw reasons only as tooltip detail', () => {
   const page = read('index.tsx');
 
-  expect(page).toContain("import { formatResultReason } from './testRunResultCopy';");
+  expect(page).toContain('formatResultReason');
   expect(page).toContain('title={row.reason}');
   expect(page).toContain('{formatResultReason(row.reason)}');
+});
+
+it('renders detailed result decisions and reasons with Korean copy helpers', () => {
+  const source = read('index.tsx');
+
+  expect(source).toContain('formatDecisionLabel');
+  expect(source).toContain('formatIntentLabel');
+  expect(source).toContain('formatResultReason');
+  expect(source).toContain('title={row.reason}');
+  expect(source).toContain('render: (_, row) => (');
+  expect(source).toContain('{formatResultReason(row.reason)}');
 });
 
 it('localizes test run summary state and gate labels', () => {

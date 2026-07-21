@@ -32,7 +32,11 @@ import { TestRunCatalogStatusPanel } from './TestRunCatalogStatusPanel';
 import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
 import { TestRunHistorySelect } from './TestRunHistorySelect';
 import { TestPolicyPanel } from './TestPolicyPanel';
-import { formatResultReason } from './testRunResultCopy';
+import {
+  formatDecisionLabel,
+  formatIntentLabel,
+  formatResultReason,
+} from './testRunResultCopy';
 import {
   buildCsvText,
   downloadCsvFile,
@@ -251,8 +255,8 @@ export default function TestRunsPage() {
       search: false,
       render: (_, row) => (
         <Space direction="vertical" size={0}>
-          <span>{row.expected_decision}</span>
-          <span className="muted-small">{row.expected_intent ?? '인텐트 없음'}</span>
+          <span>{formatDecisionLabel(row.expected_decision)}</span>
+          <span className="muted-small">{formatIntentLabel(row.expected_intent)}</span>
         </Space>
       ),
     },
@@ -261,9 +265,9 @@ export default function TestRunsPage() {
       search: false,
       render: (_, row) => (
         <Space direction="vertical" size={0}>
-          <span>{row.actual_decision}</span>
+          <span>{formatDecisionLabel(row.actual_decision)}</span>
           <span className="muted-small">
-            {row.actual_intent ?? row.actual_route_key ?? '없음'}
+            {formatIntentLabel(row.actual_intent ?? row.actual_route_key)}
           </span>
         </Space>
       ),
