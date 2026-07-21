@@ -39,7 +39,7 @@ def test_c3_runtime_setup_adr_records_accepted_decisions() -> None:
         "X-App-Id",
         "X-Service-Id",
         "X-Request-Id",
-        "displayed once on create and never returned",
+        "authorized\n`system_admin` and selected-Service `service_owner` users may explicitly\nreveal/copy",
         "source=active_release",
         "`/api-keys` remains the selected-Service runtime setup workspace",
         "explicit Admin UI\nlive-test workflow",
@@ -83,7 +83,7 @@ def test_c3_runtime_setup_contract_doc_defines_admin_api_and_runtime_guidance() 
         "  selected Service's authorized `service_owner`.",
         "`service_developer`, `service_operator`, and `auditor` cannot create or "
         "revoke\n  API keys.",
-        "`api_key` is present only in the create response",
+        "The create response includes the raw `api_key` for the initial setup flow.",
         "`api_key` raw secret is never present in inventory",
         '"selected_key"',
         "`source=active_release`",
@@ -136,3 +136,12 @@ def test_api_key_secret_reveal_contract_is_documented() -> None:
         "Inventory, revoke, runtime setup guidance, audit logs, runtime logs, and exports never include raw `api_key`.",
     ):
         assert phrase in text
+
+    for stale_phrase in (
+        "The secret must be stored only as a hash/fingerprint, never plaintext.",
+        "`api_key` is present only in the create response.",
+        "shown only once in the create response",
+        '"api_key": "irt_<one-time-secret>"',
+        '"api_key_displayed_once": true',
+    ):
+        assert stale_phrase not in text

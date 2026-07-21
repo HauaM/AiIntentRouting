@@ -19,11 +19,14 @@ otherwise.
 - Runtime clients do not use the Admin UI session cookie. They call
   `/v1/intent-route` with Bearer API-key authentication.
 - Admin UI live testing may call `/v1/intent-route` only after the operator
-  manually enters an API Secret for the selected key. The UI must not auto-fill,
-  persist, recover, or replay the one-time raw secret from the create response.
-- The raw API key secret is shown only once in the create response.
-- `api_key` raw secret is never present in inventory, revoke responses,
-  runtime setup guidance, audit log state, runtime logs, or exported evidence.
+  manually enters an API Secret for the selected key. The UI must not
+  auto-fill, persist, or automatically replay raw secret material into UI
+  state.
+- API key secret material is never stored in plaintext. Authorized operators may
+  explicitly reveal encrypted secret material through the audited reveal
+  endpoint documented below.
+- Inventory, revoke responses, runtime setup guidance, audit logs, runtime logs,
+  and exports never include raw `api_key`.
 - Key metadata may include `key_id`, `key_fingerprint`, `environment`,
   `app_id`, `service_id`, `allowed_intents`, `allowed_route_keys`, `status`,
   `expires_at`, `revoked_at`, `created_by`, and `created_at`. `expires_at` may
@@ -110,8 +113,7 @@ Response:
 ```json
 {
   "key_id": "key_live_012345",
-  "api_key": "irt_<one-time-secret>",
-  "api_key_displayed_once": true,
+  "api_key": "irt_<secret>",
   "key_fingerprint": "sha256:<digest>:9AbC",
   "environment": "prod",
   "app_id": "dify-platform",
@@ -128,12 +130,15 @@ Response:
 
 Rules:
 
-- `api_key` is present only in the create response.
+- The create response includes the raw `api_key` for the initial setup flow.
 - The secret must be generated with at least 256-bit randomness.
-- The secret must be stored only as a hash/fingerprint, never plaintext.
+- The secret must not be stored in plaintext; encrypted secret material is
+  retained for authorized audited reveal, alongside hash/fingerprint fields
+  used for runtime authentication.
 - Audit state must omit `api_key` or record it only as `REDACTED`.
-- UI state must clear the one-time secret on selected-Service change, refresh,
-  navigation, logout, and successful revoke.
+- UI state must not automatically re-show or replay the secret after refresh,
+  navigation, logout, selected-Service change, or selected-key change. Explicit
+  reveal/copy requires the audited reveal endpoint.
 - Allowed scope must be validated against active-release candidates.
 
 ### POST /admin/v1/services/{service_id}/api-keys/{key_id}:revoke

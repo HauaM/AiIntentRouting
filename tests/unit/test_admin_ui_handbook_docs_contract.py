@@ -201,5 +201,16 @@ def test_admin_ui_v04_records_audited_api_key_secret_reveal() -> None:
         "api_key.secret_revealed",
         "encrypted secret material",
         "raw secret is copied only through the audited reveal endpoint",
+        "자동으로 secret이 다시 표시되거나 UI 상태에 재생성되지 않는다.",
+        "권한 있는 `system_admin` 또는 선택한 Service의 `service_owner`만",
+        "감사되는 명시적 reveal/copy 동작으로 secret을 확인할 수 있다.",
+        "생성 응답에 raw API key secret이 표시되고, 이후에는 명시적 audited",
     ):
         assert phrase in text
+
+    for stale_phrase in (
+        "운영자가 secret을 재조회할 수 없다는 보안 제약",
+        "raw API key secret은 한 번만 표시된다.",
+        "raw API key secret이 생성 직후 한 번만 표시된다.",
+    ):
+        assert stale_phrase not in text

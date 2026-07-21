@@ -372,8 +372,9 @@
 - [ ] API key 생성 버튼을 누른다.
 - [ ] 확인이 필요한 경우 확인 모달을 완료한다.
 - [ ] key_id, fingerprint, app_id, environment, scope 정보가 표시된다.
-- [ ] raw API key secret이 생성 직후 한 번만 표시된다.
-- [ ] 검토: secret 표시가 복사하기 쉽지만, 장기 노출되지 않는다는 안내가 명확하다.
+- [ ] 생성 응답에 raw API key secret이 표시되고, 이후에는 명시적 audited
+      `Secret 보기/복사` 동작으로만 확인할 수 있다.
+- [ ] 검토: 자동 재노출은 막되 권한 있는 reveal/copy 경로는 명확하다.
 
 ### TC-039 API Key Secret 안전성
 
@@ -382,7 +383,10 @@
 - [ ] inventory에는 key_id와 fingerprint만 표시된다.
 - [ ] revoke 응답 또는 key 목록에 `api_key` 원문이 표시되지 않는다.
 - [ ] Audit Logs에 raw API key secret이 남지 않는다.
-- [ ] 검토: 운영자가 secret을 재조회할 수 없다는 보안 제약을 이해할 수 있다.
+- [ ] 자동으로 secret이 다시 표시되거나 UI 상태에 재생성되지 않는다.
+- [ ] 권한 있는 `system_admin` 또는 선택한 Service의 `service_owner`만
+      감사되는 명시적 reveal/copy 동작으로 secret을 확인할 수 있다.
+- [ ] 검토: 자동 재노출과 권한 있는 감사 reveal의 경계를 이해할 수 있다.
 
 - [ ] Authorization의 `Secret 보기/복사`는 `POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal`을 호출하고 `Bearer irt_<decrypted-secret>`만 클립보드에 복사한다.
 - [ ] Audit Logs에 `api_key.secret_revealed` event가 남고 audit state에는 raw `api_key`가 포함되지 않는다.
@@ -579,7 +583,8 @@
 ### 보안 친화성
 
 - [ ] 위험 작업에는 확인 단계가 있다.
-- [ ] raw API key secret은 한 번만 표시된다.
+- [ ] raw API key secret은 자동으로 다시 표시되지 않으며, 권한 있는
+      `system_admin` 또는 selected-Service `service_owner`의 audited reveal로만 확인된다.
 - [ ] raw query는 기본 masking된다.
 - [ ] audit evidence가 사용자의 추가 수작업 없이 남는다.
 
