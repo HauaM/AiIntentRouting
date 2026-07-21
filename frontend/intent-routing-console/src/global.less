@@ -570,7 +570,6 @@ body {
 }
 
 .test-run-step-select {
-  max-width: 552px;
   width: 100%;
 }
 
@@ -578,8 +577,20 @@ body {
   background: #f7f9fb;
   border: 1px solid #e6eaef;
   border-radius: 8px;
-  max-width: 552px;
   padding: 12px;
+  width: 100%;
+}
+
+.test-run-step-summary .ant-descriptions-item-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.test-run-step-summary .ant-tag,
+.test-run-step-summary .ant-typography code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .test-run-catalog-intent-toolbar {
