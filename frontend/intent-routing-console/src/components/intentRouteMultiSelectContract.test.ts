@@ -13,5 +13,4 @@ describe('IntentRouteMultiSelect layout contract', () => {
     expect(text).not.toContain('minWidth: 360');
     expect(text).toContain("style={{ width: '100%', maxWidth: '100%' }}");
   });
-
 });
