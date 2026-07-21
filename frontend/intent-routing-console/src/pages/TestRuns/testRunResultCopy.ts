@@ -24,7 +24,7 @@ const issueTitleCopy: Record<string, string> = {
   catalog_version_has_no_embeddings: '선택한 Catalog 버전에 활성 embedding이 없습니다.',
   test_run_vector_index_not_ready: 'Test Run이 사용한 vector index가 현재 준비 상태와 일치하지 않습니다.',
   risk_case_failed: '위험 케이스 중 실패한 항목이 있습니다.',
-  fallback_failures_dominant: '실패한 케이스 중 fallback 결과 비율이 높습니다.',
+  fallback_failures_dominant: '실패한 케이스 중 분류 실패 결과 비율이 높습니다.',
   intent_mismatch_exists: 'Decision은 맞았지만 Intent가 다른 실패가 있습니다.',
   pass_rate_below_gate: '통과율이 Release 기준보다 낮습니다.',
   review_rate_above_guidance: '검토 대상 비율이 권장 기준보다 높습니다.',

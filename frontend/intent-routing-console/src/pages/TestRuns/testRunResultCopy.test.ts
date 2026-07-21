@@ -75,6 +75,8 @@ describe('testRunResultCopy', () => {
     expect(formatIssueTitle('intent_mismatch_exists')).toBe(
       'Decision은 맞았지만 Intent가 다른 실패가 있습니다.',
     );
+    expect(formatIssueTitle('fallback_failures_dominant')).toContain('분류 실패');
+    expect(formatIssueTitle('fallback_failures_dominant')).not.toContain('fallback');
     expect(formatIssueTitle('pass_rate_below_gate')).toBe(
       '통과율이 Release 기준보다 낮습니다.',
     );
