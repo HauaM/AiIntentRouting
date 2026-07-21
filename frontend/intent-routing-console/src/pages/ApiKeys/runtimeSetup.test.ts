@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -14,11 +14,6 @@ const apiKeysPageSource = () =>
 
 const globalStyleSource = () =>
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../global.less'), 'utf8');
-
-const runtimeServicesPath = () =>
-  join(dirname(fileURLToPath(import.meta.url)), '../../services/runtimeServices.ts');
-
-const runtimeServicesSource = () => readFileSync(runtimeServicesPath(), 'utf8');
 
 const guidance: API.RuntimeSetupGuidance = {
   service_id: 'svc-a',
@@ -124,20 +119,20 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toContain('selectApiKey(row)');
   });
 
-  it('renders an explicit runtime live test without auto-filling the one-time secret', () => {
+  it('renders setup templates without a browser live test or raw secret input', () => {
     const source = apiKeysPageSource();
 
     expect(source).not.toContain('Dify variable mapping');
     expect(source).not.toContain('dify_variable_mapping.map');
-    expect(source).toContain('라이브 테스트');
-    expect(source).toContain('runRuntimeIntentRoute');
-    expect(source).toContain('runtimeServices');
-    expect(source).toContain('Input.Password');
-    expect(source).toContain("setLiveTestSecret('')");
-    expect(source).toContain('liveTestSecret.trim()');
-    expect(source).not.toContain('setLiveTestSecret(createdKey');
-    expect(source).not.toContain('setLiveTestSecret(oneTimeApiSecretForSelectedKey');
-    expect(source).toContain('const apiSecret = liveTestSecret.trim()');
+    expect(source).not.toContain('라이브 테스트');
+    expect(source).not.toContain('runRuntimeIntentRoute');
+    expect(source).not.toContain('runtimeServices');
+    expect(source).not.toContain('/v1/intent-route');
+    expect(source).not.toContain('window.fetch');
+    expect(source).not.toContain('headers: {');
+    expect(source).not.toContain('api_secret');
+    expect(source).not.toContain('Input.Password');
+    expect(source).not.toContain('fetch(');
   });
 
   it('copies Authorization through the audited reveal endpoint instead of page-scoped secret replay', () => {
@@ -152,37 +147,6 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toContain('selectedApiKeyIdRef');
     expect(source).toContain('selectedApiKeyIdRef.current !== keyId');
     expect(source).not.toContain('oneTimeApiSecretForSelectedKey');
-  });
-
-  it('rejects stale live-test completions after the selected scope changes', () => {
-    const source = apiKeysPageSource();
-
-    expect(source).toContain('liveTestScopeTokenRef');
-    expect(source).toContain('invalidateLiveTestScope');
-    expect(source).toMatch(/const liveTestScopeToken = liveTestScopeTokenRef\.current/);
-    expect(source).toMatch(/liveTestScopeTokenRef\.current\s*===\s*liveTestScopeToken/);
-    expect(source).toContain('if (!isLiveTestScopeCurrent()) return;');
-    expect(source).toContain('if (isLiveTestScopeCurrent()) setLiveTestRunning(false);');
-  });
-
-  it('runs the live test as a runtime call without Admin UI credentials', () => {
-    const path = runtimeServicesPath();
-
-    expect(existsSync(path)).toBe(true);
-    if (!existsSync(path)) return;
-
-    const source = runtimeServicesSource();
-
-    expect(source).toContain('fetch(runtimeEndpoint');
-    expect(source).toContain("credentials: 'omit'");
-    expect(source).toContain('Authorization: `Bearer ${apiSecret.trim()}`');
-    expect(source).toContain("'X-Key-Id': keyId");
-    expect(source).toContain("'X-App-Id': appId");
-    expect(source).toContain("'X-Service-Id': serviceId");
-    expect(source).toContain("'X-Request-Id': requestId");
-    expect(source).toContain('Content-Type');
-    expect(source).not.toContain('@umijs/max');
-    expect(source).not.toContain('withCredentials');
   });
 
   it('supports unlimited expiry from the create form without hiding the finite-day option', () => {

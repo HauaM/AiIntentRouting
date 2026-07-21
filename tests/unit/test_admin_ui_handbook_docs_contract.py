@@ -89,8 +89,7 @@ def test_admin_ui_v04_records_authorization_first_onboarding_flow() -> None:
         "Do not send `X-Admin-Token`",
         "GET /admin/v1/services/{service_id}/api-keys",
         "GET /admin/v1/services/{service_id}/runtime-setup",
-        "explicit runtime live-test workflow",
-        "operator manually enters an API Secret",
+        "Do not run a browser",
         "`selected_key` metadata only",
     ):
         assert expected in onboarding

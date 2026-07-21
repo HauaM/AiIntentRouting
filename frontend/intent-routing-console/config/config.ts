@@ -31,9 +31,5 @@ export default defineConfig({
       target: adminApiProxy,
       changeOrigin: true,
     },
-    '/v1': {
-      target: adminApiProxy,
-      changeOrigin: true,
-    },
   },
 });

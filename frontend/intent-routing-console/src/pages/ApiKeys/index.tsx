@@ -35,10 +35,6 @@ import {
   revokeServiceApiKey,
 } from '@/services/adminServices';
 import {
-  runRuntimeIntentRoute,
-  type RuntimeIntentRouteLiveTestResult,
-} from '@/services/runtimeServices';
-import {
   runtimeSetupBodyTemplateText,
   runtimeSetupHeaderRows,
   runtimeSetupSelectedKeyLabel,
@@ -108,17 +104,10 @@ export default function ApiKeysPage() {
   const [loadingKeys, setLoadingKeys] = useState(false);
   const [selectedEnvironment, setSelectedEnvironment] =
     useState<'dev' | 'qa' | 'prod'>('dev');
-  const [liveTestSecret, setLiveTestSecret] = useState('');
-  const [liveTestQuery, setLiveTestQuery] = useState('');
-  const [liveTestRequestId, setLiveTestRequestId] = useState('');
-  const [liveTestRunning, setLiveTestRunning] = useState(false);
-  const [liveTestResult, setLiveTestResult] =
-    useState<RuntimeIntentRouteLiveTestResult>();
   const [revealingKeyId, setRevealingKeyId] = useState<string>();
   const serviceIdRef = useRef(session.serviceId);
   const selectedEnvironmentRef = useRef(selectedEnvironment);
   const apiKeyPageRequestIdRef = useRef(0);
-  const liveTestScopeTokenRef = useRef(0);
   const selectedApiKeyIdRef = useRef<string>();
   serviceIdRef.current = session.serviceId;
   selectedEnvironmentRef.current = selectedEnvironment;
@@ -134,29 +123,6 @@ export default function ApiKeysPage() {
     hasActiveRelease &&
     scopeCandidates.length === 0 &&
     !loadingKeys;
-  const selectedRuntimeKey = runtimeSetup?.selected_key;
-  const canRunLiveTest = Boolean(
-    runtimeSetup?.runtime_endpoint &&
-      hasActiveRelease &&
-      !loadingKeys &&
-      selectedRuntimeKey?.status === 'active' &&
-      liveTestSecret.trim() &&
-      liveTestQuery.trim(),
-  );
-
-  const resetLiveTestInputs = () => {
-    setLiveTestSecret('');
-    setLiveTestQuery('');
-    setLiveTestRequestId('');
-    setLiveTestResult(undefined);
-  };
-
-  const invalidateLiveTestScope = () => {
-    liveTestScopeTokenRef.current += 1;
-    resetLiveTestInputs();
-    setLiveTestRunning(false);
-  };
-
   const loadApiKeyPageData = async (
     selectedKey?: Pick<API.ApiKey, 'app_id' | 'key_id'>,
   ) => {
@@ -192,9 +158,6 @@ export default function ApiKeysPage() {
       });
       if (!isCurrentRequest()) return;
 
-      if (selectedApiKey?.key_id !== nextSelectedKey?.key_id) {
-        invalidateLiveTestScope();
-      }
       setKeys(nextKeys);
       setSelectedApiKey(nextSelectedKey);
       setScopeCandidates(nextScopeCandidates);
@@ -212,7 +175,6 @@ export default function ApiKeysPage() {
     setSelectedApiKey(undefined);
     setScopeCandidates([]);
     setRuntimeSetup(undefined);
-    invalidateLiveTestScope();
     createForm.resetFields(['app_id', 'allowed_intents', 'allowed_route_keys']);
     createForm.setFieldsValue({
       expiry_mode: 'days',
@@ -275,9 +237,6 @@ export default function ApiKeysPage() {
   };
 
   const selectApiKey = (row: API.ApiKey) => {
-    if (row.key_id !== selectedApiKey?.key_id) {
-      invalidateLiveTestScope();
-    }
     setSelectedApiKey(row);
     loadApiKeyPageData({ key_id: row.key_id, app_id: row.app_id });
   };
@@ -318,50 +277,6 @@ export default function ApiKeysPage() {
       message.success('Authorization header가 복사되었습니다.');
     } finally {
       setRevealingKeyId(undefined);
-    }
-  };
-
-  const handleRunLiveTest = async () => {
-    if (!runtimeSetup || !selectedRuntimeKey) {
-      message.warning('테스트할 API key를 인벤토리에서 선택하세요.');
-      return;
-    }
-    const query = liveTestQuery.trim();
-    const apiSecret = liveTestSecret.trim();
-    if (!apiSecret || !query) {
-      message.warning('API Secret과 테스트 쿼리를 입력하세요.');
-      return;
-    }
-    const requestId = liveTestRequestId.trim() || `admin-live-${Date.now()}`;
-    const serviceId = runtimeSetup.service_id;
-    const environment = runtimeSetup.environment;
-    const liveTestScopeToken = liveTestScopeTokenRef.current;
-    const isLiveTestScopeCurrent = () =>
-      liveTestScopeTokenRef.current === liveTestScopeToken &&
-      serviceIdRef.current === serviceId &&
-      selectedEnvironmentRef.current === environment;
-    setLiveTestRequestId(requestId);
-    setLiveTestRunning(true);
-    setLiveTestResult(undefined);
-    try {
-      const result = await runRuntimeIntentRoute({
-        runtimeEndpoint: runtimeSetup.runtime_endpoint,
-        apiSecret,
-        keyId: selectedRuntimeKey.key_id,
-        appId: selectedRuntimeKey.app_id,
-        serviceId,
-        requestId,
-        query,
-      });
-      if (!isLiveTestScopeCurrent()) return;
-      setLiveTestResult(result);
-      if (result.ok) {
-        message.success('라이브 테스트 호출이 완료되었습니다.');
-      } else {
-        message.error('라이브 테스트 호출이 실패했습니다.');
-      }
-    } finally {
-      if (isLiveTestScopeCurrent()) setLiveTestRunning(false);
     }
   };
 
@@ -488,7 +403,6 @@ export default function ApiKeysPage() {
               options={environmentOptions}
               onChange={(value: 'dev' | 'qa' | 'prod') => {
                 selectedEnvironmentRef.current = value;
-                invalidateLiveTestScope();
                 setSelectedEnvironment(value);
                 setCreatedKey(undefined);
                 setKeys([]);
@@ -589,101 +503,6 @@ export default function ApiKeysPage() {
 
   const runtimeChecklist =
     runtimeSetup?.checklist.filter((item) => !item.toLowerCase().includes('dify')) ?? [];
-
-  const liveTestResultPanel = liveTestResult ? (
-    liveTestResult.ok ? (
-      <Alert
-        type="success"
-        showIcon
-        message="Runtime call completed"
-        description={
-          <Descriptions size="small" column={{ xs: 1, md: 2 }}>
-            <Descriptions.Item label="Decision">
-              <StatusTag
-                status={liveTestResult.body.decision}
-                label={liveTestResult.body.decision}
-              />
-            </Descriptions.Item>
-            <Descriptions.Item label="HTTP status">
-              {liveTestResult.status}
-            </Descriptions.Item>
-            <Descriptions.Item label="Trace ID">
-              <Typography.Text copyable code>
-                {liveTestResult.body.trace_id}
-              </Typography.Text>
-            </Descriptions.Item>
-            <Descriptions.Item label="Request ID">
-              <Typography.Text copyable code>
-                {liveTestResult.body.request_id ?? liveTestRequestId}
-              </Typography.Text>
-            </Descriptions.Item>
-            <Descriptions.Item label="Intent">
-              {liveTestResult.body.intent_id ? (
-                <Typography.Text code>{liveTestResult.body.intent_id}</Typography.Text>
-              ) : (
-                <StatusTag status="none" label="none" />
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label="Route key">
-              {liveTestResult.body.route_key ? (
-                <Typography.Text code>{liveTestResult.body.route_key}</Typography.Text>
-              ) : (
-                <StatusTag status="none" label="none" />
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label="Confidence">
-              {liveTestResult.body.confidence ?? '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="Release">
-              {liveTestResult.body.release_version ? (
-                <Typography.Text copyable code>
-                  {liveTestResult.body.release_version}
-                </Typography.Text>
-              ) : (
-                <StatusTag status="none" label="none" />
-              )}
-            </Descriptions.Item>
-          </Descriptions>
-        }
-      />
-    ) : (
-      <Alert
-        type="error"
-        showIcon
-        message={`${liveTestResult.error.code}: ${liveTestResult.error.message}`}
-        description={
-          <Descriptions size="small" column={{ xs: 1, md: 2 }}>
-            <Descriptions.Item label="HTTP status">
-              {liveTestResult.status || 'network'}
-            </Descriptions.Item>
-            <Descriptions.Item label="Retryable">
-              {String(Boolean(liveTestResult.error.retryable))}
-            </Descriptions.Item>
-            <Descriptions.Item label="Trace ID">
-              {liveTestResult.trace_id ? (
-                <Typography.Text copyable code>
-                  {liveTestResult.trace_id}
-                </Typography.Text>
-              ) : (
-                <StatusTag status="none" label="none" />
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label="Request ID">
-              <Typography.Text copyable code>
-                {liveTestResult.request_id ?? liveTestRequestId}
-              </Typography.Text>
-            </Descriptions.Item>
-            <Descriptions.Item label="Category">
-              {liveTestResult.error.category ?? '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="Layer">
-              {liveTestResult.error.layer ?? '-'}
-            </Descriptions.Item>
-          </Descriptions>
-        }
-      />
-    )
-  ) : null;
 
   const existingKeyPanel = (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -804,71 +623,6 @@ export default function ApiKeysPage() {
             message="Service와 key를 선택하면 Runtime setup 안내가 표시됩니다."
           />
         )}
-      </Card>
-      <Card
-        title="라이브 테스트"
-        extra={
-          selectedRuntimeKey ? (
-            <Typography.Text copyable code>
-              {selectedRuntimeKey.key_id}
-            </Typography.Text>
-          ) : (
-            <StatusTag status="none" label="키 미선택" />
-          )
-        }
-      >
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <Alert
-            type="info"
-            showIcon
-            message="선택한 key의 API Secret을 직접 입력하면 runtime API를 한 번 호출합니다. Secret은 저장하지 않습니다."
-          />
-          {!selectedRuntimeKey ? (
-            <Alert
-              type="warning"
-              showIcon
-              message="테스트할 active API key를 인벤토리에서 선택하세요."
-            />
-          ) : null}
-          <Form layout="vertical" className="api-key-live-test-form">
-            <div className="api-key-live-test-controls">
-              <Form.Item label="API Secret">
-                <Input.Password
-                  value={liveTestSecret}
-                  onChange={(event) => setLiveTestSecret(event.target.value)}
-                  placeholder="irt_..."
-                  autoComplete="off"
-                  disabled={!selectedRuntimeKey || loadingKeys || liveTestRunning}
-                />
-              </Form.Item>
-              <Form.Item label="테스트 쿼리">
-                <Input
-                  value={liveTestQuery}
-                  onChange={(event) => setLiveTestQuery(event.target.value)}
-                  placeholder="예: 비밀번호를 재설정하고 싶어요"
-                  disabled={!selectedRuntimeKey || loadingKeys || liveTestRunning}
-                />
-              </Form.Item>
-              <Form.Item label="Request ID">
-                <Input
-                  value={liveTestRequestId}
-                  onChange={(event) => setLiveTestRequestId(event.target.value)}
-                  placeholder="비우면 자동 생성"
-                  disabled={!selectedRuntimeKey || loadingKeys || liveTestRunning}
-                />
-              </Form.Item>
-              <Button
-                type="primary"
-                onClick={handleRunLiveTest}
-                loading={liveTestRunning}
-                disabled={!canRunLiveTest || liveTestRunning}
-              >
-                테스트 실행
-              </Button>
-            </div>
-          </Form>
-          {liveTestResultPanel}
-        </Space>
       </Card>
     </Space>
   );
