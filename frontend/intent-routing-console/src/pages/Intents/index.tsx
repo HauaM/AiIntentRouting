@@ -640,7 +640,10 @@ export default function IntentsPage() {
         dataIndex: 'example_type',
         width: 80,
         render: (value: string) => (
-          <Tag color={value === 'positive' ? 'green' : 'default'}>{value}</Tag>
+          <StatusTag
+            status={value === 'positive' ? 'positive' : 'negative'}
+            label={value}
+          />
         ),
       },
       {
@@ -661,7 +664,11 @@ export default function IntentsPage() {
         dataIndex: 'approved',
         width: 72,
         render: (approved: boolean) =>
-          approved ? <Tag color="green">승인됨</Tag> : <Tag color="orange">대기</Tag>,
+          approved ? (
+            <StatusTag status="approved" label="승인됨" />
+          ) : (
+            <StatusTag status="pending" label="대기" />
+          ),
       },
     ];
 
@@ -858,9 +865,7 @@ export default function IntentsPage() {
                   {selected.include_keywords.length ? (
                     <Space wrap>
                       {selected.include_keywords.map((keyword) => (
-                        <Tag color="green" key={`include:${keyword}`}>
-                          + {keyword}
-                        </Tag>
+                        <Tag key={`include:${keyword}`}>+ {keyword}</Tag>
                       ))}
                     </Space>
                   ) : (

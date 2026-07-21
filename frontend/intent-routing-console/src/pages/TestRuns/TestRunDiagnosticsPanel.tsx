@@ -1,16 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Descriptions, Empty, Spin, Space, Tag, Typography } from 'antd';
+import { Alert, Descriptions, Empty, Spin, Space, Typography } from 'antd';
+import { StatusTag } from '@/components/StatusTag';
 import { fetchTestRunDiagnostics } from '@/services/adminServices';
 
 type TestRunDiagnosticsPanelProps = {
   serviceId: string;
   testRunId?: string;
-};
-
-const severityColor: Record<string, string> = {
-  blocker: 'error',
-  warning: 'warning',
-  recommendation: 'processing',
 };
 
 const issueCopy: Record<string, string> = {
@@ -129,9 +124,11 @@ export function TestRunDiagnosticsPanel({
             ) : null}
             <Space wrap>
               {diagnostics.issues.map((issue) => (
-                <Tag key={issue.code} color={severityColor[issue.severity] ?? 'default'}>
-                  {issue.severity}: <Typography.Text code>{issue.code}</Typography.Text>
-                </Tag>
+                <StatusTag
+                  key={issue.code}
+                  status={issue.severity}
+                  label={`${issue.severity}: ${issue.code}`}
+                />
               ))}
             </Space>
             <Descriptions bordered size="small" column={{ xs: 1, md: 2 }}>

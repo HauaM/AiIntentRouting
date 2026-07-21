@@ -18,10 +18,10 @@ export const permissionTabs: Array<{
   { key: 'risk-findings', label: '운영 점검' },
 ];
 
-const riskSeverityColors: Record<API.PermissionRiskSeverity, string> = {
-  low: 'blue',
-  medium: 'orange',
-  high: 'red',
+const riskSeverityStatuses: Record<API.PermissionRiskSeverity, string> = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
 };
 
 const permissionServiceRoles = [
@@ -105,8 +105,8 @@ export function isLastActiveSystemAdminProtected(row: API.PermissionAdminUserSum
   return Boolean(row.is_last_active_system_admin && isActiveLoginEligibleSystemAdmin(row));
 }
 
-export function riskSeverityColor(severity: API.PermissionRiskSeverity | string) {
-  return riskSeverityColors[severity as API.PermissionRiskSeverity] ?? 'default';
+export function riskSeverityStatus(severity: API.PermissionRiskSeverity | string) {
+  return riskSeverityStatuses[severity as API.PermissionRiskSeverity] ?? 'none';
 }
 
 export function permissionRoleLabel(role: string) {

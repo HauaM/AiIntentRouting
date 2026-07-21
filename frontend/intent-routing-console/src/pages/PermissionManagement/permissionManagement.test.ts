@@ -14,7 +14,7 @@ import {
   permissionServiceRoleOptions,
   permissionTabs,
   riskFindingRowKey,
-  riskSeverityColor,
+  riskSeverityStatus,
   summarizeRiskEvidence,
   toPermissionAdminGlobalRolesPatchRequest,
   toPermissionAdminStatusPatchRequest,
@@ -100,7 +100,7 @@ describe('Permission Management helpers', () => {
   });
 
   it('maps risk severity and role labels for table rendering', () => {
-    expect(riskSeverityColor('high')).toBe('red');
+    expect(riskSeverityStatus('high')).toBe('high');
     expect(permissionRoleLabel('application_admin')).toBe('application_admin');
     expect(permissionRoleLabel('system_admin')).toBe('system_admin');
   });

@@ -1,6 +1,7 @@
 import { Button, Select, Space, Tag, Tooltip, Typography } from 'antd';
 import { LogoutOutlined } from '@ant-design/icons';
 import { type AdminSession, type ServiceOption } from '@/models/adminSession';
+import { StatusTag } from './StatusTag';
 
 type ServiceScopeBarProps = {
   session: AdminSession;
@@ -35,7 +36,9 @@ export function ServiceScopeBar({
           optionFilterProp="label"
           style={{ minWidth: 240 }}
         />
-        {selectedService?.environment ? <Tag color="blue">{selectedService.environment}</Tag> : null}
+        {selectedService?.environment ? (
+          <StatusTag status={selectedService.environment} label={selectedService.environment} />
+        ) : null}
         {selectedService?.status ? <Tag>{selectedService.status}</Tag> : null}
       </Space>
       <Space size={6} wrap>

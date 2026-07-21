@@ -1,6 +1,7 @@
 import { MoreOutlined } from '@ant-design/icons';
 import type { TableProps } from 'antd';
 import { Button, Dropdown, Empty, Modal, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { StatusTag } from '@/components/StatusTag';
 
 type CatalogVersionHistoryModalProps = {
   open: boolean;
@@ -15,11 +16,6 @@ type CatalogVersionHistoryModalProps = {
   onCompare: (version: API.CatalogVersionListItem) => void;
   onLoadToDraft: (version: API.CatalogVersionListItem) => void;
   onDeactivate: (version: API.CatalogVersionListItem) => void;
-};
-
-const statusColor: Record<API.CatalogVersionStatus, string> = {
-  active: 'success',
-  inactive: 'default',
 };
 
 const formatCatalogDate = (value?: string | null) =>
@@ -66,7 +62,9 @@ export function CatalogVersionHistoryModal({
       title: '상태',
       dataIndex: 'status',
       width: 96,
-      render: (value: API.CatalogVersionStatus) => <Tag color={statusColor[value]}>{value}</Tag>,
+      render: (value: API.CatalogVersionStatus) => (
+        <StatusTag status={value} label={value} />
+      ),
     },
     {
       title: 'Release',
@@ -74,7 +72,7 @@ export function CatalogVersionHistoryModal({
       width: 120,
       render: (_, row) =>
         row.released || row.release_count > 0 ? (
-          <Tag color="processing">released {row.release_count}</Tag>
+          <StatusTag status="released" label={`released ${row.release_count}`} />
         ) : (
           <Tag>unreleased</Tag>
         ),

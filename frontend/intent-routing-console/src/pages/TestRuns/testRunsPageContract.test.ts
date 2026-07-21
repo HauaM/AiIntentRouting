@@ -108,11 +108,11 @@ it('localizes result and lookup labels while preserving technical identifiers', 
   expect(page).not.toContain('Test Run 결과를 불러왔습니다.');
 });
 
-it('normalizes uppercase backend result values before rendering semantic labels and colors', () => {
+it('normalizes uppercase backend result values before rendering semantic StatusTag labels', () => {
   const page = read('index.tsx');
 
   expect(page).toContain('const normalizedResult = row.result.toLowerCase();');
-  expect(page).toContain("resultColor[normalizedResult] ?? 'default'");
+  expect(page).toContain('status={normalizedResult}');
   expect(page).toContain('resultLabel[normalizedResult] ?? row.result');
 });
 

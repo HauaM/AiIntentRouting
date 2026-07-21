@@ -14,6 +14,9 @@ describe('StatusTag contract', () => {
     expect(text).toContain("risk: { bg: '#FBE9E7'");
     expect(text).toContain("pending: { bg: '#FDF3E3'");
     expect(text).toContain("disabled: { bg: '#EEF0F3'");
+    expect(text).toContain("test: { bg: '#EAF3FC'");
+    expect(text).toContain("blocker: { bg: '#FBE7E5'");
+    expect(text).toContain("recommendation: { bg: '#EAF3FC'");
     expect(text).toContain('ExclamationCircleOutlined');
     expect(text).toContain("size?: 'small' | 'middle'");
     expect(text).toContain('export function StatusTag');

@@ -8,6 +8,23 @@ Stack: React + TypeScript, Umi 4, Ant Design Pro v6, ProComponents, Ant Design t
 
 ---
 
+## 0. Viewport Scope
+
+The Admin Console is a desktop web operations console optimized for FHD usage.
+Do not design, implement, or verify mobile-specific UX unless explicitly
+requested.
+
+Responsive behavior is still required for desktop browser width changes. The UI
+must prevent clipping, broken toolbars, unreadable tables, and modal/drawer
+overflow when a desktop window is narrowed. Treat this as layout robustness for
+web desktop usage, not as a mobile product requirement.
+
+Do not introduce mobile-only navigation, card-list replacements for tables,
+touch-first interaction patterns, or phone-viewport acceptance criteria by
+default.
+
+---
+
 ## 1. Design Direction
 
 - **Trust** — calm navy palette, low saturation, consistent alignment. No decorative elements; information itself builds trust.
@@ -48,6 +65,13 @@ Steel-blue based, low-saturation palette. No purple, no gradients. Success/warni
 
 Density: compact by default (table row height 36px); `middle` allowed for logs/tables on request.
 
+### 2.1 Content Surface Color Guard
+
+- The dark navy surface is allowed only for the fixed `AdminShell` sidebar/navigation. Content panels, tables, combo dropdowns, alerts, steps, modals, drawers, and cards must stay on light surfaces.
+- Do not use Ant Design dark algorithms, `color-scheme: dark`, or near-black content backgrounds such as `#01021E`, `#050625`, `#17011E`, or similar low-luminance navy/purple-black values.
+- Do not use Ant Design preset tag colors (`<Tag color="blue|green|red|warning|processing|success|error|default">`) for semantic state. Use `StatusTag` and extend its semantic mapping when a new status appears.
+- `Select`/ProTable select dropdown selected and active rows, `Alert` variants, and completed `Steps` indicators are explicitly pinned in `src/global.less` to light backgrounds with readable text.
+
 ---
 
 ## 3. Typography
@@ -71,6 +95,10 @@ Three-tier structure:
 Rules:
 - Content area is not width-capped; tables/cards fill the container (no marketing-style centered columns).
 - Page header = title + one-line description + at most one primary action on the right.
+- Support narrowed desktop browser windows with wrapping, horizontal table
+  overflow, ellipsis, and viewport-bounded floating layers where needed.
+- Do not redesign the information architecture for phone viewports unless a
+  separate mobile UX requirement is accepted.
 
 ---
 
@@ -139,14 +167,16 @@ This is the core UX of the console: getting a service into a state where it can 
 - **Purpose** — one unified visual vocabulary for state across the whole console.
 - **Used in** — every table status column, `DetailDrawer` header, dashboard cards.
 - **Composition** — pill background + text label + icon (risk/error tiers only).
-- **Key props** — `status: 'confident'|'clarify'|'fallback'|'off_topic'|'risk'|'unauthorized'|'active'|'draft'|'deprecated'|'pass'|'fail'`, `size`.
+- **Key props** — `status: 'confident'|'clarify'|'fallback'|'off_topic'|'risk'|'unauthorized'|'active'|'draft'|'deprecated'|'pass'|'fail'|'warning'|'blocked'|'processing'|'released'|'system_admin'|'dev'|'test'|'stage'|'prod'`, `label`, `size`.
 - **Color mapping**:
   - confident, active, pass → `#EAF3EE` bg / `#17724D` text (success tag text alias; keep `colorSuccess` for general semantic accents)
-  - clarify → `#FDF3E3` bg / `#8A5A12` text
-  - fallback, off_topic, draft, deprecated → `#EEF0F3` bg / `#5C6478` text
-  - risk → `#FBE9E7` bg / `#A23B2E` text + ⚠ icon
-  - unauthorized, fail → `#FBE7E5` bg / `#B3261E` text + icon
+  - clarify, pending, review, warning, prod → `#FDF3E3` bg / `#8A5A12` text
+  - fallback, off_topic, draft, deprecated, dev, negative, none → `#EEF0F3` bg / `#5C6478` text
+  - info, low, processing, released, stage, staging, system_admin, test → `#EAF3FC` bg / `#1D5A96` text
+  - risk, high → `#FBE9E7` bg / `#A23B2E` text + icon
+  - unauthorized, fail, blocked, blocker, error, rejected → `#FBE7E5` bg / `#B3261E` text + icon
 - **Permission handling** — the tag itself is display-only, never clickable. `risk`/`unauthorized` are always text+icon, never color-only.
+- **Implementation rule** — raw Ant Design `Tag` is allowed only for non-semantic counts, keywords, and IDs without a `color` prop. Any semantic state, environment, severity, gate result, or role badge must use `StatusTag`.
 - **Style** — all state colors share saturation/lightness band; success/warning/error differ only in hue.
 
 ### 6.6 ConfirmActionButton

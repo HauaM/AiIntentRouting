@@ -9,11 +9,11 @@ import {
   Input,
   Select,
   Space,
-  Tag,
   Typography,
   theme as antdTheme,
 } from 'antd';
 import koKR from 'antd/locale/ko_KR';
+import { StatusTag } from '@/components/StatusTag';
 import { listPublicDepartments, submitAdminAccessRequest } from '@/services/authServices';
 import {
   adminAccessRequestErrorMessage,
@@ -101,7 +101,7 @@ export default function AdminAccessRequestPage() {
               <div>
                 <Typography.Text type="secondary">신청 상태</Typography.Text>
                 <div style={{ marginTop: 8 }}>
-                  <Tag color="processing">{submittedRequest.status}</Tag>
+                  <StatusTag status={submittedRequest.status} label={submittedRequest.status} />
                 </div>
               </div>
               <div>

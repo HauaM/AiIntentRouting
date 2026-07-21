@@ -118,7 +118,9 @@ export default function ServicesPage() {
         dataIndex: 'environment',
         width: 128,
         className: 'admin-nowrap-cell',
-        render: (_, row) => <Tag color="blue">{row.environment}</Tag>,
+        render: (_, row) => (
+          <StatusTag status={row.environment} label={row.environment} />
+        ),
       },
       {
         title: '상태',
@@ -211,7 +213,10 @@ export default function ServicesPage() {
                       {selectedService.display_name}
                     </Descriptions.Item>
                     <Descriptions.Item label="환경">
-                      <Tag color="blue">{selectedService.environment}</Tag>
+                      <StatusTag
+                        status={selectedService.environment}
+                        label={selectedService.environment}
+                      />
                     </Descriptions.Item>
                     <Descriptions.Item label="상태">
                       <StatusTag status={selectedService.status} />
