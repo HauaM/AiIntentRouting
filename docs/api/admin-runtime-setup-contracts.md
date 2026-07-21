@@ -203,6 +203,12 @@ Rules:
 - The endpoint requires API key management access for `{service_id}`.
 - The key must belong to `{service_id}`.
 - Revoked or expired keys cannot be revealed.
+- Revoked API key reveal returns HTTP `400` with code `INVALID_REQUEST` and a
+  message that includes `Revoked API key secrets cannot be revealed.` Operators
+  must issue a new API key if runtime access is still needed.
+- Expired API key reveal returns HTTP `400` with code `INVALID_REQUEST` and a
+  message that includes `Expired API key secrets cannot be revealed.` Operators
+  must issue a new API key if runtime access is still needed.
 - Legacy keys without encrypted secret material cannot be revealed.
 - Legacy keys without encrypted secret material return `409 Conflict` with the unavailable message `API key secret is unavailable; rotate or reissue this legacy key.`
 - Operators must rotate or reissue legacy keys before a secret can be revealed.
@@ -470,6 +476,8 @@ Unauthorized roles or out-of-scope actors cannot create or revoke selected-Servi
 | Trusted headers without session | 401 | Browser cannot fall back to trusted headers |
 | Unauthorized role or out-of-scope actor creates or revokes key | 403 | `SERVICE_SCOPE_DENIED`; selected-Service `service_owner` is authorized |
 | Reveal access denied for unauthorized roles or an out-of-scope actor | 403 | `SERVICE_SCOPE_DENIED` |
+| Revoked API key reveal | 400 | `INVALID_REQUEST`; `Revoked API key secrets cannot be revealed.` Issue a new API key if runtime access is still needed. |
+| Expired API key reveal | 400 | `INVALID_REQUEST`; `Expired API key secrets cannot be revealed.` Issue a new API key if runtime access is still needed. |
 | Legacy key without encrypted secret material | 409 | `API key secret is unavailable; rotate or reissue this legacy key.` |
 | No selected or accessible Service in UI | UI blocked | Show session or Services guidance |
 | Service missing | 404 | Do not leak key inventory |

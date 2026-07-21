@@ -150,6 +150,11 @@ def test_api_key_secret_reveal_contract_is_documented() -> None:
         "return `409 Conflict`",
         "API key secret is unavailable; rotate or reissue this legacy key.",
         "Operators must rotate or reissue legacy keys",
+        "Revoked API key reveal returns HTTP `400` with code `INVALID_REQUEST`",
+        "Revoked API key secrets cannot be revealed.",
+        "issue a new API key if runtime access is still needed",
+        "Expired API key reveal returns HTTP `400` with code `INVALID_REQUEST`",
+        "Expired API key secrets cannot be revealed.",
     ):
         assert phrase in text
 
