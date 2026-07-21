@@ -52,6 +52,14 @@ class ApiKey(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    secret_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+    secret_encrypted_dek: Mapped[bytes | None] = mapped_column(LargeBinary)
+    secret_encrypted_dek_iv: Mapped[bytes | None] = mapped_column(LargeBinary)
+    secret_encrypted_dek_auth_tag: Mapped[bytes | None] = mapped_column(LargeBinary)
+    secret_key_id: Mapped[str | None] = mapped_column(Text)
+    secret_iv: Mapped[bytes | None] = mapped_column(LargeBinary)
+    secret_auth_tag: Mapped[bytes | None] = mapped_column(LargeBinary)
+    secret_algorithm: Mapped[str | None] = mapped_column(Text)
 
     service: Mapped[Service] = relationship()
 
