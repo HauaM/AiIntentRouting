@@ -6,7 +6,6 @@ import { ConfigProvider, Skeleton, theme as antdTheme } from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import {
   AuditOutlined,
-  BranchesOutlined,
   ClusterOutlined,
   DashboardOutlined,
   ExperimentOutlined,
@@ -80,7 +79,6 @@ const routeIcons: Record<AdminShellRouteIcon, ReactNode> = {
   organizationDirectory: <TeamOutlined />,
   permissionManagement: <SafetyOutlined />,
   intentCatalog: <ProfileOutlined />,
-  catalogVersions: <BranchesOutlined />,
   releases: <RocketOutlined />,
   testRuns: <ExperimentOutlined />,
   apiKeys: <KeyOutlined />,
