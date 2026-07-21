@@ -34,7 +34,12 @@ export function CatalogVersionPanel({
   const version = state?.mode === 'draft' ? state.sourceVersion : state?.version;
   const isDraft = state?.mode === 'draft';
   const canDeactivate = Boolean(
-    canManage && !isDraft && version && !version.released && version.release_count === 0,
+    canManage &&
+      !isDraft &&
+      version &&
+      version.status === 'active' &&
+      !version.released &&
+      version.release_count === 0,
   );
 
   return (
@@ -76,37 +81,37 @@ export function CatalogVersionPanel({
         </Descriptions>
       }
       action={
-        canManage ? (
-          <Space size={4} wrap>
+        <Space size={4} wrap>
+          {canManage ? (
             <Button size="small" type="primary" onClick={onCreate}>
               Catalog 버전 등록
             </Button>
-            <Button size="small" onClick={onOpenHistory}>
-              Catalog version 불러오기
-            </Button>
-            <Button size="small" disabled={!version} onClick={onCompareCurrent}>
-              비교
-            </Button>
-            {canDeactivate ? (
-              <Dropdown
-                menu={{
-                  items: [{ key: 'deactivate', label: '비활성화', danger: true }],
-                  onClick: ({ key }) => {
-                    if (key === 'deactivate') onDeactivateCurrent();
-                  },
-                }}
-                trigger={['click']}
-              >
-                <Button
-                  aria-label="Catalog 버전 작업 더보기"
-                  icon={<MoreOutlined />}
-                  size="small"
-                  type="text"
-                />
-              </Dropdown>
-            ) : null}
-          </Space>
-        ) : undefined
+          ) : null}
+          <Button size="small" onClick={onOpenHistory}>
+            Catalog version 불러오기
+          </Button>
+          <Button size="small" disabled={!version} onClick={onCompareCurrent}>
+            비교
+          </Button>
+          {canDeactivate ? (
+            <Dropdown
+              menu={{
+                items: [{ key: 'deactivate', label: '비활성화', danger: true }],
+                onClick: ({ key }) => {
+                  if (key === 'deactivate') onDeactivateCurrent();
+                },
+              }}
+              trigger={['click']}
+            >
+              <Button
+                aria-label="Catalog 버전 작업 더보기"
+                icon={<MoreOutlined />}
+                size="small"
+                type="text"
+              />
+            </Dropdown>
+          ) : null}
+        </Space>
       }
     />
   );

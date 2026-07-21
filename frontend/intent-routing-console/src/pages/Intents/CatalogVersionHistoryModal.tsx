@@ -90,20 +90,22 @@ export function CatalogVersionHistoryModal({
     },
   ];
 
-  if (canManage) {
-    columns.push({
-      title: '작업',
-      key: 'actions',
-      width: 220,
-      fixed: 'right',
-      render: (_, row) => (
-        <Space size={8} className="table-action-cell" style={{ whiteSpace: 'nowrap' }}>
-          <Button type="link" size="small" onClick={() => onCompare(row)}>
-            비교
-          </Button>
+  columns.push({
+    title: '작업',
+    key: 'actions',
+    width: 220,
+    fixed: 'right',
+    render: (_, row) => (
+      <Space size={8} className="table-action-cell" style={{ whiteSpace: 'nowrap' }}>
+        <Button type="link" size="small" onClick={() => onCompare(row)}>
+          비교
+        </Button>
+        {canManage ? (
           <Button type="link" size="small" onClick={() => onLoadToDraft(row)}>
             draft로 불러오기
           </Button>
+        ) : null}
+        {canManage ? (
           <Dropdown
             menu={{
               items: [
@@ -111,7 +113,8 @@ export function CatalogVersionHistoryModal({
                   key: 'deactivate',
                   label: '비활성화',
                   danger: true,
-                  disabled: row.released || row.release_count > 0,
+                  disabled:
+                    row.status !== 'active' || row.released || row.release_count > 0,
                 },
               ],
               onClick: ({ key }) => {
@@ -127,10 +130,10 @@ export function CatalogVersionHistoryModal({
               type="text"
             />
           </Dropdown>
-        </Space>
-      ),
-    });
-  }
+        ) : null}
+      </Space>
+    ),
+  });
 
   return (
     <Modal

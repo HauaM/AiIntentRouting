@@ -293,7 +293,7 @@ export default function IntentsPage() {
       setCatalogVersionCreateOpen(false);
       refreshCatalog();
       if (selected?.intent_id) await loadSelectedExamples(selected.intent_id);
-      if (catalogVersionLoadOpen) await reloadCatalogVersionRows();
+      await reloadCatalogVersionRows();
     } catch (error) {
       message.error(getOperationErrorMessage(error));
       throw error;
@@ -304,9 +304,7 @@ export default function IntentsPage() {
 
   const openCatalogVersionDiff = async (row: API.CatalogVersionListItem) => {
     const serviceId = session.serviceId;
-    const rows = catalogVersionRows.length
-      ? catalogVersionRows
-      : await reloadCatalogVersionRows();
+    const rows = await reloadCatalogVersionRows();
     const baseline = selectCatalogVersionDiffBaseline(rows, row);
     setCatalogVersionDiffTarget(row);
     setCatalogVersionDiffBaseline(baseline);

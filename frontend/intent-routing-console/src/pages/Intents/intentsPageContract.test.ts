@@ -82,6 +82,8 @@ describe('Intents page contract', () => {
     expect(text).toContain("setCatalogPageState({ mode: 'draft', sourceVersion: loaded })");
     expect(text).toContain('refreshCatalog();');
     expect(text).toContain("if (selected?.intent_id) await loadSelectedExamples(selected.intent_id);");
+    expect(text).toContain('await reloadCatalogVersionRows();');
+    expect(text).toContain('const rows = await reloadCatalogVersionRows();');
     expect(text).toContain('CatalogVersionCreateModal');
     expect(text).toContain('CatalogVersionDiffDrawer');
     expect(text).toContain('Catalog 버전 등록');
@@ -93,6 +95,7 @@ describe('Intents page contract', () => {
       join(dirname(fileURLToPath(import.meta.url)), 'CatalogVersionHistoryModal.tsx'),
       'utf8',
     );
+    const panelText = panelSource();
 
     expect(text).toContain('openCatalogVersionLoadModal');
     expect(text).toContain('listCatalogVersions(serviceId, { limit: 100 })');
@@ -107,8 +110,11 @@ describe('Intents page contract', () => {
     expect(historyModalSource).toContain('scroll={{ x: 1280, y: 360 }}');
     expect(historyModalSource).toContain('draft로 불러오기');
     expect(historyModalSource).toContain('비활성화');
-    expect(historyModalSource).toContain('disabled: row.released || row.release_count > 0');
+    expect(historyModalSource).toContain("row.status !== 'active' || row.released || row.release_count > 0");
+    expect(historyModalSource).toContain('{canManage ? (');
+    expect(historyModalSource).toContain('onCompare(row)');
     expect(historyModalSource).toContain('MoreOutlined');
+    expect(panelText).toContain("version.status === 'active'");
   });
 
   it('does not keep manual catalog version id input or standalone page-only lifecycle controls', () => {
