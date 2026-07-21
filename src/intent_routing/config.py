@@ -82,7 +82,10 @@ def load_raw_text_keyring_config(
     active_kek_base64 = env.get("RAW_TEXT_KEK_BASE64")
     if active_kek_base64 is None or not active_kek_base64.strip():
         raise MissingRawTextKekError("RAW_TEXT_KEK_BASE64 is required")
-    legacy_keks = _parse_legacy_keks(env.get("RAW_TEXT_LEGACY_KEKS_JSON", "{}"))
+    legacy_keks = _parse_legacy_keks(
+        env.get("RAW_TEXT_LEGACY_KEKS_JSON", "{}"),
+        "RAW_TEXT_LEGACY_KEKS_JSON",
+    )
     if active_key_id in legacy_keks:
         raise ValueError("active key_id must not appear in RAW_TEXT_LEGACY_KEKS_JSON")
     return RawTextKeyringConfig(
@@ -105,7 +108,10 @@ def load_api_key_secret_keyring_config(
     active_kek_base64 = env.get("API_KEY_SECRET_KEK_BASE64")
     if active_kek_base64 is None or not active_kek_base64.strip():
         raise MissingApiKeySecretKekError("API_KEY_SECRET_KEK_BASE64 is required")
-    legacy_keks = _parse_legacy_keks(env.get("API_KEY_SECRET_LEGACY_KEKS_JSON", "{}"))
+    legacy_keks = _parse_legacy_keks(
+        env.get("API_KEY_SECRET_LEGACY_KEKS_JSON", "{}"),
+        "API_KEY_SECRET_LEGACY_KEKS_JSON",
+    )
     if active_key_id in legacy_keks:
         raise ValueError(
             "active key_id must not appear in API_KEY_SECRET_LEGACY_KEKS_JSON"
@@ -117,23 +123,23 @@ def load_api_key_secret_keyring_config(
     )
 
 
-def _parse_legacy_keks(legacy_json: str) -> dict[str, str]:
+def _parse_legacy_keks(legacy_json: str, environment_key: str) -> dict[str, str]:
     try:
         parsed: Any = json.loads(legacy_json)
     except json.JSONDecodeError as exc:
-        raise ValueError("RAW_TEXT_LEGACY_KEKS_JSON must be valid JSON") from exc
+        raise ValueError(f"{environment_key} must be valid JSON") from exc
     if not isinstance(parsed, dict):
-        raise ValueError("RAW_TEXT_LEGACY_KEKS_JSON must be a JSON object")
+        raise ValueError(f"{environment_key} must be a JSON object")
     legacy_keks: dict[str, str] = {}
     for raw_key_id, kek_base64 in parsed.items():
         if not isinstance(raw_key_id, str) or not isinstance(kek_base64, str):
             raise ValueError(
-                "RAW_TEXT_LEGACY_KEKS_JSON must map key ID strings to base64 strings"
+                f"{environment_key} must map key ID strings to base64 strings"
             )
         key_id = raw_key_id.strip()
         if not key_id:
             raise ValueError("legacy key_id must not be blank")
         if key_id in legacy_keks:
-            raise ValueError("duplicate legacy key_id in RAW_TEXT_LEGACY_KEKS_JSON")
+            raise ValueError(f"duplicate legacy key_id in {environment_key}")
         legacy_keks[key_id] = kek_base64
     return legacy_keks
