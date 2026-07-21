@@ -186,3 +186,20 @@ def test_admin_ui_v04_records_release_owned_environment_and_concrete_role_gates(
         "runtime key lifecycle은 `system_admin`과 인가된 `service_owner`로 통제된다.",
     ):
         assert expected in api_key_negative
+
+
+def test_admin_ui_v04_records_audited_api_key_secret_reveal() -> None:
+    pattern_kit = _read(V04 / "PATTERN_KIT.md")
+    onboarding = _read(V04 / "ONBOARDING_FLOW.md")
+    checklist = _read(V04 / "E2E_DX_QA_CHECKLIST.md")
+    theme = _read(ROOT / "docs/THEME_AND_UX_GUIDE_v1.md")
+    text = f"{pattern_kit}\n{onboarding}\n{checklist}\n{theme}"
+
+    for phrase in (
+        "Secret 보기/복사",
+        "POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal",
+        "api_key.secret_revealed",
+        "encrypted secret material",
+        "raw secret is copied only through the audited reveal endpoint",
+    ):
+        assert phrase in text

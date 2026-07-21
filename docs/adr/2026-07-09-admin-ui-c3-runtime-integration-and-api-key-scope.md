@@ -51,9 +51,14 @@ Runtime clients call `/v1/intent-route` with `Authorization: Bearer <api_key>`
 plus `X-Key-Id`, `X-App-Id`, `X-Service-Id`, and `X-Request-Id`. Runtime API
 authentication remains separate from Admin UI session-cookie authentication.
 
-The raw API key secret is displayed once on create and never returned by
-inventory, revoke, runtime setup guidance, audit logs, or runtime logs. Key
-inventory and evidence may show only metadata such as `key_id`,
+The prior C-3 baseline displayed once on create and never returned the raw
+secret after issuance.
+The raw API key secret is displayed on create. After
+`docs/adr/2026-07-21-encrypted-api-key-secret-reveal.md`, authorized
+`system_admin` and selected-Service `service_owner` users may explicitly
+reveal/copy the encrypted secret through an audited service-scoped endpoint.
+Inventory, revoke, runtime setup guidance, audit logs, runtime logs, and
+exports still never embed raw `api_key`. Key inventory and evidence may show only metadata such as `key_id`,
 `key_fingerprint`, `app_id`, `service_id`, `environment`, `status`, scope,
 expiry, creator, and timestamps.
 

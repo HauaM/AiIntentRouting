@@ -166,6 +166,35 @@ Rules:
 - Revoke should be idempotent unless a later API decision chooses conflict
   semantics.
 
+### POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal
+
+Decrypts the stored encrypted API key secret for explicit copy by an authorized
+`system_admin` or selected-Service `service_owner`.
+
+Response:
+
+```json
+{
+  "key_id": "key_live_012345",
+  "service_id": "it-helpdesk",
+  "environment": "prod",
+  "app_id": "dify-platform",
+  "api_key": "irt_<decrypted-secret>",
+  "authorization_header": "Bearer irt_<decrypted-secret>",
+  "api_key_revealed": true
+}
+```
+
+Rules:
+
+- The endpoint requires API key management access for `{service_id}`.
+- The key must belong to `{service_id}`.
+- Revoked or expired keys cannot be revealed.
+- Legacy keys without encrypted secret material cannot be revealed.
+- The response is the only place where the reveal API returns raw `api_key`.
+- Inventory, revoke, runtime setup guidance, audit logs, runtime logs, and exports never include raw `api_key`.
+- Each successful reveal writes `api_key.secret_revealed` with redacted audit state.
+
 ## Intent-Route Candidate Scope Contract
 
 C-3 API key scope selectors use the existing candidate endpoint:

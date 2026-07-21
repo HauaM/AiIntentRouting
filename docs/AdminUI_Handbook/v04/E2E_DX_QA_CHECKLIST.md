@@ -384,6 +384,9 @@
 - [ ] Audit Logs에 raw API key secret이 남지 않는다.
 - [ ] 검토: 운영자가 secret을 재조회할 수 없다는 보안 제약을 이해할 수 있다.
 
+- [ ] Authorization의 `Secret 보기/복사`는 `POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal`을 호출하고 `Bearer irt_<decrypted-secret>`만 클립보드에 복사한다.
+- [ ] Audit Logs에 `api_key.secret_revealed` event가 남고 audit state에는 raw `api_key`가 포함되지 않는다.
+
 ### TC-040 Runtime Setup Guidance 확인
 
 - [ ] Runtime setup guidance 영역을 연다.

@@ -114,3 +114,18 @@ def test_c3_runtime_setup_contract_doc_defines_admin_api_and_runtime_guidance() 
         "Future delegation to `service_owner` or `service_operator`",
     ):
         assert stale_phrase not in text
+
+
+def test_api_key_secret_reveal_contract_is_documented() -> None:
+    text = _read(CONTRACT)
+
+    for phrase in (
+        "POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal",
+        "encrypted secret material",
+        "api_key.secret_revealed",
+        "api_key_revealed",
+        "authorization_header",
+        "Legacy keys without encrypted secret material cannot be revealed",
+        "Inventory, revoke, runtime setup guidance, audit logs, runtime logs, and exports never include raw `api_key`.",
+    ):
+        assert phrase in text
