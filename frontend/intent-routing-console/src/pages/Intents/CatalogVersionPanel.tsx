@@ -1,5 +1,6 @@
 import { MoreOutlined } from '@ant-design/icons';
 import { Alert, Button, Descriptions, Dropdown, Space, Tag, Typography } from 'antd';
+import { StatusTag } from '@/components/StatusTag';
 import type { CatalogPageState } from './catalogVersionTypes';
 
 type CatalogVersionPanelProps = {
@@ -10,11 +11,6 @@ type CatalogVersionPanelProps = {
   onOpenHistory: () => void;
   onCompareCurrent: () => void;
   onDeactivateCurrent: () => void;
-};
-
-const statusColor: Record<API.CatalogVersionStatus, string> = {
-  active: 'success',
-  inactive: 'default',
 };
 
 const formatCatalogDate = (value?: string | null) =>
@@ -54,9 +50,9 @@ export function CatalogVersionPanel({
           </Descriptions.Item>
           <Descriptions.Item label="Status">
             {isDraft ? (
-              <Tag color="warning">초안</Tag>
+              <StatusTag status="warning" label="초안" />
             ) : version ? (
-              <Tag color={statusColor[version.status]}>{version.status}</Tag>
+              <StatusTag status={version.status} label={version.status} />
             ) : (
               '-'
             )}
@@ -64,7 +60,7 @@ export function CatalogVersionPanel({
           <Descriptions.Item label="Release">
             {version ? (
               version.released || version.release_count > 0 ? (
-                <Tag color="processing">released {version.release_count}</Tag>
+                <StatusTag status="released" label={`released ${version.release_count}`} />
               ) : (
                 <Tag>unreleased</Tag>
               )

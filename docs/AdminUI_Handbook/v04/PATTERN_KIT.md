@@ -21,13 +21,33 @@
 
 Do not add React Query or axios unless a future architecture decision explicitly reverses this rule.
 
+## Viewport Scope
+
+The Admin Console is a desktop web operations console optimized for FHD usage.
+Do not design, implement, or verify mobile-specific UX unless explicitly
+requested.
+
+Responsive behavior is still required for desktop browser width changes: avoid
+clipping, unreadable tables, broken toolbars, and modal/drawer overflow when a
+desktop window is narrowed. Treat this as desktop web layout resilience, not as
+mobile product support.
+
+Do not add mobile-only navigation, card-list replacements for tables,
+touch-first interaction patterns, or phone-viewport acceptance criteria by
+default.
+
 ## Layout Contract
 
 - Use `AdminShell` as the default page shell.
-- Keep a dark fixed sidebar and compact fixed header.
+- Keep a dark fixed sidebar and compact fixed header. The sidebar/nav is the
+  only approved dark surface; content panels, dropdowns, alerts, steps, modals,
+  drawers, and cards stay on light surfaces.
 - Put `ServiceScopeBar` directly below the page title area, not inside another card.
 - Use restrained enterprise density: compact tables, small status tags, no marketing hero layout.
 - Cards are for contained repeated items or true panels only. Do not nest cards.
+- Use wrapping, ellipsis, table overflow, and viewport-bounded floating layers
+  for narrowed desktop windows, without converting tables or navigation into
+  mobile-specific experiences.
 
 ## Phase Model
 
@@ -211,3 +231,12 @@ Use semantic tags consistently:
 - deprecated/fallback/off_topic: gray or blue-gray.
 - risk/error/revoke: red.
 - future/disabled: gray.
+- Render semantic state, environment, severity, gate result, and role badges
+  through `StatusTag`. Do not use Ant Design preset `Tag color` values such as
+  `blue`, `green`, `red`, `warning`, `processing`, `success`, `error`, or
+  `default`.
+- Do not add Ant Design `darkAlgorithm`, `color-scheme: dark`, or near-black
+  content backgrounds such as `#01021E`, `#050625`, `#17011E`, or similar
+  low-luminance navy/purple-black values. If a new dark surface is genuinely
+  required, update `docs/THEME_AND_UX_GUIDE_v1.md` and the Admin UI color guard
+  test in the same change.

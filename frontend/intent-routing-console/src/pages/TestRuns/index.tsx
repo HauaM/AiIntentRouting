@@ -11,12 +11,12 @@ import {
   Space,
   Steps,
   Tabs,
-  Tag,
   Typography,
   message,
 } from 'antd';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminSessionRequired } from '@/components/AdminSessionRequired';
+import { StatusTag } from '@/components/StatusTag';
 import { WorkflowNextActionBar } from '@/components/WorkflowNextActionBar';
 import { canEditCatalog, isAdminSessionReady } from '@/models/adminSession';
 import {
@@ -40,12 +40,6 @@ const formatRate = (value: number | null | undefined) => {
   if (value === null || value === undefined) return 'none';
   const normalized = value <= 1 ? value * 100 : value;
   return `${normalized.toFixed(1)}%`;
-};
-
-const resultColor: Record<string, string> = {
-  pass: 'green',
-  fail: 'red',
-  review: 'orange',
 };
 
 const resultLabel: Record<string, string> = {
@@ -255,9 +249,10 @@ export default function TestRunsPage() {
       render: (_, row) => {
         const normalizedResult = row.result.toLowerCase();
         return (
-          <Tag color={resultColor[normalizedResult] ?? 'default'}>
-            {resultLabel[normalizedResult] ?? row.result}
-          </Tag>
+          <StatusTag
+            status={normalizedResult}
+            label={resultLabel[normalizedResult] ?? row.result}
+          />
         );
       },
     },
@@ -415,9 +410,10 @@ export default function TestRunsPage() {
                               {formatRate(summary.risk_pass_rate)}
                             </Descriptions.Item>
                             <Descriptions.Item label="검증 게이트">
-                              <Tag color={summary.gate_passed ? 'success' : 'error'}>
-                                {summary.gate_passed ? '통과' : '차단'}
-                              </Tag>
+                              <StatusTag
+                                status={summary.gate_passed ? 'pass' : 'blocked'}
+                                label={summary.gate_passed ? '통과' : '차단'}
+                              />
                             </Descriptions.Item>
                             <Descriptions.Item label="차단 사유">
                               {summary.block_reasons.length

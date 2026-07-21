@@ -1,4 +1,5 @@
 import { Select, Space, Tag, Typography } from 'antd';
+import { StatusTag } from '@/components/StatusTag';
 
 type ReleaseCandidateSelectProps = {
   value?: string;
@@ -41,9 +42,10 @@ export function ReleaseCandidateSelect({
           <Space direction="vertical" size={2}>
             <Space wrap>
               <Typography.Text code>{candidate.test_run_id}</Typography.Text>
-              <Tag color={candidate.eligible ? 'green' : 'red'}>
-                {candidate.eligible ? 'eligible' : 'blocked'}
-              </Tag>
+              <StatusTag
+                status={candidate.eligible ? 'pass' : 'blocked'}
+                label={candidate.eligible ? 'eligible' : 'blocked'}
+              />
               <Tag>pass {formatRate(candidate.pass_rate)}</Tag>
               <Tag>risk {formatRate(candidate.risk_pass_rate)}</Tag>
             </Space>

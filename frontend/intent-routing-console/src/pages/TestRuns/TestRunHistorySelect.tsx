@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Descriptions, Empty, Select, Space, Spin, Tag, Typography } from 'antd';
+import { StatusTag } from '@/components/StatusTag';
 import { listTestRuns } from '@/services/adminServices';
 
 type TestRunHistorySelectProps = {
@@ -141,9 +142,10 @@ export function TestRunHistorySelect({
                   <Typography.Text strong>
                     {run.source_filename || run.test_dataset_version}
                   </Typography.Text>
-                  <Tag color={run.gate_passed ? 'green' : 'red'}>
-                    {run.gate_passed ? 'gate 통과' : 'gate 차단'}
-                  </Tag>
+                  <StatusTag
+                    status={run.gate_passed ? 'pass' : 'blocked'}
+                    label={run.gate_passed ? 'gate 통과' : 'gate 차단'}
+                  />
                   <Tag>pass {formatRate(run.pass_rate)}</Tag>
                   <Tag>risk {formatRate(run.risk_pass_rate)}</Tag>
                 </Space>
@@ -180,9 +182,10 @@ export function TestRunHistorySelect({
               {formatRate(selectedRun.pass_rate)}
             </Descriptions.Item>
             <Descriptions.Item label="게이트">
-              <Tag color={selectedRun.gate_passed ? 'green' : 'red'}>
-                {selectedRun.gate_passed ? '통과' : '차단'}
-              </Tag>
+              <StatusTag
+                status={selectedRun.gate_passed ? 'pass' : 'blocked'}
+                label={selectedRun.gate_passed ? '통과' : '차단'}
+              />
             </Descriptions.Item>
             <Descriptions.Item label="Catalog 버전">
               <Space size={4}>

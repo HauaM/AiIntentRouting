@@ -489,9 +489,11 @@ export default function OrganizationDirectoryPage() {
                       children: managedAdminUser.global_roles.length ? (
                         <Space size={4} wrap>
                           {managedAdminUser.global_roles.map((role) => (
-                            <Tag key={role} color={role === 'system_admin' ? 'blue' : 'default'}>
-                              {role}
-                            </Tag>
+                            <StatusTag
+                              key={role}
+                              status={role === 'system_admin' ? 'system_admin' : 'none'}
+                              label={role}
+                            />
                           ))}
                         </Space>
                       ) : (

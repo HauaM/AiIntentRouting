@@ -48,7 +48,7 @@ import {
   permissionServiceRoleRowKey,
   permissionTabs,
   riskFindingRowKey,
-  riskSeverityColor,
+  riskSeverityStatus,
   summarizeRiskEvidence,
   toPermissionAdminGlobalRolesPatchRequest,
   toPermissionAdminStatusPatchRequest,
@@ -115,9 +115,11 @@ const roleTags = (roles: readonly string[]) =>
   roles.length ? (
     <Space size={4} wrap>
       {roles.map((role) => (
-        <Tag key={role} color={role === 'system_admin' ? 'blue' : 'default'}>
-          {permissionRoleLabel(role)}
-        </Tag>
+        <StatusTag
+          key={role}
+          status={role === 'system_admin' ? 'system_admin' : 'none'}
+          label={permissionRoleLabel(role)}
+        />
       ))}
     </Space>
   ) : (
@@ -624,9 +626,9 @@ export default function PermissionManagementPage() {
       width: 132,
       render: (_, row) =>
         isLastActiveSystemAdminProtected(row) ? (
-          <Tag color="orange">last active</Tag>
+          <StatusTag status="warning" label="last active" />
         ) : (
-          <Tag color="default">normal</Tag>
+          <StatusTag status="normal" label="normal" />
         ),
     },
   ];
@@ -863,7 +865,7 @@ export default function PermissionManagementPage() {
       title: 'Severity',
       dataIndex: 'severity',
       width: 112,
-      render: (_, row) => <Tag color={riskSeverityColor(row.severity)}>{row.severity}</Tag>,
+      render: (_, row) => <StatusTag status={riskSeverityStatus(row.severity)} label={row.severity} />,
     },
     { title: 'Category', dataIndex: 'category', width: 160 },
     {

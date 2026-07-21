@@ -381,7 +381,7 @@ export default function ApiKeysPage() {
                               {runtimeSetup.active_release.release_version}
                             </Typography.Text>
                           ) : (
-                            <Tag color="default">none</Tag>
+                            <StatusTag status="none" label="none" />
                           )}
                         </Descriptions.Item>
                         <Descriptions.Item label="Selected key">

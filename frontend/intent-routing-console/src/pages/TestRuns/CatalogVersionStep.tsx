@@ -12,6 +12,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
+import { StatusTag } from '@/components/StatusTag';
 import { VersionChip } from '@/components/VersionChip';
 import { fetchCatalogVersion, listCatalogVersions } from '@/services/adminServices';
 import {
@@ -26,11 +27,6 @@ type CatalogVersionStepProps = {
 };
 
 const CATALOG_VERSION_LIMIT = 100;
-
-const catalogVersionStatusColor: Record<API.CatalogVersionStatus, string> = {
-  active: 'green',
-  inactive: 'default',
-};
 
 const catalogVersionSearchLabel = (version: API.CatalogVersionListItem) =>
   [
@@ -134,7 +130,9 @@ export function CatalogVersionStep({
       title: 'Status',
       dataIndex: 'status',
       width: 112,
-      render: (value: string) => <Tag color={value === 'active' ? 'green' : 'default'}>{value || '-'}</Tag>,
+      render: (value: string) => (
+        <StatusTag status={value || 'none'} label={value || '-'} />
+      ),
     },
   ];
 
@@ -243,9 +241,7 @@ export function CatalogVersionStep({
                   <Typography.Text strong>
                     {version.display_version}
                   </Typography.Text>
-                  <Tag color={catalogVersionStatusColor[version.status]}>
-                    {version.status}
-                  </Tag>
+                  <StatusTag status={version.status} label={version.status} />
                   <Tag>
                     {version.released ? `released ${version.release_count}` : 'unreleased'}
                   </Tag>
@@ -286,9 +282,10 @@ export function CatalogVersionStep({
               key: 'status',
               label: '상태',
               children: (
-                <Tag color={catalogVersionStatusColor[selectedVersion.status]}>
-                  {selectedVersion.status}
-                </Tag>
+                <StatusTag
+                  status={selectedVersion.status}
+                  label={selectedVersion.status}
+                />
               ),
             },
             {
