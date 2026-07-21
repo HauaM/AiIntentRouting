@@ -115,14 +115,6 @@ export default function ApiKeysPage() {
   const ready = isAdminSessionReady(session);
   const canManage = canManageRuntimeSetup(session);
   const expiryMode = Form.useWatch('expiry_mode', createForm) ?? 'days';
-  const hasActiveRelease = Boolean(runtimeSetup?.active_release);
-  const showMissingActiveRelease =
-    Boolean(runtimeSetup) && !hasActiveRelease && !loadingKeys;
-  const showEmptyScopeCandidates =
-    Boolean(runtimeSetup) &&
-    hasActiveRelease &&
-    scopeCandidates.length === 0 &&
-    !loadingKeys;
   const loadApiKeyPageData = async (
     selectedKey?: Pick<API.ApiKey, 'app_id' | 'key_id'>,
   ) => {
@@ -384,17 +376,6 @@ export default function ApiKeysPage() {
               <StatusTag status={selectedEnvironment} label={selectedEnvironment} />
             </Space>
           </Descriptions.Item>
-          {runtimeSetup ? (
-            <Descriptions.Item label="Active release">
-              {runtimeSetup.active_release ? (
-                <Typography.Text copyable code>
-                  {runtimeSetup.active_release.release_version}
-                </Typography.Text>
-              ) : (
-                <StatusTag status="none" label="none" />
-              )}
-            </Descriptions.Item>
-          ) : null}
         </Descriptions>
         <Space wrap align="start" size={12}>
           <Form.Item label={helpLabel('Released environment', apiKeyHelp.environment)}>
@@ -442,27 +423,6 @@ export default function ApiKeysPage() {
           style={{ marginBottom: 12 }}
           message="선택하지 않으면 Service 내 모든 intent/route에 접근 가능합니다. 특정 범위만 허용하려면 아래에서 선택하세요."
         />
-        {showMissingActiveRelease ? (
-          <Alert
-            type="warning"
-            showIcon
-            style={{ marginBottom: 12 }}
-            message="선택한 환경에 active Release가 없습니다."
-            description={
-              'Releases 화면에서 해당 환경의 Release를 활성화한 뒤 API key를 발급하세요. ' +
-              '생성만 완료된 inactive Release는 런타임 후보로 사용되지 않습니다.'
-            }
-          />
-        ) : null}
-        {showEmptyScopeCandidates ? (
-          <Alert
-            type="warning"
-            showIcon
-            style={{ marginBottom: 12 }}
-            message="Active Release에 허용할 intent/route 후보가 없습니다."
-            description="선택한 active Release의 catalog snapshot에 active intent가 있는지 확인하세요."
-          />
-        ) : null}
         <div className="api-key-scope-fields">
           <Form.Item
             name="allowed_intents"
@@ -472,8 +432,6 @@ export default function ApiKeysPage() {
               mode="intent"
               candidates={scopeCandidates}
               placeholder="허용할 intent 선택"
-              disabled={!hasActiveRelease || loadingKeys}
-              loading={loadingKeys}
             />
           </Form.Item>
           <Form.Item
@@ -484,17 +442,10 @@ export default function ApiKeysPage() {
               mode="route"
               candidates={scopeCandidates}
               placeholder="허용할 route key 선택"
-              disabled={!hasActiveRelease || loadingKeys}
-              loading={loadingKeys}
             />
           </Form.Item>
         </div>
-        <Button
-          type="primary"
-          htmlType="submit"
-          loading={creating}
-          disabled={!hasActiveRelease || loadingKeys}
-        >
+        <Button type="primary" htmlType="submit" loading={creating}>
           API key 생성
         </Button>
       </Form>

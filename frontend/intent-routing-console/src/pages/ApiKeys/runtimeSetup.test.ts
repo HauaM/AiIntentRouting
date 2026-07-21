@@ -194,14 +194,13 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toMatch(/apiKeyPageRequestIdRef\.current\s*===\s*requestId/);
   });
 
-  it('explains empty API key scope selectors until the selected environment has an active release', () => {
+  it('does not gate API key creation or scope selection on active-release availability', () => {
     const source = apiKeysPageSource();
 
-    expect(source).toContain('const hasActiveRelease = Boolean(runtimeSetup?.active_release);');
-    expect(source).toContain('선택한 환경에 active Release가 없습니다.');
-    expect(source).toContain('Release를 활성화한 뒤 API key를 발급하세요.');
-    expect(source).toContain('disabled={!hasActiveRelease || loadingKeys}');
-    expect(source).toContain('loading={loadingKeys}');
+    expect(source).not.toContain('const hasActiveRelease = Boolean(runtimeSetup?.active_release);');
+    expect(source).not.toContain('선택한 환경에 active Release가 없습니다.');
+    expect(source).not.toContain('Active Release에 허용할 intent/route 후보가 없습니다.');
+    expect(source).not.toContain('disabled={!hasActiveRelease || loadingKeys}');
   });
 
   it('wraps runtime setup checklist items inside a bounded container', () => {

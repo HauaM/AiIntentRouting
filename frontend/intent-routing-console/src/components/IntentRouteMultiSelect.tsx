@@ -6,8 +6,6 @@ type IntentRouteMultiSelectProps = {
   candidates: API.IntentRouteCandidate[];
   mode: 'intent' | 'route';
   placeholder?: string;
-  disabled?: boolean;
-  loading?: boolean;
 };
 
 export function IntentRouteMultiSelect({
@@ -16,15 +14,11 @@ export function IntentRouteMultiSelect({
   candidates,
   mode,
   placeholder,
-  disabled,
-  loading,
 }: IntentRouteMultiSelectProps) {
   return (
     <Select
       mode="multiple"
       allowClear
-      disabled={disabled}
-      loading={loading}
       showSearch
       value={value}
       onChange={onChange}

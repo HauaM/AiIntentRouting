@@ -30,3 +30,15 @@ Only Task 5 API Keys source and test files were changed in this completion commi
 - `./node_modules/.bin/vitest run src/services/adminServices.test.ts src/pages/ApiKeys/runtimeSetup.test.ts src/pages/ApiKeys/apiKeyCreateFlow.test.ts src/components/intentRouteMultiSelectContract.test.ts src/components/adminUiColorGuard.test.ts`: 5 files, 48 tests passed.
 - `./node_modules/.bin/tsc --noEmit`: passed.
 - `UV_CACHE_DIR=/private/tmp/ai-intent-routing-uv-cache uv run pytest tests/unit/test_admin_ui_handbook_docs_contract.py tests/unit/test_admin_ui_route_config.py -q`: 10 passed.
+
+## Review Fix: Remove Active-Release Scope Gating (2026-07-22)
+
+- Restored `IntentRouteMultiSelect` to its prior API without page-specific `disabled` or `loading` props.
+- Removed the API Keys create-panel active-release display, missing-release and empty-candidate alerts, scope-selector gating, and create-button gating.
+- Kept the audited reveal client/type/test, Authorization `Secret 보기/복사` flow, and created-key modal clearing behavior.
+
+### Verification
+
+- `./node_modules/.bin/vitest run src/services/adminServices.test.ts src/pages/ApiKeys/runtimeSetup.test.ts src/pages/ApiKeys/apiKeyCreateFlow.test.ts src/components/intentRouteMultiSelectContract.test.ts`: 4 files, 45 tests passed.
+- `./node_modules/.bin/tsc --noEmit`: passed.
+- Scoped `git diff --check`: passed.
