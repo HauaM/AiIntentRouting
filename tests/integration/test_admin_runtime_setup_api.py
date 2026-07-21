@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -26,6 +27,16 @@ class _SessionFixture:
     user_id: str
     session_id: str
     created_user: bool
+
+
+@pytest.fixture(autouse=True)
+def _api_key_secret_kek(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("API_KEY_SECRET_KEK_ID", "local-api-key-secret-kek-001")
+    monkeypatch.setenv(
+        "API_KEY_SECRET_KEK_BASE64",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    )
+    monkeypatch.setenv("API_KEY_SECRET_LEGACY_KEKS_JSON", "{}")
 
 
 def _client(db_session: Session) -> TestClient:
@@ -434,6 +445,150 @@ def test_service_scoped_api_key_lifecycle_never_replays_secret(
         _purge_session_fixture(db_session, session_fixture)
 
 
+def test_service_owner_can_reveal_encrypted_service_api_key_secret(
+    db_session: Session,
+) -> None:
+    system_admin_client, system_admin_session_fixture = _system_admin_client(
+        db_session
+    )
+    service_id = f"svc-runtime-reveal-{uuid4().hex}"
+    service_owner_session_fixture: _SessionFixture | None = None
+    try:
+        _create_service(system_admin_client, service_id)
+        _seed_active_release(db_session, service_id)
+        service_owner_client, service_owner_session_fixture = _application_admin_client(
+            db_session,
+            service_roles=((service_id, "service_owner"),),
+        )
+        created = service_owner_client.post(
+            f"/admin/v1/services/{service_id}/api-keys",
+            json=_api_key_payload(),
+        )
+        assert created.status_code == 201
+        created_body = created.json()
+
+        revealed = service_owner_client.post(
+            f"/admin/v1/services/{service_id}/api-keys/{created_body['key_id']}:reveal"
+        )
+
+        assert revealed.status_code == 200
+        body = revealed.json()
+        assert body["key_id"] == created_body["key_id"]
+        assert body["service_id"] == service_id
+        assert body["environment"] == "dev"
+        assert body["app_id"] == "dify-helpdesk"
+        assert body["api_key"] == created_body["api_key"]
+        assert body["authorization_header"] == f"Bearer {created_body['api_key']}"
+        assert body["api_key_revealed"] is True
+
+        audit_log = db_session.scalar(
+            select(models.AuditLog)
+            .where(models.AuditLog.target_id == created_body["key_id"])
+            .where(models.AuditLog.event_type == "api_key.secret_revealed")
+        )
+        assert audit_log is not None
+        audit_state = json.dumps(
+            {"before": audit_log.before_state, "after": audit_log.after_state},
+            sort_keys=True,
+        )
+        assert created_body["api_key"] not in audit_state
+        assert body["authorization_header"] not in audit_state
+    finally:
+        _purge_rows(db_session, service_ids=[service_id])
+        if service_owner_session_fixture is not None:
+            _purge_session_fixture(db_session, service_owner_session_fixture)
+        _purge_session_fixture(db_session, system_admin_session_fixture)
+
+
+def test_service_api_key_reveal_rejects_revoked_expired_and_legacy_keys(
+    db_session: Session,
+) -> None:
+    client, session_fixture = _system_admin_client(db_session)
+    service_id = f"svc-runtime-reveal-denied-{uuid4().hex}"
+    now = datetime.now(UTC)
+    try:
+        _create_service(client, service_id)
+        repository = IntentRoutingRepository(db_session)
+        legacy_key = repository.create_api_key(
+            key_id=f"key_live_{uuid4().hex}",
+            key_hash="legacy-hash",
+            key_fingerprint="sha256:legacy:0000",
+            environment="dev",
+            app_id="legacy-app",
+            service_id=service_id,
+            allowed_intents=[],
+            allowed_route_keys=[],
+            status="active",
+            expires_at=now + timedelta(days=1),
+            revoked_at=None,
+            created_by="integration-test",
+            created_at=now,
+        )
+        expired_key = repository.create_api_key(
+            key_id=f"key_live_{uuid4().hex}",
+            key_hash="expired-hash",
+            key_fingerprint="sha256:expired:0000",
+            environment="dev",
+            app_id="expired-app",
+            service_id=service_id,
+            allowed_intents=[],
+            allowed_route_keys=[],
+            status="active",
+            expires_at=now - timedelta(seconds=1),
+            revoked_at=None,
+            created_by="integration-test",
+            created_at=now,
+        )
+        db_session.commit()
+
+        unavailable = client.post(
+            f"/admin/v1/services/{service_id}/api-keys/{legacy_key.key_id}:reveal"
+        )
+        assert unavailable.status_code == 409
+        assert "encrypted secret" in unavailable.json()["error"]["message"].lower()
+
+        expired = client.post(
+            f"/admin/v1/services/{service_id}/api-keys/{expired_key.key_id}:reveal"
+        )
+        assert expired.status_code == 400
+        assert "expired" in expired.json()["error"]["message"].lower()
+
+        legacy_key.status = "revoked"
+        legacy_key.revoked_at = datetime.now(UTC)
+        db_session.commit()
+        revoked = client.post(
+            f"/admin/v1/services/{service_id}/api-keys/{legacy_key.key_id}:reveal"
+        )
+        assert revoked.status_code == 400
+        assert "revoked" in revoked.json()["error"]["message"].lower()
+    finally:
+        _purge_rows(db_session, service_ids=[service_id])
+        _purge_session_fixture(db_session, session_fixture)
+
+
+def test_service_api_key_reveal_rejects_missing_service_and_key(
+    db_session: Session,
+) -> None:
+    client, session_fixture = _system_admin_client(db_session)
+    service_id = f"svc-runtime-reveal-missing-{uuid4().hex}"
+    try:
+        missing_service = client.post(
+            "/admin/v1/services/missing-service/api-keys/key_live_missing:reveal"
+        )
+        assert missing_service.status_code == 404
+        assert "service" in missing_service.json()["error"]["message"].lower()
+
+        _create_service(client, service_id)
+        missing_key = client.post(
+            f"/admin/v1/services/{service_id}/api-keys/key_live_missing:reveal"
+        )
+        assert missing_key.status_code == 404
+        assert "api key" in missing_key.json()["error"]["message"].lower()
+    finally:
+        _purge_rows(db_session, service_ids=[service_id])
+        _purge_session_fixture(db_session, session_fixture)
+
+
 def test_service_scoped_api_key_can_be_created_without_expiry(
     db_session: Session,
 ) -> None:
@@ -532,6 +687,11 @@ def test_application_admin_service_developer_cannot_manage_assigned_service_api_
             json=_api_key_payload(app_id="dify-service-b"),
         )
         assert other_service_key.status_code == 201
+        assigned_service_key = system_admin_client.post(
+            f"/admin/v1/services/{service_a}/api-keys",
+            json=_api_key_payload(app_id="dify-service-a"),
+        )
+        assert assigned_service_key.status_code == 201
 
         client, application_admin_session_fixture = _application_admin_client(
             db_session,
@@ -562,6 +722,12 @@ def test_application_admin_service_developer_cannot_manage_assigned_service_api_
             f"/admin/v1/services/{service_b}/runtime-setup",
             params={"environment": "dev"},
         )
+        denied_assigned_reveal = client.post(
+            (
+                f"/admin/v1/services/{service_a}/api-keys/"
+                f"{assigned_service_key.json()['key_id']}:reveal"
+            ),
+        )
         denied_other_revoke = client.post(
             (
                 f"/admin/v1/services/{service_b}/api-keys/"
@@ -575,6 +741,7 @@ def test_application_admin_service_developer_cannot_manage_assigned_service_api_
             denied_other_create,
             denied_other_list,
             denied_other_guidance,
+            denied_assigned_reveal,
             denied_other_revoke,
         ):
             assert denied.status_code == 403
@@ -599,6 +766,11 @@ def test_application_admin_read_only_service_roles_cannot_manage_service_api_key
     try:
         _create_service(system_admin_client, service_id)
         _seed_active_release(db_session, service_id)
+        created_key = system_admin_client.post(
+            f"/admin/v1/services/{service_id}/api-keys",
+            json=_api_key_payload(app_id="dify-readonly"),
+        )
+        assert created_key.status_code == 201
 
         for role in ("service_operator", "auditor"):
             client, fixture = _application_admin_client(
@@ -613,6 +785,14 @@ def test_application_admin_read_only_service_roles_cannot_manage_service_api_key
 
             assert response.status_code == 403, role
             assert response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+            reveal = client.post(
+                (
+                    f"/admin/v1/services/{service_id}/api-keys/"
+                    f"{created_key.json()['key_id']}:reveal"
+                ),
+            )
+            assert reveal.status_code == 403, role
+            assert reveal.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
     finally:
         _purge_rows(db_session, service_ids=[service_id])
         for fixture in fixtures:
@@ -645,11 +825,16 @@ def test_service_scoped_revoke_and_guidance_reject_cross_service_key(
         revoked = client.post(
             f"/admin/v1/services/{service_b}/api-keys/{key_id}:revoke",
         )
+        revealed = client.post(
+            f"/admin/v1/services/{service_b}/api-keys/{key_id}:reveal",
+        )
 
         assert guidance.status_code == 403
         assert guidance.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
         assert revoked.status_code == 403
         assert revoked.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+        assert revealed.status_code == 403
+        assert revealed.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
 
         persisted_key = db_session.get(models.ApiKey, key_id)
         assert persisted_key is not None

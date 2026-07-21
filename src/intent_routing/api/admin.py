@@ -102,6 +102,11 @@ from intent_routing.security.admin_auth import (
     raise_admin_forbidden,
 )
 from intent_routing.security.admin_passwords import hash_admin_password
+from intent_routing.security.api_key_secrets import (
+    apply_encrypted_api_key_secret,
+    encrypted_api_key_secret,
+    load_api_key_secret_keyring,
+)
 from intent_routing.security.api_keys import (
     fingerprint_secret,
     generate_api_key_secret,
@@ -592,6 +597,16 @@ class ApiKeyCreateResponse(BaseModel):
     revoked_at: datetime | None
     created_by: str
     created_at: datetime
+
+
+class ApiKeyRevealResponse(BaseModel):
+    key_id: str
+    service_id: str
+    environment: str
+    app_id: str
+    api_key: str
+    authorization_header: str
+    api_key_revealed: bool
 
 
 class ApiKeyResponse(BaseModel):
@@ -2151,6 +2166,7 @@ def _create_api_key_for_service(
     now: datetime,
 ) -> tuple[ApiKey, str]:
     api_key_secret = f"irt_{generate_api_key_secret()}"
+    encrypted_secret = load_api_key_secret_keyring().encrypt_text(api_key_secret)
     api_key = repository.create_api_key(
         key_id=f"key_live_{uuid4().hex}",
         key_hash=hash_secret(api_key_secret),
@@ -2170,6 +2186,7 @@ def _create_api_key_for_service(
         created_by=actor_id,
         created_at=now,
     )
+    apply_encrypted_api_key_secret(api_key, encrypted_secret)
     repository.insert_audit_log(
         event_type="api_key.created",
         actor_id=actor_id,
@@ -2184,6 +2201,18 @@ def _create_api_key_for_service(
         created_at=now,
     )
     return api_key, api_key_secret
+
+
+def _raise_if_api_key_not_revealable(api_key: ApiKey, now: datetime) -> None:
+    if api_key.status == ApiKeyStatus.revoked.value or api_key.revoked_at is not None:
+        _raise_bad_request("Revoked API key secrets cannot be revealed.")
+    if api_key.expires_at is not None and api_key.expires_at <= now:
+        _raise_bad_request("Expired API key secrets cannot be revealed.")
+    if encrypted_api_key_secret(api_key) is None:
+        _raise_conflict(
+            "API key encrypted secret material is unavailable. "
+            "Rotate or reissue this key."
+        )
 
 
 def _revoke_api_key_record(
@@ -4253,6 +4282,61 @@ def revoke_service_api_key(
     )
     session.commit()
     return _api_key_response(api_key)
+
+
+@router.post(
+    "/services/{service_id}/api-keys/{key_id}:reveal",
+    response_model=ApiKeyRevealResponse,
+)
+def reveal_service_api_key(
+    service_id: str,
+    key_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+) -> ApiKeyRevealResponse:
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    service = repository.get_service(service_id)
+    if service is None:
+        _raise_not_found("Service does not exist.")
+    _require_api_key_management_access(context, service_id)
+    api_key = repository.get_api_key_by_id(key_id)
+    if api_key is None:
+        _raise_not_found("API key does not exist.")
+    if api_key.service_id != service_id:
+        raise_admin_forbidden("API key does not belong to the selected Service.")
+    _raise_if_api_key_not_revealable(api_key, now)
+
+    encrypted = encrypted_api_key_secret(api_key)
+    if encrypted is None:
+        _raise_conflict(
+            "API key encrypted secret material is unavailable. "
+            "Rotate or reissue this key."
+        )
+    api_key_secret = load_api_key_secret_keyring().decrypt_text(encrypted)
+    repository.insert_audit_log(
+        event_type="api_key.secret_revealed",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="api_key",
+        target_id=api_key.key_id,
+        view_reason="runtime_setup_authorization_copy",
+        source_ip=None,
+        before_state=None,
+        after_state=_api_key_after_state(api_key),
+        created_at=now,
+    )
+    session.commit()
+    return ApiKeyRevealResponse(
+        key_id=api_key.key_id,
+        service_id=api_key.service_id,
+        environment=api_key.environment,
+        app_id=api_key.app_id,
+        api_key=api_key_secret,
+        authorization_header=f"Bearer {api_key_secret}",
+        api_key_revealed=True,
+    )
 
 
 @router.get(

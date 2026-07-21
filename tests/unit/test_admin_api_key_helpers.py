@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from intent_routing.api import admin
@@ -36,7 +37,12 @@ class FakeApiKeyRepository:
         self.audit_events.append(values)
 
 
-def _api_key(*, status: str = "active", revoked_at: datetime | None = None) -> models.ApiKey:
+def _api_key(
+    *,
+    status: str = "active",
+    revoked_at: datetime | None = None,
+    expires_at: datetime | None = None,
+) -> models.ApiKey:
     now = datetime.now(UTC)
     return models.ApiKey(
         key_id="key_live_test",
@@ -48,7 +54,7 @@ def _api_key(*, status: str = "active", revoked_at: datetime | None = None) -> m
         allowed_intents=["billing_refund"],
         allowed_route_keys=["billing.refund.request"],
         status=status,
-        expires_at=now + timedelta(days=1),
+        expires_at=expires_at if expires_at is not None else now + timedelta(days=1),
         revoked_at=revoked_at,
         created_by="admin-user",
         created_at=now,
@@ -161,3 +167,37 @@ def test_revoke_api_key_record_writes_single_audit_event_for_active_key() -> Non
     assert repository.revoked_at == revoked_at
     assert len(repository.audit_events) == 1
     assert repository.audit_events[0]["event_type"] == "api_key.revoked"
+
+
+@pytest.mark.parametrize(
+    ("api_key", "status_code", "message_fragment"),
+    [
+        (
+            _api_key(
+                status="revoked",
+                revoked_at=datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
+            ),
+            400,
+            "revoked",
+        ),
+        (
+            _api_key(expires_at=datetime(2026, 7, 21, 0, 59, tzinfo=UTC)),
+            400,
+            "expired",
+        ),
+        (_api_key(), 409, "encrypted secret"),
+    ],
+)
+def test_raise_if_api_key_not_revealable_rejects_non_recoverable_keys(
+    api_key: models.ApiKey,
+    status_code: int,
+    message_fragment: str,
+) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        admin._raise_if_api_key_not_revealable(
+            api_key,
+            datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
+        )
+
+    assert exc_info.value.status_code == status_code
+    assert message_fragment in exc_info.value.detail["error"]["message"].lower()
