@@ -19,7 +19,7 @@ export default defineConfig({
     { path: '/organization-directory', component: './OrganizationDirectory' },
     { path: '/permission-management', component: './PermissionManagement' },
     { path: '/intents', component: './Intents' },
-    { path: '/catalog-versions', component: './CatalogVersions' },
+    { path: '/catalog-versions', redirect: '/intents' },
     { path: '/releases', component: './Releases' },
     { path: '/test-runs', component: './TestRuns' },
     { path: '/api-keys', component: './ApiKeys' },

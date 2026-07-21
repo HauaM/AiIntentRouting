@@ -29,17 +29,15 @@ describe('adminShellNavigation', () => {
     expect(names(['system_admin'])).toContain('권한관리');
   });
 
-  it('places catalog version management between Intent Catalog and Releases', () => {
+  it('removes standalone catalog version management while keeping developer workflows', () => {
     const routePaths = paths(['service_developer']);
+    const routeNames = names(['service_developer']);
 
-    expect(routePaths).toContain('/catalog-versions');
-    expect(names(['service_developer'])).toContain('Catalog 버전관리');
-    expect(routePaths.indexOf('/catalog-versions')).toBeGreaterThan(
-      routePaths.indexOf('/intents'),
-    );
-    expect(routePaths.indexOf('/catalog-versions')).toBeLessThan(
-      routePaths.indexOf('/releases'),
-    );
+    expect(routePaths).not.toContain('/catalog-versions');
+    expect(routeNames).not.toContain('Catalog 버전관리');
+    expect(routePaths).toContain('/intents');
+    expect(routePaths).toContain('/releases');
+    expect(routePaths).toContain('/test-runs');
   });
 
   it('does not render the Sprint phase notice globally in AdminShell', () => {
