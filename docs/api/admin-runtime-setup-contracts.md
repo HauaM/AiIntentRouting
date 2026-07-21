@@ -187,10 +187,16 @@ Response:
 
 Rules:
 
+- The reveal allowlist is exactly `system_admin` and the selected-Service `service_owner`.
+- `service_developer` is explicitly denied reveal access.
+- `service_operator` is explicitly denied reveal access.
+- `auditor` is explicitly denied reveal access.
 - The endpoint requires API key management access for `{service_id}`.
 - The key must belong to `{service_id}`.
 - Revoked or expired keys cannot be revealed.
 - Legacy keys without encrypted secret material cannot be revealed.
+- Legacy keys without encrypted secret material return `409 Conflict` with the unavailable message `API key secret is unavailable; rotate or reissue this legacy key.`
+- Operators must rotate or reissue legacy keys before a secret can be revealed.
 - The response is the only place where the reveal API returns raw `api_key`.
 - Inventory, revoke, runtime setup guidance, audit logs, runtime logs, and exports never include raw `api_key`.
 - Each successful reveal writes `api_key.secret_revealed` with redacted audit state.

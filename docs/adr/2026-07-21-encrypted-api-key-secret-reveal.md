@@ -10,7 +10,7 @@ The API Keys page must allow an authorized Service owner to copy the actual runt
 
 ## Decision
 
-Persist API key secrets as AES-256-GCM envelope-encrypted secret material in `api_keys` while retaining hash/fingerprint fields for runtime authentication. Add an explicit audited service-scoped reveal endpoint for `system_admin` and selected-Service `service_owner`. Runtime setup guidance remains metadata/template-only and does not embed the raw secret.
+Persist API key secrets as AES-256-GCM envelope-encrypted secret material in `api_keys` while retaining hash/fingerprint fields for runtime authentication. Add an explicit audited service-scoped reveal endpoint for `system_admin` and selected-Service `service_owner`. The reveal allowlist is exactly `system_admin` and the selected-Service `service_owner`; `service_developer`, `service_operator`, and `auditor` are explicitly denied reveal access. Runtime setup guidance remains metadata/template-only and does not embed the raw secret.
 
 ## Alternatives Considered
 
@@ -31,7 +31,7 @@ Persist API key secrets as AES-256-GCM envelope-encrypted secret material in `ap
 
 ## Consequences
 
-New API keys can be revealed by authorized owners. Legacy keys without encrypted secret columns cannot be recovered. Reveal events become sensitive audit events. Runtime auth remains hash-based and does not decrypt secrets.
+New API keys can be revealed by authorized owners. Legacy keys without encrypted secret columns cannot be recovered: the reveal endpoint returns `409 Conflict` with the unavailable message `API key secret is unavailable; rotate or reissue this legacy key.` Operators must rotate or reissue legacy keys before a secret can be revealed. Reveal events become sensitive audit events. Runtime auth remains hash-based and does not decrypt secrets.
 
 ## Implementation Notes
 

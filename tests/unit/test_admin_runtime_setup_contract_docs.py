@@ -122,10 +122,17 @@ def test_api_key_secret_reveal_contract_is_documented() -> None:
     for phrase in (
         "POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal",
         "encrypted secret material",
+        "The reveal allowlist is exactly `system_admin` and the selected-Service `service_owner`.",
+        "`service_developer` is explicitly denied reveal access.",
+        "`service_operator` is explicitly denied reveal access.",
+        "`auditor` is explicitly denied reveal access.",
         "api_key.secret_revealed",
         "api_key_revealed",
         "authorization_header",
         "Legacy keys without encrypted secret material cannot be revealed",
+        "return `409 Conflict`",
+        "API key secret is unavailable; rotate or reissue this legacy key.",
+        "Operators must rotate or reissue legacy keys",
         "Inventory, revoke, runtime setup guidance, audit logs, runtime logs, and exports never include raw `api_key`.",
     ):
         assert phrase in text
