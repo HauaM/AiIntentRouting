@@ -86,6 +86,8 @@ describe('Intents page contract', () => {
     expect(text).toContain('const rows = await reloadCatalogVersionRows();');
     expect(text).toContain('if (serviceIdRef.current !== serviceId) return;');
     expect(text).toContain('catalogVersionDiffRequestRef.current = requestId;');
+    expect(text).toContain('canApplyCatalogVersionDiffResult');
+    expect(text).toContain('nextCatalogVersionDiffRequestId');
     expect(text).toContain('shouldApplyDiffResult');
     expect(text).toContain('onClose={closeCatalogVersionDiff}');
     expect(text).toContain('CatalogVersionCreateModal');

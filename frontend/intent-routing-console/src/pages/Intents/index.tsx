@@ -49,6 +49,10 @@ import {
 } from './CatalogVersionDiffDrawer';
 import { CatalogVersionHistoryModal } from './CatalogVersionHistoryModal';
 import { CatalogVersionPanel } from './CatalogVersionPanel';
+import {
+  canApplyCatalogVersionDiffResult,
+  nextCatalogVersionDiffRequestId,
+} from './catalogVersionDiffRequest';
 import type { CatalogPageState } from './catalogVersionTypes';
 
 type IntentFormMode = 'create' | 'edit';
@@ -310,11 +314,18 @@ export default function IntentsPage() {
 
   const openCatalogVersionDiff = async (row: API.CatalogVersionListItem) => {
     const serviceId = session.serviceId;
-    const requestId = catalogVersionDiffRequestRef.current + 1;
+    const requestId = nextCatalogVersionDiffRequestId(
+      catalogVersionDiffRequestRef.current,
+    );
     catalogVersionDiffRequestRef.current = requestId;
     const shouldApplyDiffResult = () =>
-      serviceIdRef.current === serviceId &&
-      catalogVersionDiffRequestRef.current === requestId;
+      canApplyCatalogVersionDiffResult(
+        { requestId, serviceId },
+        {
+          requestId: catalogVersionDiffRequestRef.current,
+          serviceId: serviceIdRef.current,
+        },
+      );
 
     setCatalogVersionDiffOpen(true);
     setCatalogVersionDiffLoading(true);
