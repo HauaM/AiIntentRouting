@@ -182,11 +182,13 @@ export default function IntentsPage() {
   const [intentForm] = Form.useForm<IntentFormValues>();
   const [exampleForm] = Form.useForm<ExampleFormValues>();
   const serviceIdRef = useRef(session.serviceId);
+  const catalogVersionDiffRequestRef = useRef(0);
   const ready = isAdminSessionReady(session);
   const catalogEditable = ready && canEditCatalog(session);
 
   useEffect(() => {
     serviceIdRef.current = session.serviceId;
+    catalogVersionDiffRequestRef.current += 1;
     setSelected(undefined);
     setExamples([]);
     setIntentDrawerOpen(false);
@@ -308,6 +310,12 @@ export default function IntentsPage() {
 
   const openCatalogVersionDiff = async (row: API.CatalogVersionListItem) => {
     const serviceId = session.serviceId;
+    const requestId = catalogVersionDiffRequestRef.current + 1;
+    catalogVersionDiffRequestRef.current = requestId;
+    const shouldApplyDiffResult = () =>
+      serviceIdRef.current === serviceId &&
+      catalogVersionDiffRequestRef.current === requestId;
+
     setCatalogVersionDiffOpen(true);
     setCatalogVersionDiffLoading(true);
     setCatalogVersionDiffTarget(row);
@@ -315,7 +323,7 @@ export default function IntentsPage() {
     setCatalogVersionDiff(undefined);
     try {
       const rows = await reloadCatalogVersionRows();
-      if (serviceIdRef.current !== serviceId) return;
+      if (!shouldApplyDiffResult()) return;
       const baseline = selectCatalogVersionDiffBaseline(rows, row);
       setCatalogVersionDiffBaseline(baseline);
       const result = await fetchCatalogVersionDiff(
@@ -323,13 +331,19 @@ export default function IntentsPage() {
         row.intent_catalog_version,
         { compare_to: baseline?.intent_catalog_version },
       );
-      if (serviceIdRef.current !== serviceId) return;
+      if (!shouldApplyDiffResult()) return;
       setCatalogVersionDiff(result);
     } catch (error) {
-      message.error(getOperationErrorMessage(error));
+      if (shouldApplyDiffResult()) message.error(getOperationErrorMessage(error));
     } finally {
-      if (serviceIdRef.current === serviceId) setCatalogVersionDiffLoading(false);
+      if (shouldApplyDiffResult()) setCatalogVersionDiffLoading(false);
     }
+  };
+
+  const closeCatalogVersionDiff = () => {
+    catalogVersionDiffRequestRef.current += 1;
+    setCatalogVersionDiffOpen(false);
+    setCatalogVersionDiffLoading(false);
   };
 
   const confirmLoadCatalogVersionToDraft = (version = catalogVersionSelection) => {
@@ -768,7 +782,7 @@ export default function IntentsPage() {
         target={catalogVersionDiffTarget}
         baseline={catalogVersionDiffBaseline}
         diff={catalogVersionDiff}
-        onClose={() => setCatalogVersionDiffOpen(false)}
+        onClose={closeCatalogVersionDiff}
       />
       <Drawer
         title={
