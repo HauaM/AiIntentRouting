@@ -123,7 +123,7 @@ Expected UX:
 - Show the API key secret on create and provide an explicit `Secret 보기/복사`
   action through the audited reveal endpoint.
 - Use encrypted secret material for later authorized reveal.
-- Copy the raw secret only through the audited reveal endpoint.
+- Creation displays and copies the initial raw secret; later copying uses the audited reveal endpoint.
 - Keep API key inventory free of raw secrets.
 - Provide runtime setup guidance for Dify or another client system.
 - Use checklist and docs guidance for runtime validation. Do not run a browser

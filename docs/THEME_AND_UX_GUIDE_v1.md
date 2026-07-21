@@ -345,7 +345,8 @@ export const proTableDefaults = {
 - Exposing raw query text in Runtime Logs, or any "view full"/"view raw" toggle.
 - Edit/delete actions on Audit Logs.
 - Rollback/revoke buttons without a confirmation step.
-- Re-displaying an API key secret after its one-time creation reveal.
+- Automatically or unauditedly redisplaying an API key secret after creation.
+  Explicit audited `Secret 보기/복사` reveal remains allowed for authorized roles.
 - Any UI for directly injecting/overriding an actor header or admin token in the browser.
 - Faking pagination, compound filters, or live polling with no server contract.
 - Rendering a Phase 2 governed workflow as if it were a real, working mock state.

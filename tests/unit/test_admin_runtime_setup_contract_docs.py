@@ -83,6 +83,11 @@ def test_c3_runtime_setup_contract_doc_defines_admin_api_and_runtime_guidance() 
         "  selected Service's authorized `service_owner`.",
         "`service_developer`, `service_operator`, and `auditor` cannot create or "
         "revoke\n  API keys.",
+        "Unauthorized roles or out-of-scope actors cannot create or revoke selected-Service API keys.",
+        "Reveal access denied for unauthorized roles or an out-of-scope actor",
+        "Legacy key without encrypted secret material",
+        "409 Conflict",
+        "API key secret is unavailable; rotate or reissue this legacy key.",
         "The create response includes the raw `api_key` for the initial setup flow.",
         "`api_key` raw secret is never present in inventory",
         '"selected_key"',
@@ -112,6 +117,7 @@ def test_c3_runtime_setup_contract_doc_defines_admin_api_and_runtime_guidance() 
     for stale_phrase in (
         "C-3 baseline key lifecycle create/list/revoke requires `system_admin`",
         "Future delegation to `service_owner` or `service_operator`",
+        "Non-`system_admin` creates or revokes key",
     ):
         assert stale_phrase not in text
 

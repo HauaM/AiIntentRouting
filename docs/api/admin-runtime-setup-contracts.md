@@ -462,11 +462,15 @@ Branch checklist:
 
 ## Error Cases
 
+Unauthorized roles or out-of-scope actors cannot create or revoke selected-Service API keys.
+
 | Case | Expected result | Code or note |
 | --- | --- | --- |
 | Missing or invalid `irt_admin_session` | 401 | `AUTHENTICATION_FAILED` |
 | Trusted headers without session | 401 | Browser cannot fall back to trusted headers |
-| Non-`system_admin` creates or revokes key | 403 | `SERVICE_SCOPE_DENIED` baseline |
+| Unauthorized role or out-of-scope actor creates or revokes key | 403 | `SERVICE_SCOPE_DENIED`; selected-Service `service_owner` is authorized |
+| Reveal access denied for unauthorized roles or an out-of-scope actor | 403 | `SERVICE_SCOPE_DENIED` |
+| Legacy key without encrypted secret material | 409 | `API key secret is unavailable; rotate or reissue this legacy key.` |
 | No selected or accessible Service in UI | UI blocked | Show session or Services guidance |
 | Service missing | 404 | Do not leak key inventory |
 | Key missing | 404 | Revoke/detail |
