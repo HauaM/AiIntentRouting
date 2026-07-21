@@ -220,7 +220,7 @@ This is the core UX of the console: getting a service into a state where it can 
 - **Runtime Logs** — every column shows masked query only. There is no "view full" / "view raw" toggle in the Runtime Logs table or drawer. Raw query access, if ever needed, happens only through a separate Phase 2 governed workflow screen after the required frontend routes, service functions, role gates, and UX tests are wired.
 - **Audit Logs** — `ResourceTable` fixed `readOnly`, no row actions; `DetailDrawer` is view-only. No edit/delete UI exists for this screen at all.
 - **Releases** — `release_version` column monospace, `ConfirmActionButton` for activate/rollback, StatusTag (active/draft/deprecated).
-- **API Keys** — secret is shown exactly once, in the creation-success modal, with a copy button and an explicit "you will not see this again" warning; it is masked immediately after. Inventory and runtime-setup screens always show only a masked suffix — never the raw secret. Revoke is a high-risk `ConfirmActionButton`.
+- **API Keys** — secret is shown in the creation-success modal and may later be copied only through the explicit audited `Secret 보기/복사` reveal action. Inventory, revoke, runtime setup guidance, Audit Logs, Runtime Logs, and exports always show metadata or masked suffixes only, never raw `api_key`.
 - **Test Runs** — StatusTag (pass/fail), failed-only filter, `DetailDrawer` shows trace_id + failure reason.
 
 ---
@@ -345,7 +345,8 @@ export const proTableDefaults = {
 - Exposing raw query text in Runtime Logs, or any "view full"/"view raw" toggle.
 - Edit/delete actions on Audit Logs.
 - Rollback/revoke buttons without a confirmation step.
-- Re-displaying an API key secret after its one-time creation reveal.
+- Automatically or unauditedly redisplaying an API key secret after creation.
+  Explicit audited `Secret 보기/복사` reveal remains allowed for authorized roles.
 - Any UI for directly injecting/overriding an actor header or admin token in the browser.
 - Faking pagination, compound filters, or live polling with no server contract.
 - Rendering a Phase 2 governed workflow as if it were a real, working mock state.

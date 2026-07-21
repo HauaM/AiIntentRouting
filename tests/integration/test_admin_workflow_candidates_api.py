@@ -517,6 +517,10 @@ def test_intent_route_candidates_are_selectable_scope_values(
             f"/admin/v1/services/{service_id}/intent-route-candidates",
             params={"source": "active_release", "environment": "dev"},
         )
+        released_catalog_response = client.get(
+            f"/admin/v1/services/{service_id}/intent-route-candidates",
+            params={"source": "released_catalog", "environment": "dev"},
+        )
 
         assert response.status_code == 200
         assert response.json() == [
@@ -530,6 +534,63 @@ def test_intent_route_candidates_are_selectable_scope_values(
         ]
         assert active_release_response.status_code == 200
         assert active_release_response.json() == []
+        assert released_catalog_response.status_code == 200
+        assert released_catalog_response.json() == []
+    finally:
+        try:
+            _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)
+
+
+def test_released_catalog_candidates_use_latest_release_without_activation(
+    db_session: Session,
+) -> None:
+    client, user_id, system_admin_role_rows = _system_admin_client(db_session)
+    service_id = f"svc-released-catalog-{uuid4().hex}"
+    try:
+        _create_service(client, service_id)
+        policy_version, catalog_version, test_run_id = _seed_workflow_records(
+            db_session,
+            service_id,
+        )
+        test_run = IntentRoutingRepository(db_session).get_test_run(test_run_id)
+        assert test_run is not None
+        IntentRoutingRepository(db_session).create_release(
+            release_version=f"rel-{service_id}-{uuid4().hex[:8]}",
+            service_id=service_id,
+            environment="qa",
+            policy_version=policy_version,
+            intent_catalog_version=catalog_version,
+            model_version="fake-embedding-v1",
+            vector_index_version="vec-released-catalog",
+            test_dataset_version=test_run.test_dataset_version,
+            test_run_id=test_run_id,
+            pass_rate=Decimal("1.0"),
+            risk_pass_rate=Decimal("1.0"),
+            active=False,
+            released_by="integration-test",
+            released_at=datetime.now(UTC),
+            rollback_target=None,
+        )
+        db_session.commit()
+
+        response = client.get(
+            f"/admin/v1/services/{service_id}/intent-route-candidates",
+            params={"source": "released_catalog", "environment": "qa"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == [
+            {
+                "intent_id": "billing_refund",
+                "display_name": "Billing refund",
+                "route_key": "billing.refund.request",
+                "status": "active",
+                "source": "released_catalog",
+            }
+        ]
     finally:
         try:
             _purge_rows(db_session, user_id=user_id, service_id=service_id)

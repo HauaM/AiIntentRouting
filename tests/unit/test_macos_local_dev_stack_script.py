@@ -88,3 +88,14 @@ def test_macos_script_avoids_zsh_host_and_json_expansion_traps() -> None:
     assert 'export HOST="${LOCAL_DEV_HOST:-127.0.0.1}"' in text
     assert 'RAW_TEXT_LEGACY_KEKS_JSON="{}"' in text
     assert 'RAW_TEXT_LEGACY_KEKS_JSON:-{}' not in text
+    assert "API_KEY_SECRET_KEK_ID API_KEY_SECRET_KEK_BASE64" in capture_block
+    assert 'API_KEY_SECRET_LEGACY_KEKS_JSON="{}"' in text
+    assert 'API_KEY_SECRET_LEGACY_KEKS_JSON:-{}' not in text
+    assert (
+        'export API_KEY_SECRET_KEK_ID="${API_KEY_SECRET_KEK_ID:-'
+        'local-api-key-secret-kek-001}"' in text
+    )
+    assert (
+        'export API_KEY_SECRET_KEK_BASE64="${API_KEY_SECRET_KEK_BASE64:-'
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}"' in text
+    )

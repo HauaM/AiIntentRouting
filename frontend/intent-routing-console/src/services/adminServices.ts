@@ -648,7 +648,10 @@ export async function rollbackRelease(serviceId: string, releaseVersion: string)
 
 export async function listIntentRouteCandidates(
   serviceId: string,
-  params: { source?: 'current_catalog' | 'active_release'; environment?: string } = {},
+  params: {
+    source?: 'current_catalog' | 'active_release' | 'released_catalog';
+    environment?: string;
+  } = {},
 ) {
   return request<API.IntentRouteCandidate[]>(
     servicePath(serviceId, '/intent-route-candidates'),
@@ -725,6 +728,15 @@ export async function revokeApiKey(keyId: string) {
 export async function revokeServiceApiKey(serviceId: string, keyId: string) {
   return request<API.ApiKey>(
     servicePath(serviceId, `/api-keys/${encodeURIComponent(keyId)}:revoke`),
+    {
+      method: 'POST',
+    },
+  );
+}
+
+export async function revealServiceApiKey(serviceId: string, keyId: string) {
+  return request<API.ApiKeyRevealResponse>(
+    servicePath(serviceId, `/api-keys/${encodeURIComponent(keyId)}:reveal`),
     {
       method: 'POST',
     },

@@ -198,6 +198,40 @@ def test_raw_text_envelope_metadata_columns_exist(db_session: Session) -> None:
     }
 
 
+def test_schema_contains_expected_tables_and_columns(db_session: Session) -> None:
+    columns = {
+        (row.table_name, row.column_name): row.data_type
+        for row in db_session.execute(
+            text(
+                "select table_name, column_name, data_type "
+                "from information_schema.columns "
+                "where table_schema = 'public' "
+                "and (table_name, column_name) in ("
+                "('api_keys', 'secret_ciphertext'), "
+                "('api_keys', 'secret_encrypted_dek'), "
+                "('api_keys', 'secret_encrypted_dek_iv'), "
+                "('api_keys', 'secret_encrypted_dek_auth_tag'), "
+                "('api_keys', 'secret_key_id'), "
+                "('api_keys', 'secret_iv'), "
+                "('api_keys', 'secret_auth_tag'), "
+                "('api_keys', 'secret_algorithm')"
+                ")"
+            )
+        )
+    }
+
+    assert columns == {
+        ("api_keys", "secret_ciphertext"): "bytea",
+        ("api_keys", "secret_encrypted_dek"): "bytea",
+        ("api_keys", "secret_encrypted_dek_iv"): "bytea",
+        ("api_keys", "secret_encrypted_dek_auth_tag"): "bytea",
+        ("api_keys", "secret_key_id"): "text",
+        ("api_keys", "secret_iv"): "bytea",
+        ("api_keys", "secret_auth_tag"): "bytea",
+        ("api_keys", "secret_algorithm"): "text",
+    }
+
+
 def test_security_lifecycle_schema_columns_and_indexes_exist(
     db_session: Session,
 ) -> None:
@@ -1200,7 +1234,7 @@ def test_runtime_uses_active_release_versions_after_activation(
     assert missing_release_response.status_code == 422
     assert (
         missing_release_response.json()["error"]["message"]
-        == "active release is required for scoped API key creation."
+        == "released catalog is required for scoped API key creation."
     )
     test_run_id = _seed_test_run(
         db_session,

@@ -34,6 +34,15 @@ def test_local_dev_stack_script_contract() -> None:
         'ADMIN_SYSTEM_ADMIN_DISPLAY_NAME="${ADMIN_SYSTEM_ADMIN_DISPLAY_NAME:-Local Admin}"'
         in text
     )
+    assert (
+        'API_KEY_SECRET_KEK_ID="${API_KEY_SECRET_KEK_ID:-local-api-key-secret-kek-001}"'
+        in text
+    )
+    assert (
+        'API_KEY_SECRET_KEK_BASE64="${API_KEY_SECRET_KEK_BASE64:-'
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}"' in text
+    )
+    assert 'API_KEY_SECRET_LEGACY_KEKS_JSON="${API_KEY_SECRET_LEGACY_KEKS_JSON:-{}}"' in text
     assert "uv run alembic upgrade head" in text
     assert "ensure_local_database" in text
     assert "docker compose up -d postgres" in text
@@ -89,6 +98,17 @@ def test_local_dev_stack_database_port_contract_is_consistent() -> None:
         text = path.read_text(encoding="utf-8")
 
         assert "127.0.0.1:30142" in text
+
+
+def test_local_runbook_documents_api_key_secret_kek_contract() -> None:
+    text = LOCAL_RUNBOOK.read_text(encoding="utf-8")
+
+    assert "export API_KEY_SECRET_KEK_ID=local-api-key-secret-kek-001" in text
+    assert (
+        "export API_KEY_SECRET_KEK_BASE64="
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" in text
+    )
+    assert 'export API_KEY_SECRET_LEGACY_KEKS_JSON="{}"' in text
 
 
 def test_local_dev_stack_uses_polling_watchers_for_frontend_dev_server() -> None:

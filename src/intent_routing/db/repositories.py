@@ -245,6 +245,13 @@ class IntentRoutingRepository:
     def get_api_key_by_id(self, key_id: str) -> models.ApiKey | None:
         return self.session.get(models.ApiKey, key_id)
 
+    def get_api_key_by_id_for_update(self, key_id: str) -> models.ApiKey | None:
+        return self.session.scalar(
+            select(models.ApiKey)
+            .where(models.ApiKey.key_id == key_id)
+            .with_for_update()
+        )
+
     def create_department(self, **values: Any) -> models.Department:
         return self._add_and_flush(models.Department(**values))
 

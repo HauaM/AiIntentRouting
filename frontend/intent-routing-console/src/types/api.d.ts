@@ -606,7 +606,7 @@ declare namespace API {
     display_name: string;
     route_key: string;
     status: IntentStatus;
-    source: 'current_catalog' | 'active_release';
+    source: 'current_catalog' | 'active_release' | 'released_catalog';
   };
 
   type ApiKeyCreateRequest = {
@@ -650,6 +650,16 @@ declare namespace API {
     revoked_at: string | null;
     created_by: string;
     created_at: string;
+  };
+
+  type ApiKeyRevealResponse = {
+    key_id: string;
+    service_id: string;
+    environment: string;
+    app_id: string;
+    api_key: string;
+    authorization_header: string;
+    api_key_revealed: boolean;
   };
 
   type RuntimeSetupActiveRelease = {

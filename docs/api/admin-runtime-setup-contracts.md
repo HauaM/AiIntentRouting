@@ -19,11 +19,21 @@ otherwise.
 - Runtime clients do not use the Admin UI session cookie. They call
   `/v1/intent-route` with Bearer API-key authentication.
 - Admin UI live testing may call `/v1/intent-route` only after the operator
-  manually enters an API Secret for the selected key. The UI must not auto-fill,
-  persist, recover, or replay the one-time raw secret from the create response.
-- The raw API key secret is shown only once in the create response.
-- `api_key` raw secret is never present in inventory, revoke responses,
-  runtime setup guidance, audit log state, runtime logs, or exported evidence.
+  manually enters an API Secret for the selected key. The UI must not
+  auto-fill, persist, or automatically replay raw secret material into UI
+  state.
+- API key secret material is never stored in plaintext. Authorized operators may
+  explicitly reveal encrypted secret material through the audited reveal
+  endpoint documented below.
+- API key secret encryption binds AEAD associated data to purpose + `service_id` + `key_id`.
+  Moving encrypted columns to another Service or API key row must fail authentication.
+- Reveal and revoke load the API key row with `SELECT ... FOR UPDATE` so their
+  transaction order cannot return a secret after a concurrent revoke commits.
+- Inventory, revoke responses, runtime setup guidance, audit logs, runtime logs,
+  and exports never include raw secret material. In audit, log, export, and
+  persisted or UI state, both `api_key` and `authorization_header`, plus any
+  response field derived from the raw secret, must be omitted or recorded only
+  as `REDACTED`.
 - Key metadata may include `key_id`, `key_fingerprint`, `environment`,
   `app_id`, `service_id`, `allowed_intents`, `allowed_route_keys`, `status`,
   `expires_at`, `revoked_at`, `created_by`, and `created_at`. `expires_at` may
@@ -35,8 +45,8 @@ otherwise.
 
 Runtime environment is resolved from the verified API key metadata. The client
 must not send an environment header. Admin API key creation chooses one of
-`dev`, `qa`, or `prod` after an active release exists for the selected Service
-and environment.
+`dev`, `qa`, or `prod` after a release exists for the selected Service and
+environment. API key issuance does not require that release to be activated.
 
 The existing global `/admin/v1/api-keys` endpoints remain transitional for
 scripts and backward compatibility. New Admin UI C-3 work should use the
@@ -110,7 +120,7 @@ Response:
 ```json
 {
   "key_id": "key_live_012345",
-  "api_key": "irt_<one-time-secret>",
+  "api_key": "irt_<secret>",
   "api_key_displayed_once": true,
   "key_fingerprint": "sha256:<digest>:9AbC",
   "environment": "prod",
@@ -128,13 +138,24 @@ Response:
 
 Rules:
 
-- `api_key` is present only in the create response.
+- The create response includes the raw `api_key` for the initial setup flow.
+- `api_key_displayed_once` means the create response includes the secret; it does
+  not mean create is the only authorized display path because the audited reveal
+  endpoint can return it later.
+- Both global and Service-scoped create responses set
+  `Cache-Control: no-store, no-cache, must-revalidate`, `Pragma: no-cache`, and
+  `Expires: 0`.
 - The secret must be generated with at least 256-bit randomness.
-- The secret must be stored only as a hash/fingerprint, never plaintext.
-- Audit state must omit `api_key` or record it only as `REDACTED`.
-- UI state must clear the one-time secret on selected-Service change, refresh,
-  navigation, logout, and successful revoke.
-- Allowed scope must be validated against active-release candidates.
+- The secret must not be stored in plaintext; encrypted secret material is
+  retained for authorized audited reveal, alongside hash/fingerprint fields
+  used for runtime authentication.
+- Audit state must omit `api_key`, `authorization_header`, and any response
+  field derived from the raw secret, or record each only as `REDACTED`.
+- UI state must not automatically re-show or replay the secret after refresh,
+  navigation, logout, selected-Service change, or selected-key change. Explicit
+  reveal/copy requires the audited reveal endpoint.
+- Allowed scope must be validated against released-catalog candidates for the
+  requested environment.
 
 ### POST /admin/v1/services/{service_id}/api-keys/{key_id}:revoke
 
@@ -166,6 +187,54 @@ Rules:
 - Revoke should be idempotent unless a later API decision chooses conflict
   semantics.
 
+### POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal
+
+Decrypts the stored encrypted API key secret for explicit copy by an authorized
+`system_admin` or selected-Service `service_owner`.
+
+Response:
+
+```json
+{
+  "key_id": "key_live_012345",
+  "service_id": "it-helpdesk",
+  "environment": "prod",
+  "app_id": "dify-platform",
+  "api_key": "irt_<decrypted-secret>",
+  "authorization_header": "Bearer irt_<decrypted-secret>",
+  "api_key_revealed": true
+}
+```
+
+Rules:
+
+- The reveal allowlist is exactly `system_admin` and the selected-Service `service_owner`.
+- `service_developer` is explicitly denied reveal access.
+- `service_operator` is explicitly denied reveal access.
+- `auditor` is explicitly denied reveal access.
+- The endpoint requires API key management access for `{service_id}`.
+- The key must belong to `{service_id}`.
+- Revoked or expired keys cannot be revealed.
+- Revoked API key reveal returns HTTP `400` with code `INVALID_REQUEST` and a
+  message that includes `Revoked API key secrets cannot be revealed.` Operators
+  must issue a new API key if runtime access is still needed.
+- Expired API key reveal returns HTTP `400` with code `INVALID_REQUEST` and a
+  message that includes `Expired API key secrets cannot be revealed.` Operators
+  must issue a new API key if runtime access is still needed.
+- Legacy keys without encrypted secret material cannot be revealed.
+- Legacy keys without encrypted secret material return `409 Conflict` with the unavailable message `API key secret is unavailable; rotate or reissue this legacy key.`
+- Operators must rotate or reissue legacy keys before a secret can be revealed.
+- The successful reveal response is the only place where the reveal API returns
+  raw `api_key`, `authorization_header`, or any response field derived from the
+  raw secret.
+- Outside that successful reveal response, inventory, revoke, runtime setup
+  guidance, audit logs, runtime logs, exports, and persisted or UI state must
+  omit or redact `api_key`, `authorization_header`, and any response field
+  derived from the raw secret.
+- Each successful reveal writes `api_key.secret_revealed` with redacted audit state.
+- Successful reveal responses set `Cache-Control: no-store, no-cache, must-revalidate`,
+  `Pragma: no-cache`, and `Expires: 0`.
+
 ## Intent-Route Candidate Scope Contract
 
 C-3 API key scope selectors use the existing candidate endpoint:
@@ -176,7 +245,7 @@ Query:
 
 ```json
 {
-  "source": "active_release",
+  "source": "released_catalog",
   "environment": "prod"
 }
 ```
@@ -190,20 +259,24 @@ Response:
     "display_name": "API timeout incident",
     "route_key": "it.api_timeout.manual_lookup",
     "status": "active",
-    "source": "active_release"
+    "source": "released_catalog"
   }
 ]
 ```
 
 Rules:
 
-- The C-3 baseline uses `source=active_release`.
+- API key scope selectors use `source=released_catalog`, which selects the newest
+  release for the requested environment without requiring runtime activation.
 - Admin UI selectors must not ask operators to type manual `intent_id` or
   `route_key` scope strings.
 - Create must reject `allowed_intents` or `allowed_route_keys` not returned by
   the selected candidate source.
-- If no active release exists, key creation must fail with an explicit active
-  release requirement.
+- If no release exists for the environment, candidate listing returns `[]` and
+  scoped key creation fails with an explicit released-catalog requirement.
+- Runtime setup guidance continues to report the active release independently;
+  its runtime display and setup templates do not use `released_catalog` as an
+  activation substitute.
 
 ## GET /admin/v1/services/{service_id}/runtime-setup
 
@@ -318,7 +391,9 @@ Rules:
   metadata from inventory/runtime setup guidance.
 - The operator must manually input the API Secret for the request.
 - The UI must not store the API Secret in local storage, inventory state, audit
-  state, runtime setup guidance, or exported evidence.
+  state, runtime setup guidance, or exported evidence. These state and
+  evidence surfaces must omit or redact `api_key`, `authorization_header`, and
+  any response field derived from the raw secret.
 - The UI must clear live-test input on selected-Service or selected-key change.
 - The live test creates normal runtime log evidence with masked query behavior.
 - Failures must display runtime error code/message without echoing the secret.
@@ -411,11 +486,17 @@ Branch checklist:
 
 ## Error Cases
 
+Unauthorized roles or out-of-scope actors cannot create or revoke selected-Service API keys.
+
 | Case | Expected result | Code or note |
 | --- | --- | --- |
 | Missing or invalid `irt_admin_session` | 401 | `AUTHENTICATION_FAILED` |
 | Trusted headers without session | 401 | Browser cannot fall back to trusted headers |
-| Non-`system_admin` creates or revokes key | 403 | `SERVICE_SCOPE_DENIED` baseline |
+| Unauthorized role or out-of-scope actor creates or revokes key | 403 | `SERVICE_SCOPE_DENIED`; selected-Service `service_owner` is authorized |
+| Reveal access denied for unauthorized roles or an out-of-scope actor | 403 | `SERVICE_SCOPE_DENIED` |
+| Revoked API key reveal | 400 | `INVALID_REQUEST`; `Revoked API key secrets cannot be revealed.` Issue a new API key if runtime access is still needed. |
+| Expired API key reveal | 400 | `INVALID_REQUEST`; `Expired API key secrets cannot be revealed.` Issue a new API key if runtime access is still needed. |
+| Legacy key without encrypted secret material | 409 | `API key secret is unavailable; rotate or reissue this legacy key.` |
 | No selected or accessible Service in UI | UI blocked | Show session or Services guidance |
 | Service missing | 404 | Do not leak key inventory |
 | Key missing | 404 | Revoke/detail |
@@ -445,6 +526,12 @@ Required C-3 audit events:
   - Service: key `service_id`.
   - Target: `target_type=api_key`, `target_id=key_id`.
   - State: previous and revoked metadata only, with no raw secret.
+- `api_key.secret_revealed`
+  - Actor: authenticated Admin session actor.
+  - Service: key `service_id`.
+  - Target: `target_type=api_key`, `target_id=key_id`.
+  - State: reveal metadata only; `api_key`, `authorization_header`, and any
+    response field derived from the raw secret must be omitted or `REDACTED`.
 
 Conditional events:
 
@@ -487,4 +574,4 @@ Future optional hardening for later:
 - Consider JSONB validation or check constraints for `allowed_intents` and
   `allowed_route_keys` if API-time validation is not enough.
 - Do not add a separate scope table in the C-3 baseline because allowed intent
-  and route values come from active release snapshots, not stable draft rows.
+  and route values come from released catalog snapshots, not stable draft rows.

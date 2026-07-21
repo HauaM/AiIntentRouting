@@ -74,16 +74,23 @@ describe('runtime setup guidance helpers', () => {
     expect(runtimeSetupContainsRawSecret(guidance, 'irt_secret_once')).toBe(false);
   });
 
-  it('renders the one-time API key secret in a close-to-clear modal, not a page alert', () => {
+  it('limits a created API secret to the creation modal and clears it when the modal closes', () => {
     const source = apiKeysPageSource();
 
     expect(source).toContain('<Modal');
     expect(source).toContain('open={Boolean(createdKey)}');
     expect(source).toContain('onCancel={clearCreatedKey}');
     expect(source).toContain('setCreatedKey(undefined)');
-    expect(source).toContain('이 secret은 이 모달을 닫으면 다시 볼 수 없습니다.');
+    expect(source).toContain('Secret 지우기');
     expect(source).toContain('API Secret Key');
     expect(source).toContain('Routing Key ID');
+    expect(source).toContain('이 모달을 닫으면 화면에 남은 secret은 지워집니다.');
+    expect(source).toContain('Secret 보기/복사를 눌러 감사 로그를 남긴 뒤 다시 복사');
+    expect(source).not.toContain('oneTimeApiSecretForSelectedKey');
+    expect(source).not.toContain('RuntimeSetupOneTimeSecret');
+    expect(source).not.toContain('createdKeyModalOpen');
+    expect(source).toContain('runtimeSetupHeaderRows(runtimeSetup)');
+    expect(source.match(/createdKey\.response\.api_key/g)).toHaveLength(1);
     expect(source).not.toContain('key_id {createdKey.key_id}');
     expect(source).not.toContain('message="새 API key secret"');
   });
@@ -126,6 +133,20 @@ describe('runtime setup guidance helpers', () => {
     expect(source).not.toContain('api_secret');
     expect(source).not.toContain('Input.Password');
     expect(source).not.toContain('fetch(');
+  });
+
+  it('copies Authorization through the audited reveal endpoint instead of page-scoped secret replay', () => {
+    const source = apiKeysPageSource();
+
+    expect(source).toContain('revealServiceApiKey');
+    expect(source).toContain('handleCopyHeader');
+    expect(source).toContain("row.name.toLowerCase() !== 'authorization'");
+    expect(source).toContain('response.authorization_header');
+    expect(source).toContain('navigator.clipboard.writeText');
+    expect(source).toContain('Secret 보기/복사');
+    expect(source).toContain('selectedApiKeyIdRef');
+    expect(source).toContain('selectedApiKeyIdRef.current !== keyId');
+    expect(source).not.toContain('oneTimeApiSecretForSelectedKey');
   });
 
   it('supports unlimited expiry from the create form without hiding the finite-day option', () => {
@@ -171,6 +192,17 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toContain('const environment = selectedEnvironment');
     expect(source).toMatch(/selectedEnvironmentRef\.current\s*===\s*environment/);
     expect(source).toMatch(/apiKeyPageRequestIdRef\.current\s*===\s*requestId/);
+  });
+
+  it('does not gate API key creation or scope selection on active-release availability', () => {
+    const source = apiKeysPageSource();
+
+    expect(source).toContain("source: 'released_catalog'");
+    expect(source).not.toContain("source: 'active_release'");
+    expect(source).not.toContain('const hasActiveRelease = Boolean(runtimeSetup?.active_release);');
+    expect(source).not.toContain('선택한 환경에 active Release가 없습니다.');
+    expect(source).not.toContain('Active Release에 허용할 intent/route 후보가 없습니다.');
+    expect(source).not.toContain('disabled={!hasActiveRelease || loadingKeys}');
   });
 
   it('wraps runtime setup checklist items inside a bounded container', () => {

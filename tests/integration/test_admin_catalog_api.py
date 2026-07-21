@@ -361,6 +361,11 @@ def test_admin_can_create_service_and_api_key(
 
     body = key_response.json()
     assert key_response.status_code == 201
+    assert key_response.headers["cache-control"] == (
+        "no-store, no-cache, must-revalidate"
+    )
+    assert key_response.headers["pragma"] == "no-cache"
+    assert key_response.headers["expires"] == "0"
     assert body["key_id"].startswith("key_live_")
     assert body["api_key"].startswith("irt_")
     assert body["api_key_displayed_once"] is True

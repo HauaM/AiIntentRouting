@@ -51,15 +51,21 @@ Runtime clients call `/v1/intent-route` with `Authorization: Bearer <api_key>`
 plus `X-Key-Id`, `X-App-Id`, `X-Service-Id`, and `X-Request-Id`. Runtime API
 authentication remains separate from Admin UI session-cookie authentication.
 
-The raw API key secret is displayed once on create and never returned by
-inventory, revoke, runtime setup guidance, audit logs, or runtime logs. Key
-inventory and evidence may show only metadata such as `key_id`,
+The prior C-3 baseline displayed once on create and never returned the raw
+secret after issuance.
+The raw API key secret is displayed on create. After
+`docs/adr/2026-07-21-encrypted-api-key-secret-reveal.md`, authorized
+`system_admin` and selected-Service `service_owner` users may explicitly
+reveal/copy the encrypted secret through an audited service-scoped endpoint.
+Inventory, revoke, runtime setup guidance, audit logs, runtime logs, and
+exports still never embed raw `api_key`. Key inventory and evidence may show only metadata such as `key_id`,
 `key_fingerprint`, `app_id`, `service_id`, `environment`, `status`, scope,
 expiry, creator, and timestamps.
 
 Allowed intents and route keys are selected from known candidate/list
-endpoints. The C-3 baseline source is `source=active_release` so runtime keys
-are scoped to released behavior rather than draft catalog state.
+endpoints. API key scope uses `source=released_catalog` so a key can be issued
+from the newest environment release without requiring runtime activation, while
+runtime setup guidance continues to display `active_release` independently.
 
 `/api-keys` remains the selected-Service runtime setup workspace. `/services`
 may later add only a compact next-step panel that points the user to
@@ -154,7 +160,7 @@ outside the create response.
 The Admin UI must use server-derived session identity and selected Service
 state. It must not reintroduce trusted actor headers or manual internal ID
 entry for runtime key scope. It must load allowed intents and route keys from
-candidate endpoints, baseline `source=active_release`.
+candidate endpoints, baseline `source=released_catalog`.
 
 Runtime client documentation remains explicit about Bearer API-key calls to
 `/v1/intent-route`, while Admin UI code remains explicit about
@@ -213,7 +219,7 @@ tests proving:
 - Raw `api_key` is present only in create response.
 - Inventory, revoke, runtime setup guidance, audit logs, and runtime logs never
   return the raw secret.
-- Candidate scope comes from `source=active_release`.
+- Candidate scope comes from `source=released_catalog`.
 - Normal Admin UI browser requests use `irt_admin_session` and do not send
   trusted headers.
 - Runtime clients use Bearer key plus key/app/service/request headers.

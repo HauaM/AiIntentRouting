@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { CopyOutlined } from '@ant-design/icons';
 import { ProTable, type ProColumns } from '@ant-design/pro-components';
 import { useModel } from '@umijs/max';
 import {
@@ -30,6 +31,7 @@ import {
   fetchRuntimeSetupGuidance,
   listIntentRouteCandidates,
   listServiceApiKeys,
+  revealServiceApiKey,
   revokeServiceApiKey,
 } from '@/services/adminServices';
 import {
@@ -102,13 +104,17 @@ export default function ApiKeysPage() {
   const [loadingKeys, setLoadingKeys] = useState(false);
   const [selectedEnvironment, setSelectedEnvironment] =
     useState<'dev' | 'qa' | 'prod'>('dev');
+  const [revealingKeyId, setRevealingKeyId] = useState<string>();
   const serviceIdRef = useRef(session.serviceId);
   const selectedEnvironmentRef = useRef(selectedEnvironment);
   const apiKeyPageRequestIdRef = useRef(0);
+  const selectedApiKeyIdRef = useRef<string>();
+  serviceIdRef.current = session.serviceId;
+  selectedEnvironmentRef.current = selectedEnvironment;
+  selectedApiKeyIdRef.current = selectedApiKey?.key_id;
   const ready = isAdminSessionReady(session);
   const canManage = canManageRuntimeSetup(session);
   const expiryMode = Form.useWatch('expiry_mode', createForm) ?? 'days';
-
   const loadApiKeyPageData = async (
     selectedKey?: Pick<API.ApiKey, 'app_id' | 'key_id'>,
   ) => {
@@ -125,7 +131,7 @@ export default function ApiKeysPage() {
       const [nextKeys, nextScopeCandidates] = await Promise.all([
         listServiceApiKeys(serviceId, { environment }),
         listIntentRouteCandidates(serviceId, {
-          source: 'active_release',
+          source: 'released_catalog',
           environment,
         }),
       ]);
@@ -213,7 +219,9 @@ export default function ApiKeysPage() {
     try {
       await revokeServiceApiKey(serviceId, keyId);
       message.success('API key가 폐기되었습니다.');
-      if (createdKey?.response.key_id === keyId) setCreatedKey(undefined);
+      if (createdKey?.response.key_id === keyId) {
+        setCreatedKey(undefined);
+      }
       await loadApiKeyPageData();
     } finally {
       setRevoking(false);
@@ -227,6 +235,41 @@ export default function ApiKeysPage() {
 
   const clearCreatedKey = () => {
     setCreatedKey(undefined);
+  };
+
+  const copyText = async (text: string) => {
+    await navigator.clipboard.writeText(text);
+  };
+
+  const handleCopyHeader = async (row: { name: string; value: string }) => {
+    if (row.name.toLowerCase() !== 'authorization') {
+      await copyText(row.value);
+      message.success(`${row.name} 값이 복사되었습니다.`);
+      return;
+    }
+    const keyId = runtimeSetup?.selected_key?.key_id;
+    if (!runtimeSetup || !keyId) {
+      await copyText(row.value);
+      message.info('선택된 key가 없어 템플릿 값을 복사했습니다.');
+      return;
+    }
+    const serviceId = runtimeSetup.service_id;
+    const environment = runtimeSetup.environment;
+    setRevealingKeyId(keyId);
+    try {
+      const response = await revealServiceApiKey(serviceId, keyId);
+      if (
+        serviceIdRef.current !== serviceId ||
+        selectedEnvironmentRef.current !== environment ||
+        selectedApiKeyIdRef.current !== keyId
+      ) {
+        return;
+      }
+      await copyText(response.authorization_header);
+      message.success('Authorization header가 복사되었습니다.');
+    } finally {
+      setRevealingKeyId(undefined);
+    }
   };
 
   const columns: ProColumns<API.ApiKey>[] = [
@@ -445,7 +488,8 @@ export default function ApiKeysPage() {
       />
       <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
         행을 클릭하면 아래 Runtime setup guidance에 자동 반영됩니다. raw API Secret은
-        발급 완료 모달에서만 표시되며 인벤토리에서는 다시 조회하지 않습니다.
+        생성 완료 모달과 Authorization의 Secret 보기/복사 작업에서만 표시되며 감사
+        로그가 남습니다.
       </Typography.Paragraph>
       <Card title="Runtime setup guidance">
         {runtimeSetup ? (
@@ -484,13 +528,27 @@ export default function ApiKeysPage() {
               </Descriptions.Item>
             </Descriptions>
             <Descriptions size="small" column={1} title="Headers template">
-              {runtimeSetupHeaderRows(runtimeSetup).map((row) => (
-                <Descriptions.Item key={row.name} label={row.name}>
-                  <Typography.Text copyable code>
-                    {row.value}
-                  </Typography.Text>
-                </Descriptions.Item>
-              ))}
+              {runtimeSetupHeaderRows(runtimeSetup).map((row) => {
+                const isAuthorization = row.name.toLowerCase() === 'authorization';
+                return (
+                  <Descriptions.Item key={row.name} label={row.name}>
+                    <Space size={8} wrap>
+                      <Typography.Text code>{row.value}</Typography.Text>
+                      <Button
+                        size="small"
+                        icon={<CopyOutlined />}
+                        loading={
+                          isAuthorization &&
+                          revealingKeyId === runtimeSetup.selected_key?.key_id
+                        }
+                        onClick={() => handleCopyHeader(row)}
+                      >
+                        {isAuthorization ? 'Secret 보기/복사' : '복사'}
+                      </Button>
+                    </Space>
+                  </Descriptions.Item>
+                );
+              })}
             </Descriptions>
             <Descriptions size="small" column={1} title="Body template">
               <Descriptions.Item label="JSON">
@@ -541,8 +599,11 @@ export default function ApiKeysPage() {
                 title="새 API Key 발급 완료"
                 onCancel={clearCreatedKey}
                 footer={[
+                  <Button key="clear" onClick={clearCreatedKey}>
+                    Secret 지우기
+                  </Button>,
                   <Button key="close" type="primary" onClick={clearCreatedKey}>
-                    복사 완료
+                    닫기
                   </Button>,
                 ]}
                 destroyOnHidden
@@ -558,8 +619,8 @@ export default function ApiKeysPage() {
                     <Alert
                       type="warning"
                       showIcon
-                      message="이 secret은 이 모달을 닫으면 다시 볼 수 없습니다."
-                      description="인벤토리에서는 Routing Key ID와 템플릿만 다시 복사할 수 있습니다. API Secret은 안전한 보관소에 저장하세요."
+                      message="이 모달을 닫으면 화면에 남은 secret은 지워집니다."
+                      description="이후에는 기존 키 관리의 Authorization 행에서 Secret 보기/복사를 눌러 감사 로그를 남긴 뒤 다시 복사할 수 있습니다. API Secret은 안전한 보관소에 저장하세요."
                     />
                     <div className="api-key-secret-block">
                       <Typography.Text strong>API Secret Key</Typography.Text>

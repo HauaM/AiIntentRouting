@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal, NoReturn, cast
 from uuid import UUID, uuid4
 
 from cryptography.exceptions import InvalidTag
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -102,6 +102,12 @@ from intent_routing.security.admin_auth import (
     raise_admin_forbidden,
 )
 from intent_routing.security.admin_passwords import hash_admin_password
+from intent_routing.security.api_key_secrets import (
+    api_key_secret_encryption_context,
+    apply_encrypted_api_key_secret,
+    encrypted_api_key_secret,
+    load_api_key_secret_keyring,
+)
 from intent_routing.security.api_keys import (
     fingerprint_secret,
     generate_api_key_secret,
@@ -592,6 +598,16 @@ class ApiKeyCreateResponse(BaseModel):
     revoked_at: datetime | None
     created_by: str
     created_at: datetime
+
+
+class ApiKeyRevealResponse(BaseModel):
+    key_id: str
+    service_id: str
+    environment: str
+    app_id: str
+    api_key: str
+    authorization_header: str
+    api_key_revealed: bool
 
 
 class ApiKeyResponse(BaseModel):
@@ -2061,6 +2077,22 @@ def _api_key_after_state(api_key: ApiKey) -> dict[str, object]:
     }
 
 
+def _api_key_reveal_audit_state(api_key: ApiKey) -> dict[str, object]:
+    return {
+        "key_id": api_key.key_id,
+        "service_id": api_key.service_id,
+        "environment": api_key.environment,
+        "app_id": api_key.app_id,
+        "status": api_key.status,
+    }
+
+
+def _apply_secret_response_cache_headers(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
+
 def _runtime_setup_environment(environment: str | None) -> str:
     target_environment = environment or "dev"
     if target_environment not in SUPPORTED_RUNTIME_ENVIRONMENTS:
@@ -2077,15 +2109,48 @@ def _active_release_intent_route_candidates(
     if release is None:
         return None, []
 
+    return release, _intent_route_candidates_for_release(
+        repository,
+        service,
+        release,
+        source="active_release",
+    )
+
+
+def _released_catalog_intent_route_candidates(
+    repository: IntentRoutingRepository,
+    service: Service,
+    environment: str,
+) -> tuple[Release | None, list[IntentRouteCandidateResponse]]:
+    releases = repository.list_releases(service.service_id, environment)
+    if not releases:
+        return None, []
+    release = releases[0]
+    return release, _intent_route_candidates_for_release(
+        repository,
+        service,
+        release,
+        source="released_catalog",
+    )
+
+
+def _intent_route_candidates_for_release(
+    repository: IntentRoutingRepository,
+    service: Service,
+    release: Release,
+    *,
+    source: str,
+) -> list[IntentRouteCandidateResponse]:
+
     catalog_version = repository.get_catalog_version(
         service.service_id,
         release.intent_catalog_version,
     )
     if catalog_version is None:
-        return release, []
+        return []
     intents = catalog_version.snapshot.get("intents", [])
     if not isinstance(intents, list):
-        return release, []
+        return []
 
     candidates: list[IntentRouteCandidateResponse] = []
     for intent in intents:
@@ -2099,10 +2164,10 @@ def _active_release_intent_route_candidates(
                 display_name=str(intent.get("display_name", "")),
                 route_key=str(intent.get("route_key", "")),
                 status=str(intent.get("status", "")),
-                source="active_release",
+                source=source,
             )
         )
-    return release, candidates
+    return candidates
 
 
 def _validate_runtime_api_key_scope(
@@ -2111,14 +2176,14 @@ def _validate_runtime_api_key_scope(
     request: ApiKeyCreateRequest | ServiceApiKeyCreateRequest,
 ) -> Release:
     environment = _runtime_setup_environment(request.environment)
-    release, candidates = _active_release_intent_route_candidates(
+    release, candidates = _released_catalog_intent_route_candidates(
         repository,
         service,
         environment,
     )
     if release is None:
         _raise_validation_failed(
-            "active release is required for scoped API key creation."
+            "released catalog is required for scoped API key creation."
         )
 
     candidate_intents = {candidate.intent_id for candidate in candidates}
@@ -2127,12 +2192,12 @@ def _validate_runtime_api_key_scope(
     unknown_route_keys = sorted(set(request.allowed_route_keys) - candidate_route_keys)
     if unknown_intents:
         _raise_validation_failed(
-            "allowed_intents must come from active release candidates: "
+            "allowed_intents must come from released catalog candidates: "
             + ", ".join(unknown_intents)
         )
     if unknown_route_keys:
         _raise_validation_failed(
-            "allowed_route_keys must come from active release candidates: "
+            "allowed_route_keys must come from released catalog candidates: "
             + ", ".join(unknown_route_keys)
         )
     return release
@@ -2151,8 +2216,16 @@ def _create_api_key_for_service(
     now: datetime,
 ) -> tuple[ApiKey, str]:
     api_key_secret = f"irt_{generate_api_key_secret()}"
+    key_id = f"key_live_{uuid4().hex}"
+    encrypted_secret = load_api_key_secret_keyring().encrypt_text(
+        api_key_secret,
+        context=api_key_secret_encryption_context(
+            service_id=service_id,
+            key_id=key_id,
+        ),
+    )
     api_key = repository.create_api_key(
-        key_id=f"key_live_{uuid4().hex}",
+        key_id=key_id,
         key_hash=hash_secret(api_key_secret),
         key_fingerprint=fingerprint_secret(api_key_secret),
         environment=environment,
@@ -2170,6 +2243,7 @@ def _create_api_key_for_service(
         created_by=actor_id,
         created_at=now,
     )
+    apply_encrypted_api_key_secret(api_key, encrypted_secret)
     repository.insert_audit_log(
         event_type="api_key.created",
         actor_id=actor_id,
@@ -2184,6 +2258,19 @@ def _create_api_key_for_service(
         created_at=now,
     )
     return api_key, api_key_secret
+
+
+def _raise_if_api_key_not_revealable(api_key: ApiKey, now: datetime) -> None:
+    if api_key.status == ApiKeyStatus.revoked.value or api_key.revoked_at is not None:
+        _raise_bad_request("Revoked API key secrets cannot be revealed.")
+    if api_key.status == ApiKeyStatus.expired.value:
+        _raise_bad_request("Expired API key secrets cannot be revealed.")
+    if api_key.expires_at is not None and api_key.expires_at <= now:
+        _raise_bad_request("Expired API key secrets cannot be revealed.")
+    if encrypted_api_key_secret(api_key) is None:
+        _raise_conflict(
+            "API key secret is unavailable; rotate or reissue this legacy key."
+        )
 
 
 def _revoke_api_key_record(
@@ -4107,6 +4194,7 @@ def create_api_key(
     request: ApiKeyCreateRequest,
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
+    response: Response,
 ) -> ApiKeyCreateResponse:
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
@@ -4128,6 +4216,7 @@ def create_api_key(
         now=now,
     )
     session.commit()
+    _apply_secret_response_cache_headers(response)
     return ApiKeyCreateResponse(
         api_key=api_key_secret,
         api_key_displayed_once=True,
@@ -4143,7 +4232,7 @@ def revoke_api_key(
 ) -> ApiKeyResponse:
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
-    api_key = repository.get_api_key_by_id(key_id)
+    api_key = repository.get_api_key_by_id_for_update(key_id)
     if api_key is None:
         _raise_not_found("API key does not exist.")
     _require_api_key_management_access(context, api_key.service_id)
@@ -4195,6 +4284,7 @@ def create_service_api_key(
     request: ServiceApiKeyCreateRequest,
     context: Annotated[AdminContext, Depends(require_admin_context)],
     session: Annotated[Session, Depends(get_admin_session)],
+    response: Response,
 ) -> ApiKeyCreateResponse:
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(session)
@@ -4216,6 +4306,7 @@ def create_service_api_key(
         now=now,
     )
     session.commit()
+    _apply_secret_response_cache_headers(response)
     return ApiKeyCreateResponse(
         api_key=api_key_secret,
         api_key_displayed_once=True,
@@ -4239,7 +4330,7 @@ def revoke_service_api_key(
     if service is None:
         _raise_not_found("Service does not exist.")
     _require_api_key_management_access(context, service_id)
-    api_key = repository.get_api_key_by_id(key_id)
+    api_key = repository.get_api_key_by_id_for_update(key_id)
     if api_key is None:
         _raise_not_found("API key does not exist.")
     if api_key.service_id != service_id:
@@ -4253,6 +4344,68 @@ def revoke_service_api_key(
     )
     session.commit()
     return _api_key_response(api_key)
+
+
+@router.post(
+    "/services/{service_id}/api-keys/{key_id}:reveal",
+    response_model=ApiKeyRevealResponse,
+)
+def reveal_service_api_key(
+    service_id: str,
+    key_id: str,
+    context: Annotated[AdminContext, Depends(require_admin_context)],
+    session: Annotated[Session, Depends(get_admin_session)],
+    response: Response,
+) -> ApiKeyRevealResponse:
+    now = datetime.now(UTC)
+    repository = IntentRoutingRepository(session)
+    service = repository.get_service(service_id)
+    if service is None:
+        _raise_not_found("Service does not exist.")
+    _require_api_key_management_access(context, service_id)
+    api_key = repository.get_api_key_by_id_for_update(key_id)
+    if api_key is None:
+        _raise_not_found("API key does not exist.")
+    if api_key.service_id != service_id:
+        raise_admin_forbidden("API key does not belong to the selected Service.")
+    _raise_if_api_key_not_revealable(api_key, now)
+
+    encrypted = encrypted_api_key_secret(api_key)
+    if encrypted is None:
+        _raise_conflict(
+            "API key secret is unavailable; rotate or reissue this legacy key."
+        )
+    api_key_secret = load_api_key_secret_keyring().decrypt_text(
+        encrypted,
+        context=api_key_secret_encryption_context(
+            service_id=api_key.service_id,
+            key_id=api_key.key_id,
+        ),
+    )
+    repository.insert_audit_log(
+        event_type="api_key.secret_revealed",
+        actor_id=context.actor_id,
+        service_id=service_id,
+        trace_id=None,
+        target_type="api_key",
+        target_id=api_key.key_id,
+        view_reason="runtime_setup_authorization_copy",
+        source_ip=None,
+        before_state=None,
+        after_state=_api_key_reveal_audit_state(api_key),
+        created_at=now,
+    )
+    session.commit()
+    _apply_secret_response_cache_headers(response)
+    return ApiKeyRevealResponse(
+        key_id=api_key.key_id,
+        service_id=api_key.service_id,
+        environment=api_key.environment,
+        app_id=api_key.app_id,
+        api_key=api_key_secret,
+        authorization_header=f"Bearer {api_key_secret}",
+        api_key_revealed=True,
+    )
 
 
 @router.get(
@@ -4996,35 +5149,24 @@ def list_intent_route_candidates(
     if source == "active_release":
         if environment is None or environment not in SUPPORTED_RUNTIME_ENVIRONMENTS:
             _raise_validation_failed("environment must be one of dev, qa, prod.")
-        release = repository.get_active_release(service_id, environment)
-        if release is None:
-            return []
-        catalog_version = repository.get_catalog_version(
-            service_id,
-            release.intent_catalog_version,
+        _, candidates = _active_release_intent_route_candidates(
+            repository,
+            service,
+            environment,
         )
-        if catalog_version is None:
-            return []
-        intents = catalog_version.snapshot.get("intents", [])
-        if not isinstance(intents, list):
-            return []
-        candidates: list[IntentRouteCandidateResponse] = []
-        for intent in intents:
-            if not isinstance(intent, Mapping):
-                continue
-            if intent.get("status") != IntentStatus.active.value:
-                continue
-            candidates.append(
-                IntentRouteCandidateResponse(
-                    intent_id=str(intent.get("intent_id", "")),
-                    display_name=str(intent.get("display_name", "")),
-                    route_key=str(intent.get("route_key", "")),
-                    status=str(intent.get("status", "")),
-                    source=source,
-                )
-            )
         return candidates
-    _raise_bad_request("source must be current_catalog or active_release")
+    if source == "released_catalog":
+        if environment is None or environment not in SUPPORTED_RUNTIME_ENVIRONMENTS:
+            _raise_validation_failed("environment must be one of dev, qa, prod.")
+        _, candidates = _released_catalog_intent_route_candidates(
+            repository,
+            service,
+            environment,
+        )
+        return candidates
+    _raise_bad_request(
+        "source must be current_catalog, active_release, or released_catalog"
+    )
 
 
 @router.patch(

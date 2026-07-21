@@ -56,6 +56,7 @@ import {
   deleteDepartment,
   deleteOrganizationUser,
   fetchRuntimeMetrics,
+  revealServiceApiKey,
   revokeServiceRole,
   revokeServiceApiKey,
   rollbackRelease,
@@ -329,6 +330,7 @@ describe('admin service Phase 1 write flow requests', () => {
       app_id: 'app-web',
       key_id: 'key/a',
     });
+    await revealServiceApiKey('svc/admin', 'key/a');
 
     expect(requestMock).toHaveBeenNthCalledWith(
       1,
@@ -362,6 +364,11 @@ describe('admin service Phase 1 write flow requests', () => {
           key_id: 'key/a',
         },
       },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      5,
+      '/services/svc%2Fadmin/api-keys/key%2Fa:reveal',
+      { method: 'POST' },
     );
     const calls = requestMock.mock.calls as unknown as Array<
       [string, Record<string, unknown>]
@@ -629,7 +636,7 @@ describe('admin service Phase 1 write flow requests', () => {
     await listCatalogVersions('svc/admin');
     await listTestRuns('svc/admin', { gate_passed: true, risk_passed: true });
     await listReleaseCandidates('svc/admin');
-    await listIntentRouteCandidates('svc/admin', { source: 'active_release' });
+    await listIntentRouteCandidates('svc/admin', { source: 'released_catalog' });
     await listServiceApiKeys('svc/admin');
 
     expect(requestMock).toHaveBeenCalledWith('/services/svc%2Fadmin/policy-versions', {
@@ -655,7 +662,7 @@ describe('admin service Phase 1 write flow requests', () => {
       '/services/svc%2Fadmin/intent-route-candidates',
       {
         method: 'GET',
-        params: { source: 'active_release', environment: undefined },
+        params: { source: 'released_catalog', environment: undefined },
       },
     );
     expect(requestMock).toHaveBeenCalledWith('/services/svc%2Fadmin/api-keys', {

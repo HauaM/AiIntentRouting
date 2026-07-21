@@ -120,7 +120,10 @@ Expected UX:
 
 - Create API keys from the selected Service and environment.
 - Select allowed intents and route keys from known candidates.
-- Show the API key secret once.
+- Show the API key secret on create and provide an explicit `Secret 보기/복사`
+  action through the audited reveal endpoint.
+- Use encrypted secret material for later authorized reveal.
+- Creation displays and copies the initial raw secret; later copying uses the audited reveal endpoint.
 - Keep API key inventory free of raw secrets.
 - Provide runtime setup guidance for Dify or another client system.
 - Use checklist and docs guidance for runtime validation. Do not run a browser
@@ -134,6 +137,9 @@ Backend contract note:
   `GET /admin/v1/services/{service_id}/api-keys`,
   `POST /admin/v1/services/{service_id}/api-keys`, and
   `POST /admin/v1/services/{service_id}/api-keys/{key_id}:revoke`.
+- Secret reveal uses
+  `POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal` and writes
+  `api_key.secret_revealed` audit evidence.
 - Runtime setup guidance comes from
   `GET /admin/v1/services/{service_id}/runtime-setup` and returns
   `selected_key` metadata only, never the raw secret.

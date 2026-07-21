@@ -39,8 +39,9 @@ def test_c3_runtime_setup_adr_records_accepted_decisions() -> None:
         "X-App-Id",
         "X-Service-Id",
         "X-Request-Id",
-        "displayed once on create and never returned",
-        "source=active_release",
+        "authorized\n`system_admin` and selected-Service `service_owner` users may "
+        "explicitly\nreveal/copy",
+        "source=released_catalog",
         "`/api-keys` remains the selected-Service runtime setup workspace",
         "explicit Admin UI\nlive-test workflow",
         "operator manually enters an API Secret",
@@ -83,10 +84,17 @@ def test_c3_runtime_setup_contract_doc_defines_admin_api_and_runtime_guidance() 
         "  selected Service's authorized `service_owner`.",
         "`service_developer`, `service_operator`, and `auditor` cannot create or "
         "revoke\n  API keys.",
-        "`api_key` is present only in the create response",
+        "Unauthorized roles or out-of-scope actors cannot create or revoke "
+        "selected-Service API keys.",
+        "Reveal access denied for unauthorized roles or an out-of-scope actor",
+        "Legacy key without encrypted secret material",
+        "409 Conflict",
+        "API key secret is unavailable; rotate or reissue this legacy key.",
+        "The create response includes the raw `api_key` for the initial setup flow.",
         "`api_key` raw secret is never present in inventory",
         '"selected_key"',
-        "`source=active_release`",
+        "`source=released_catalog`",
+        "Runtime setup guidance continues to report the active release independently",
         "GET /admin/v1/services/{service_id}/runtime-setup",
         "future/not baseline",
         "The operator must manually input the API Secret",
@@ -112,5 +120,57 @@ def test_c3_runtime_setup_contract_doc_defines_admin_api_and_runtime_guidance() 
     for stale_phrase in (
         "C-3 baseline key lifecycle create/list/revoke requires `system_admin`",
         "Future delegation to `service_owner` or `service_operator`",
+        "Non-`system_admin` creates or revokes key",
+    ):
+        assert stale_phrase not in text
+
+
+def test_api_key_secret_reveal_contract_is_documented() -> None:
+    text = _read(CONTRACT)
+
+    for phrase in (
+        "POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal",
+        "encrypted secret material",
+        "The reveal allowlist is exactly `system_admin` and the selected-Service `service_owner`.",
+        "`service_developer` is explicitly denied reveal access.",
+        "`service_operator` is explicitly denied reveal access.",
+        "`auditor` is explicitly denied reveal access.",
+        "api_key.secret_revealed",
+        "api_key_revealed",
+        "authorization_header",
+        "both `api_key` and `authorization_header`, plus any\n"
+        "  response field derived from the raw secret, must be omitted or recorded only\n"
+        "  as `REDACTED`.",
+        "Audit state must omit `api_key`, `authorization_header`, and any response\n"
+        "  field derived from the raw secret, or record each only as `REDACTED`.",
+        "Outside that successful reveal response, inventory, revoke, runtime setup\n"
+        "  guidance, audit logs, runtime logs, exports, and persisted or UI state must\n"
+        "  omit or redact `api_key`, `authorization_header`, and any response field\n"
+        "  derived from the raw secret.",
+        "reveal metadata only; `api_key`, `authorization_header`, and any\n"
+        "    response field derived from the raw secret must be omitted or `REDACTED`.",
+        "Legacy keys without encrypted secret material cannot be revealed",
+        "return `409 Conflict`",
+        "API key secret is unavailable; rotate or reissue this legacy key.",
+        "Operators must rotate or reissue legacy keys",
+        "Revoked API key reveal returns HTTP `400` with code `INVALID_REQUEST`",
+        "Revoked API key secrets cannot be revealed.",
+        "issue a new API key if runtime access is still needed",
+        "Expired API key reveal returns HTTP `400` with code `INVALID_REQUEST`",
+        "Expired API key secrets cannot be revealed.",
+        "`api_key_displayed_once` means the create response includes the secret",
+        "`Cache-Control: no-store, no-cache, must-revalidate`",
+        "`Pragma: no-cache`",
+        "`Expires: 0`",
+        "purpose + `service_id` + `key_id`",
+        "`SELECT ... FOR UPDATE`",
+    ):
+        assert phrase in text
+
+    for stale_phrase in (
+        "The secret must be stored only as a hash/fingerprint, never plaintext.",
+        "`api_key` is present only in the create response.",
+        "shown only once in the create response",
+        '"api_key": "irt_<one-time-secret>"',
     ):
         assert stale_phrase not in text
