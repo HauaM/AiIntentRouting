@@ -198,7 +198,7 @@ def test_raw_text_envelope_metadata_columns_exist(db_session: Session) -> None:
     }
 
 
-def test_api_key_secret_envelope_metadata_columns_exist(db_session: Session) -> None:
+def test_schema_contains_expected_tables_and_columns(db_session: Session) -> None:
     columns = {
         (row.table_name, row.column_name): row.data_type
         for row in db_session.execute(
