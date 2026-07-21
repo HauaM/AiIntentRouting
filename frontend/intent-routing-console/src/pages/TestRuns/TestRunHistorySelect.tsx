@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Empty, Select, Space, Spin, Tag, Typography } from 'antd';
+import { Descriptions, Empty, Select, Space, Spin, Tag, Typography } from 'antd';
 import { listTestRuns } from '@/services/adminServices';
 
 type TestRunHistorySelectProps = {
@@ -7,7 +7,7 @@ type TestRunHistorySelectProps = {
   value?: string;
   disabled?: boolean;
   loading?: boolean;
-  onSelect: (testRunId: string) => void;
+  onSelect: (testRun: API.TestRunListItem) => void;
 };
 
 const TEST_RUN_HISTORY_LIMIT = 50;
@@ -92,10 +92,10 @@ export function TestRunHistorySelect({
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
       <Space direction="vertical" size={4}>
         <Typography.Title level={5} style={{ margin: 0 }}>
-          기존 테스트 실행 결과 조회
+          테스트 실행 선택
         </Typography.Title>
         <Typography.Text type="secondary">
-          이전 실행을 선택하면 테스트 결과 확인 단계로 이동합니다.
+          DB에 저장된 실행 목록에서 선택합니다.
         </Typography.Text>
       </Space>
       <div className="test-run-step-field">
@@ -130,7 +130,8 @@ export function TestRunHistorySelect({
             testRun: run,
           }))}
           onChange={(nextTestRunId) => {
-            if (nextTestRunId) onSelect(nextTestRunId);
+            const nextRun = runs.find((run) => run.test_run_id === nextTestRunId);
+            if (nextRun) onSelect(nextRun);
           }}
           optionRender={({ data }) => {
             const run = data.testRun as API.TestRunListItem;
@@ -166,6 +167,37 @@ export function TestRunHistorySelect({
           </Typography.Text>
         )}
       </div>
+      {selectedRun ? (
+        <section className="test-run-history-summary">
+          <Typography.Title level={5} style={{ marginTop: 0 }}>
+            선택된 실행 요약
+          </Typography.Title>
+          <Descriptions size="small" column={{ xs: 1, md: 2, xl: 3 }}>
+            <Descriptions.Item label="실행 ID">
+              <Typography.Text code>{selectedRun.test_run_id}</Typography.Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="통과율">
+              {formatRate(selectedRun.pass_rate)}
+            </Descriptions.Item>
+            <Descriptions.Item label="게이트">
+              <Tag color={selectedRun.gate_passed ? 'green' : 'red'}>
+                {selectedRun.gate_passed ? '통과' : '차단'}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Catalog 버전">
+              <Space size={4}>
+                <Typography.Text code>{selectedRun.intent_catalog_version}</Typography.Text>
+              </Space>
+            </Descriptions.Item>
+            <Descriptions.Item label="정책 기준">
+              {selectedRun.threshold_preset} / {selectedRun.threshold_value}
+            </Descriptions.Item>
+            <Descriptions.Item label="실행일">
+              {formatCreatedAt(selectedRun.created_at)}
+            </Descriptions.Item>
+          </Descriptions>
+        </section>
+      ) : null}
     </Space>
   );
 }

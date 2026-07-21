@@ -44,8 +44,23 @@ describe('TestRunHistorySelect contract', () => {
   it('selects a prior run through the component callback', () => {
     const source = read('TestRunHistorySelect.tsx');
 
-    expect(source).toContain('onSelect: (testRunId: string) => void;');
-    expect(source).toContain('onSelect(nextTestRunId);');
-    expect(source).toContain('이전 실행을 선택하면 테스트 결과 확인 단계로 이동합니다.');
+    expect(source).toContain('onSelect: (testRun: API.TestRunListItem) => void;');
+    expect(source).toContain('onSelect(nextRun);');
+    expect(source).toContain('DB에 저장된 실행 목록에서 선택합니다.');
+    expect(source).not.toContain('이전 실행을 선택하면 테스트 결과 확인 단계로 이동합니다.');
+  });
+
+  it('shows the selected previous test run summary under the combo', () => {
+    const source = read('TestRunHistorySelect.tsx');
+
+    expect(source).toContain('선택된 실행 요약');
+    expect(source).toContain('test-run-history-summary');
+    expect(source).toContain('label="실행 ID"');
+    expect(source).toContain('label="통과율"');
+    expect(source).toContain('label="게이트"');
+    expect(source).toContain('label="Catalog 버전"');
+    expect(source).toContain('label="정책 기준"');
+    expect(source).toContain('label="실행일"');
+    expect(source).toContain('selectedRun.gate_passed ?');
   });
 });

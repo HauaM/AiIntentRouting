@@ -488,6 +488,30 @@ body {
   padding: 12px;
 }
 
+.test-run-catalog-intent-toolbar {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  max-width: 100%;
+}
+
+.test-run-catalog-intent-search {
+  width: 320px;
+}
+
+.test-run-catalog-intent-status {
+  width: 160px;
+}
+
+.test-run-history-summary {
+  background: #f7f9fb;
+  border: 1px solid #e6eaef;
+  border-radius: 8px;
+  padding: 12px;
+}
+
 @media (max-width: 640px) {
   .services-onboarding-progress,
   .services-create-grid {
@@ -499,7 +523,9 @@ body {
   }
 
   .intent-catalog-search,
-  .intent-catalog-status-filter {
+  .intent-catalog-status-filter,
+  .test-run-catalog-intent-search,
+  .test-run-catalog-intent-status {
     width: 100%;
   }
 
