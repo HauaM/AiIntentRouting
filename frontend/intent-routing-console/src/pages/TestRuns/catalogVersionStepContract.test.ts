@@ -47,7 +47,6 @@ describe('CatalogVersionStep contract', () => {
   it('removes the separate latest and load-all buttons from step one', () => {
     const source = read('CatalogVersionStep.tsx');
 
-    expect(source).not.toContain('<Button');
     expect(source).not.toContain('handleLoadLatest');
     expect(source).not.toContain('setVersionMode');
     expect(source).not.toContain('versionMode');
@@ -89,9 +88,24 @@ describe('CatalogVersionStep contract', () => {
     expect(source).toContain('<Table<CatalogSnapshotIntent>');
     expect(source).toContain("title: 'Intent'");
     expect(source).toContain("title: 'Route key'");
-    expect(source).toContain("title: '예시 수'");
+    expect(source).toContain("title: 'Example'");
     expect(source).toContain("title: 'Status'");
     expect(source).toContain('filteredSnapshotIntents.length');
+  });
+
+  it('opens an example popup from positive and negative counts in the intent grid', () => {
+    const source = read('CatalogVersionStep.tsx');
+
+    expect(source).toContain('exampleModal');
+    expect(source).toContain('openExampleModal');
+    expect(source).toContain("type: 'positive'");
+    expect(source).toContain("openExampleModal(row, 'negative')");
+    expect(source).toContain('positive_examples');
+    expect(source).toContain('negative_examples');
+    expect(source).toContain('<Button');
+    expect(source).toContain('<Modal');
+    expect(source).toContain("title: 'Example'");
+    expect(source).toContain('test-run-example-modal-table');
   });
 
   it('uses the catalog-only step in the Test Runs wizard', () => {

@@ -12,9 +12,27 @@ describe('catalog snapshot helpers', () => {
           route_key: 'owner.contact_lookup.search',
           status: 'active',
           examples: [
-            { example_type: 'positive' },
-            { example_type: 'negative' },
-            { example_type: 'positive' },
+            {
+              example_id: 'ex-positive-1',
+              example_type: 'positive',
+              text_masked: '담당자 연락처 알려줘',
+              source: 'manual',
+              approved: true,
+            },
+            {
+              example_id: 'ex-negative-1',
+              example_type: 'negative',
+              text_masked: '비밀번호 초기화',
+              source: 'manual',
+              approved: false,
+            },
+            {
+              example_id: 'ex-positive-2',
+              example_type: 'positive',
+              text_masked: 'owner contact lookup',
+              source: 'seed',
+              approved: true,
+            },
           ],
         },
       ],
@@ -30,6 +48,31 @@ describe('catalog snapshot helpers', () => {
         positive_example_count: 2,
         negative_example_count: 1,
         example_count: 3,
+        positive_examples: [
+          {
+            example_id: 'ex-positive-1',
+            example_type: 'positive',
+            text_masked: '담당자 연락처 알려줘',
+            source: 'manual',
+            approved: true,
+          },
+          {
+            example_id: 'ex-positive-2',
+            example_type: 'positive',
+            text_masked: 'owner contact lookup',
+            source: 'seed',
+            approved: true,
+          },
+        ],
+        negative_examples: [
+          {
+            example_id: 'ex-negative-1',
+            example_type: 'negative',
+            text_masked: '비밀번호 초기화',
+            source: 'manual',
+            approved: false,
+          },
+        ],
       },
     ]);
   });
@@ -57,6 +100,8 @@ describe('catalog snapshot helpers', () => {
         positive_example_count: 0,
         negative_example_count: 0,
         example_count: 0,
+        positive_examples: [],
+        negative_examples: [],
       },
     ]);
   });
