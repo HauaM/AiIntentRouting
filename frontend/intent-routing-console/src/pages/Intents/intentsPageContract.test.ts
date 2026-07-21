@@ -84,6 +84,7 @@ describe('Intents page contract', () => {
     expect(text).toContain("if (selected?.intent_id) await loadSelectedExamples(selected.intent_id);");
     expect(text).toContain('await reloadCatalogVersionRows();');
     expect(text).toContain('const rows = await reloadCatalogVersionRows();');
+    expect(text).toContain('if (serviceIdRef.current !== serviceId) return;');
     expect(text).toContain('CatalogVersionCreateModal');
     expect(text).toContain('CatalogVersionDiffDrawer');
     expect(text).toContain('Catalog 버전 등록');

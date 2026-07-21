@@ -198,12 +198,16 @@ export default function IntentsPage() {
     setCatalogPageState(undefined);
     setCatalogVersionLoadOpen(false);
     setCatalogVersionRows([]);
+    setCatalogVersionLoading(false);
     setCatalogVersionSelection(undefined);
     setCatalogVersionCreateOpen(false);
+    setCatalogVersionCreating(false);
     setCatalogVersionDiffOpen(false);
+    setCatalogVersionDiffLoading(false);
     setCatalogVersionDiffTarget(undefined);
     setCatalogVersionDiffBaseline(undefined);
     setCatalogVersionDiff(undefined);
+    setCatalogVersionLoadingToDraft(false);
     intentForm.resetFields();
     exampleForm.resetFields();
   }, [exampleForm, intentForm, session.serviceId]);
@@ -304,14 +308,16 @@ export default function IntentsPage() {
 
   const openCatalogVersionDiff = async (row: API.CatalogVersionListItem) => {
     const serviceId = session.serviceId;
-    const rows = await reloadCatalogVersionRows();
-    const baseline = selectCatalogVersionDiffBaseline(rows, row);
-    setCatalogVersionDiffTarget(row);
-    setCatalogVersionDiffBaseline(baseline);
-    setCatalogVersionDiff(undefined);
     setCatalogVersionDiffOpen(true);
     setCatalogVersionDiffLoading(true);
+    setCatalogVersionDiffTarget(row);
+    setCatalogVersionDiffBaseline(undefined);
+    setCatalogVersionDiff(undefined);
     try {
+      const rows = await reloadCatalogVersionRows();
+      if (serviceIdRef.current !== serviceId) return;
+      const baseline = selectCatalogVersionDiffBaseline(rows, row);
+      setCatalogVersionDiffBaseline(baseline);
       const result = await fetchCatalogVersionDiff(
         serviceId,
         row.intent_catalog_version,
