@@ -1,31 +1,32 @@
-# Task 5 Report: Summary Block And Recommendation Copy Koreanization
+# Task 5 Report: Permission Management Page UI
 
 ## Summary
 
-Test Run summary의 `block_reasons`와 `recommendations` 표시를 기존
-`formatBlockReason` 및 `formatRecommendation` 헬퍼를 사용하도록 변경했습니다.
-빈 배열은 기존과 같이 `없음`으로 표시됩니다.
+- Built `PermissionManagementPage` at `/permission-management` with `AdminShell title="권한관리"` and a server-derived `session.globalRoles` guard for `system_admin`.
+- Added five ProTable-based tabs: `Admin 계정`, `전역 권한`, `서비스 권한`, `권한 변경 이력`, and `운영 점검`.
+- Wired Admin account status/global role actions to `patchManagedAdminUser` through `ConfirmActionButton`; the last active login-eligible `system_admin` state is disabled in the UI.
+- Wired Service role grant/revoke to `searchAdminUsers`, `grantServiceRole`, `revokeServiceRole`, and `listPermissionServiceRoles`; grant and revoke use confirm.
+- Added Permission Management audit/risk views without rendering before/after raw JSON.
+- Added the OrganizationDirectory Admin Access shortcut to `/permission-management?admin_user_id=...` while preserving the existing modal controls.
 
-## RED/GREEN Evidence
+## Changed Files
 
-- RED: `npm run test:unit -- testRunsPageContract.test.ts` 실행 결과 19개 중 1개 실패.
-  새 계약 테스트가 `index.tsx`의 `formatBlockReason` 부재를 검출했습니다.
-- GREEN: 같은 명령 재실행 결과 19개 테스트 통과.
-- 추가 검증: `git diff --check` 통과.
+- Created: `frontend/intent-routing-console/src/pages/PermissionManagement/index.tsx`
+- Modified: `frontend/intent-routing-console/src/pages/PermissionManagement/permissionManagement.ts`
+- Modified: `frontend/intent-routing-console/src/pages/PermissionManagement/permissionManagement.test.ts`
+- Modified: `frontend/intent-routing-console/src/pages/OrganizationDirectory/index.tsx`
+- Modified: `frontend/intent-routing-console/src/pages/OrganizationDirectory/directoryForms.ts`
+- Modified: `frontend/intent-routing-console/src/pages/OrganizationDirectory/directoryForms.test.ts`
+- Review fix: `frontend/intent-routing-console/src/pages/PermissionManagement/index.tsx` now wraps Service role grant in `ConfirmActionButton`, with a regression test in `permissionManagement.test.ts`.
 
-## Files Changed
+## Verification
 
-- `frontend/intent-routing-console/src/pages/TestRuns/index.tsx`
-- `frontend/intent-routing-console/src/pages/TestRuns/testRunsPageContract.test.ts`
-- `.superpowers/sdd/task-5-report.md`
+- `cd frontend/intent-routing-console && pnpm vitest run src/pages/PermissionManagement/permissionManagement.test.ts src/pages/OrganizationDirectory/directoryForms.test.ts` passed.
+- `cd frontend/intent-routing-console && pnpm run typecheck` passed.
+- `git diff --check` passed.
+- Prohibited pattern search found no matches in changed frontend files.
 
-## Self-Review
+## Notes
 
-- 두 raw summary `join`을 모두 제거했습니다.
-- 두 포맷터를 `testRunResultCopy.ts`에서 import해 배열 항목별로 적용했습니다.
-- 요청된 계약 테스트를 먼저 추가하고 실패를 확인한 뒤 구현했습니다.
-- 관련 없는 파일은 수정하지 않았습니다.
-
-## Concerns
-
-없음. 지정된 페이지 계약 테스트 범위 외의 전체 프런트엔드 테스트는 실행하지 않았습니다.
+- Did not read, modify, stage, or commit `.env`.
+- Did not stage `docs/superpowers/plans/2026-07-14-central-iam-permission-management-console.md`.
