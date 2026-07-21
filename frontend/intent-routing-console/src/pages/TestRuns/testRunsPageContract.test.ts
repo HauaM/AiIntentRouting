@@ -166,7 +166,7 @@ it('keeps a successfully created run summary visible when its results request fa
   const page = read('index.tsx');
 
   expect(page).toContain(
-    'setSummary(created);\n      setCurrentStep(2);\n      const nextResults = await fetchTestRunResults',
+    "setSummary(created);\n      setCurrentStep(2);\n      setResultsLoadState('loading');\n      const nextResults = await fetchTestRunResults",
   );
 });
 
@@ -212,7 +212,32 @@ it('loads and resets diagnostics in page state for the selected test run', () =>
   expect(page).toContain("setDiagnosticsError('진단 결과를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');");
 });
 
-it('renders catalog and vector status after the detailed results table', () => {
+it('tracks result rows separately for not-loaded, loading, error, and loaded states', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain("import { type TestRunResultsLoadState } from './testRunResultInsights';");
+  expect(page).toContain("const [resultsLoadState, setResultsLoadState] = useState<TestRunResultsLoadState>('not_loaded');");
+  expect(page).toContain("setResultsLoadState('loading');");
+  expect(page).toContain("setResultsLoadState('error');");
+  expect(page).toContain("setResultsLoadState('loaded');");
+  expect(page).toContain('resultsLoadState={resultsLoadState}');
+});
+
+it('renders the required six result sections in literal scan order', () => {
+  const source = read('index.tsx');
+  const summaryIndex = source.indexOf('테스트 요약');
+  const diagnosticsIndex = source.indexOf('<TestRunDiagnosticsPanel');
+  const detailsHeadingIndex = source.indexOf('상세 결과');
+  const tableIndex = source.indexOf('<ProTable<API.TestRunResult>');
+  const catalogStatusIndex = source.indexOf('<TestRunCatalogStatusPanel');
+
+  expect(diagnosticsIndex).toBeGreaterThan(summaryIndex);
+  expect(detailsHeadingIndex).toBeGreaterThan(diagnosticsIndex);
+  expect(tableIndex).toBeGreaterThan(detailsHeadingIndex);
+  expect(catalogStatusIndex).toBeGreaterThan(tableIndex);
+});
+
+it('passes shared diagnostic state to catalog and vector status after the detailed results table', () => {
   const source = read('index.tsx');
 
   const diagnosticsIndex = source.indexOf('<TestRunDiagnosticsPanel');
@@ -222,4 +247,6 @@ it('renders catalog and vector status after the detailed results table', () => {
   expect(diagnosticsIndex).toBeGreaterThan(-1);
   expect(tableIndex).toBeGreaterThan(diagnosticsIndex);
   expect(catalogStatusIndex).toBeGreaterThan(tableIndex);
+  expect(source).toContain('diagnosticsLoading={diagnosticsLoading}');
+  expect(source).toContain('diagnosticsError={diagnosticsError}');
 });

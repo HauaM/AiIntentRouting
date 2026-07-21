@@ -32,7 +32,7 @@ const issueTitleCopy: Record<string, string> = {
 
 export function formatDecisionLabel(decision?: string | null) {
   if (!decision) return '없음';
-  return decisionCopy[decision] ?? decision;
+  return decisionCopy[decision] ?? '판단 값 확인 필요';
 }
 
 export function formatIntentLabel(intent?: string | null) {
@@ -52,7 +52,7 @@ export function formatBlockReason(reason: string) {
   const passRateMatch = reason.match(/^pass rate below ([0-9]+)%$/);
   if (passRateMatch) return `통과율이 ${passRateMatch[1]}% 기준보다 낮습니다.`;
   if (reason === 'risk case failed') return '위험 질문 차단 테스트가 실패했습니다.';
-  return `해석되지 않은 차단 사유: ${reason}`;
+  return '차단 사유를 확인해 주세요.';
 }
 
 export function formatRecommendation(recommendation: string) {
@@ -60,5 +60,5 @@ export function formatRecommendation(recommendation: string) {
   if (reviewRateMatch) {
     return `검토 대상 비율이 ${reviewRateMatch[1]}% 권장 기준보다 높습니다.`;
   }
-  return `해석되지 않은 권장 조치: ${recommendation}`;
+  return '권장 조치를 확인해 주세요.';
 }

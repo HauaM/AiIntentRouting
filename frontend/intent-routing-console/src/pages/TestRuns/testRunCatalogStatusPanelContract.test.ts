@@ -24,4 +24,15 @@ describe('TestRunCatalogStatusPanel contract', () => {
     expect(source).toContain('reproducibilityTone(catalog.reproducibility_status)');
     expect(source).toContain('reproducibilityLabel(catalog.reproducibility_status)');
   });
+
+  it('receives shared diagnostic loading and error state before rendering an empty catalog claim', () => {
+    const source = read('TestRunCatalogStatusPanel.tsx');
+
+    expect(source).toContain('diagnosticsLoading?: boolean;');
+    expect(source).toContain('diagnosticsError?: string | null;');
+    expect(source).toContain('description="Catalog 상태를 불러오는 중입니다."');
+    expect(source).toContain('message="Catalog 상태를 불러오지 못했습니다."');
+    expect(source.indexOf('diagnosticsLoading')).toBeLessThan(source.indexOf('조회된 Catalog 상태가 없습니다.'));
+    expect(source.indexOf('diagnosticsError')).toBeLessThan(source.indexOf('조회된 Catalog 상태가 없습니다.'));
+  });
 });

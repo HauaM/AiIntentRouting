@@ -41,6 +41,7 @@ describe('testRunResultCopy', () => {
     expect(formatDecisionLabel('off_topic')).toBe('업무 외 질문');
     expect(formatDecisionLabel('unauthorized')).toBe('권한 없음');
     expect(formatDecisionLabel(null)).toBe('없음');
+    expect(formatDecisionLabel('future_backend_decision')).toBe('판단 값 확인 필요');
   });
 
   it('covers all backend-produced reason and decision values with Korean labels', () => {
@@ -86,6 +87,11 @@ describe('testRunResultCopy', () => {
   it('keeps unknown diagnostic issue codes out of visible copy', () => {
     expect(formatIssueTitle('future_backend_issue')).toBe('해석되지 않은 진단 이슈입니다.');
     expect(formatIssueTitle('future_backend_issue')).not.toContain('future_backend_issue');
+  });
+
+  it('keeps unknown summary guidance Korean-only', () => {
+    expect(formatBlockReason('future backend block reason')).toBe('차단 사유를 확인해 주세요.');
+    expect(formatRecommendation('future backend recommendation')).toBe('권장 조치를 확인해 주세요.');
   });
 
   it('renders null intent values consistently', () => {

@@ -1,4 +1,4 @@
-import { Card, Descriptions, Empty, Typography } from 'antd';
+import { Alert, Card, Descriptions, Empty, Spin, Typography } from 'antd';
 import { StatusTag } from '@/components/StatusTag';
 
 const catalogStatusTone = (status: string) => {
@@ -20,14 +20,31 @@ const reproducibilityLabel = (status: string) =>
 
 type TestRunCatalogStatusPanelProps = {
   diagnostics?: API.TestRunDiagnostics | null;
+  diagnosticsLoading?: boolean;
+  diagnosticsError?: string | null;
 };
 
-export function TestRunCatalogStatusPanel({ diagnostics }: TestRunCatalogStatusPanelProps) {
+export function TestRunCatalogStatusPanel({
+  diagnostics,
+  diagnosticsLoading = false,
+  diagnosticsError,
+}: TestRunCatalogStatusPanelProps) {
   const catalog = diagnostics?.catalog_version;
 
   return (
     <Card size="small" title="Catalog / Vector 상태">
-      {catalog ? (
+      {diagnosticsLoading ? (
+        <Spin spinning>
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Catalog 상태를 불러오는 중입니다." />
+        </Spin>
+      ) : diagnosticsError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="Catalog 상태를 불러오지 못했습니다."
+          description={diagnosticsError}
+        />
+      ) : catalog ? (
         <Descriptions bordered size="small" column={{ xs: 1, md: 2, xl: 3 }}>
           <Descriptions.Item label="Catalog 버전">
             <Typography.Text code>{catalog.intent_catalog_version}</Typography.Text>

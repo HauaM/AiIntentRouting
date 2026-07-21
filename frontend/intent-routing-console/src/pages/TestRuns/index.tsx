@@ -32,6 +32,7 @@ import { TestRunCatalogStatusPanel } from './TestRunCatalogStatusPanel';
 import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
 import { TestRunHistorySelect } from './TestRunHistorySelect';
 import { TestPolicyPanel } from './TestPolicyPanel';
+import { type TestRunResultsLoadState } from './testRunResultInsights';
 import {
   formatBlockReason,
   formatDecisionLabel,
@@ -73,6 +74,7 @@ export default function TestRunsPage() {
   const [createForm] = Form.useForm<API.TestRunCreateRequest>();
   const [summary, setSummary] = useState<API.TestRunSummary>();
   const [results, setResults] = useState<API.TestRunResult[]>([]);
+  const [resultsLoadState, setResultsLoadState] = useState<TestRunResultsLoadState>('not_loaded');
   const [diagnostics, setDiagnostics] = useState<API.TestRunDiagnostics | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
@@ -98,6 +100,7 @@ export default function TestRunsPage() {
     setLoading(false);
     setSummary(undefined);
     setResults([]);
+    setResultsLoadState('not_loaded');
     setDiagnostics(null);
     setDiagnosticsLoading(false);
     setDiagnosticsError(null);
@@ -148,6 +151,7 @@ export default function TestRunsPage() {
     runRequestGenerationRef.current += 1;
     setSummary(undefined);
     setResults([]);
+    setResultsLoadState('not_loaded');
     return runRequestGenerationRef.current;
   };
 
@@ -161,11 +165,14 @@ export default function TestRunsPage() {
     requestGeneration: number,
   ) => {
     const nextSummary = await fetchTestRun(serviceId, testRunId);
-    const nextResults = await fetchTestRunResults(serviceId, testRunId);
     if (!isCurrentRunRequest(requestGeneration, serviceId)) return false;
     setSummary(nextSummary);
-    setResults(nextResults);
     setCurrentStep(2);
+    setResultsLoadState('loading');
+    const nextResults = await fetchTestRunResults(serviceId, testRunId);
+    if (!isCurrentRunRequest(requestGeneration, serviceId)) return false;
+    setResults(nextResults);
+    setResultsLoadState('loaded');
     return true;
   };
 
@@ -195,13 +202,16 @@ export default function TestRunsPage() {
       if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
       setSummary(created);
       setCurrentStep(2);
+      setResultsLoadState('loading');
       const nextResults = await fetchTestRunResults(serviceId, created.test_run_id);
       if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
       setResults(nextResults);
+      setResultsLoadState('loaded');
       message.success('테스트 실행을 생성했습니다.');
     } catch {
       if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
       if (testRunCreated) {
+        setResultsLoadState('error');
         message.error('테스트 실행은 생성되었지만 결과를 불러오지 못했습니다.');
       } else {
         message.error('테스트 실행 생성에 실패했습니다.');
@@ -215,6 +225,7 @@ export default function TestRunsPage() {
     setSelectedHistoryRun(testRun);
     setSummary(testRun);
     setResults([]);
+    setResultsLoadState('not_loaded');
   };
 
   const handleHistoryResultOpen = async () => {
@@ -231,6 +242,7 @@ export default function TestRunsPage() {
       if (loaded) message.success('테스트 실행 결과를 불러왔습니다.');
     } catch {
       if (isCurrentRunRequest(requestGeneration, serviceId)) {
+        setResultsLoadState('error');
         message.error('테스트 실행 결과를 불러오지 못했습니다.');
       }
     } finally {
@@ -494,24 +506,41 @@ export default function TestRunsPage() {
                         diagnosticsLoading={diagnosticsLoading}
                         diagnosticsError={diagnosticsError}
                         results={results}
+                        resultsLoadState={resultsLoadState}
                       />
-                      <ProTable<API.TestRunResult>
-                        rowKey="case_id"
-                        columns={columns}
-                        dataSource={results}
-                        search={false}
-                        pagination={false}
-                        options={{ density: true, fullScreen: false, reload: false, setting: true }}
-                        locale={{
-                          emptyText: (
-                            <Empty
-                              image={Empty.PRESENTED_IMAGE_SIMPLE}
-                              description="조회된 테스트 실행 결과가 없습니다."
-                            />
-                          ),
-                        }}
+                      <section>
+                        <Typography.Title level={5} style={{ marginTop: 0 }}>
+                          상세 결과
+                        </Typography.Title>
+                        <ProTable<API.TestRunResult>
+                          rowKey="case_id"
+                          columns={columns}
+                          dataSource={results}
+                          loading={resultsLoadState === 'loading'}
+                          search={false}
+                          pagination={false}
+                          options={{ density: true, fullScreen: false, reload: false, setting: true }}
+                          locale={{
+                            emptyText: (
+                              <Empty
+                                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                description={
+                                  resultsLoadState === 'error'
+                                    ? '상세 결과를 불러오지 못했습니다.'
+                                    : resultsLoadState === 'not_loaded'
+                                      ? '상세 결과를 아직 불러오지 않았습니다.'
+                                      : '조회된 테스트 실행 결과가 없습니다.'
+                                }
+                              />
+                            ),
+                          }}
+                        />
+                      </section>
+                      <TestRunCatalogStatusPanel
+                        diagnostics={diagnostics}
+                        diagnosticsLoading={diagnosticsLoading}
+                        diagnosticsError={diagnosticsError}
                       />
-                      <TestRunCatalogStatusPanel diagnostics={diagnostics} />
                     </Space>
                   ) : null}
                   <Space wrap>

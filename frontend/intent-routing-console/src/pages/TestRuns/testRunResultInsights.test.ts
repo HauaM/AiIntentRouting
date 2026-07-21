@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildTestRunInsights } from './testRunResultInsights';
+import {
+  buildTestRunInsights,
+  formatDiagnosticIssueRecommendation,
+} from './testRunResultInsights';
 
 const result = (
   overrides: Partial<API.TestRunResult>,
@@ -28,7 +31,7 @@ describe('buildTestRunInsights', () => {
 
     expect(insights.primaryProblem).toBe('기대 Intent와 실제 Intent가 다른 실패가 가장 먼저 보입니다.');
     expect(insights.patterns[0]).toEqual({
-      key: 'it_api_timeout→program_supported_question',
+      key: 'intent_mismatch:it_api_timeout→program_supported_question',
       expected: 'it_api_timeout',
       actual: 'program_supported_question',
       count: 2,
@@ -89,6 +92,77 @@ describe('buildTestRunInsights', () => {
 
     expect(insights.nextActions).toContain(
       '검토 케이스를 확인하고 모호한 질의를 각 Intent 예시에 보강하세요.',
+    );
+  });
+
+  it('keeps result-derived empty copy out of diagnostics until rows are loaded', () => {
+    const notLoadedInsights = buildTestRunInsights([], undefined, 'not_loaded');
+    const loadingInsights = buildTestRunInsights([], undefined, 'loading');
+    const failedInsights = buildTestRunInsights([], undefined, 'error');
+
+    expect(notLoadedInsights.impactBullets).toContain('상세 결과를 아직 불러오지 않았습니다.');
+    expect(loadingInsights.impactBullets).toContain('상세 결과를 불러오는 중입니다.');
+    expect(failedInsights.impactBullets).toContain('상세 결과를 불러오지 못했습니다.');
+    expect(notLoadedInsights.impactBullets).not.toContain('실패 케이스가 없습니다.');
+    expect(loadingInsights.impactBullets).not.toContain('실패 케이스가 없습니다.');
+    expect(failedInsights.impactBullets).not.toContain('실패 케이스가 없습니다.');
+  });
+
+  it('uses decision values for decision mismatches and does not merge pattern kinds', () => {
+    const insights = buildTestRunInsights([
+      result({
+        case_id: 'D001',
+        expected_decision: 'confident',
+        actual_decision: 'risk',
+        expected_intent: 'shared_expected',
+        actual_intent: 'shared_actual',
+        reason: 'actual decision did not match expected decision',
+      }),
+      result({
+        case_id: 'D002',
+        expected_intent: 'shared_expected',
+        actual_intent: 'shared_actual',
+        reason: 'actual intent did not match expected intent',
+      }),
+    ]);
+
+    expect(insights.patterns).toContainEqual({
+      key: 'decision_mismatch:confident→risk',
+      expected: 'confident',
+      actual: 'risk',
+      count: 1,
+      kind: 'decision_mismatch',
+    });
+    expect(insights.patterns).toContainEqual({
+      key: 'intent_mismatch:shared_expected→shared_actual',
+      expected: 'shared_expected',
+      actual: 'shared_actual',
+      count: 1,
+      kind: 'intent_mismatch',
+    });
+  });
+
+  it('puts the primary catalog blocker action before pattern actions', () => {
+    const diagnostics = {
+      primary_issue: {
+        code: 'catalog_version_has_no_ready_vector_index',
+        severity: 'blocker',
+        evidence: {},
+      },
+      issues: [],
+      catalog_version: {} as API.TestRunCatalogVersionDiagnostics,
+      result_counts: {},
+      actual_decision_counts: {},
+    } satisfies API.TestRunDiagnostics;
+    const insights = buildTestRunInsights([
+      result({ actual_decision: 'fallback', actual_intent: null, reason: 'actual decision did not match expected decision' }),
+    ], diagnostics);
+
+    expect(formatDiagnosticIssueRecommendation('catalog_version_has_no_ready_vector_index')).toBe(
+      '선택한 카탈로그 버전의 벡터 인덱스를 준비 상태로 만든 뒤 테스트를 다시 실행하세요.',
+    );
+    expect(insights.nextActions[0]).toBe(
+      '선택한 카탈로그 버전의 벡터 인덱스를 준비 상태로 만든 뒤 테스트를 다시 실행하세요.',
     );
   });
 });
