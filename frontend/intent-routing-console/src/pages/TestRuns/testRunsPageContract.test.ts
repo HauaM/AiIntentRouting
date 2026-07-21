@@ -21,13 +21,21 @@ it('renders Test Runs as a three-step wizard in the required order', () => {
   expect(page).not.toContain('type="inner"');
 });
 
-it('shows previous test runs as a DB-backed combo in step one without nested Cards', () => {
+it('separates new test execution and previous result loading with tabs in step one', () => {
   const page = read('index.tsx');
 
+  expect(page).toContain("const [testRunMode, setTestRunMode] = useState<'new' | 'history'>('new');");
+  expect(page).toContain('const testRunModeTabs = [');
+  expect(page).toContain("key: 'new'");
+  expect(page).toContain("label: '새 테스트 실행'");
+  expect(page).toContain("key: 'history'");
+  expect(page).toContain("label: '기존 결과 불러오기'");
+  expect(page).toContain('<Tabs');
+  expect(page).toContain('items={testRunModeTabs}');
   expect(page).toContain('<TestRunHistorySelect');
   expect(page).toContain('key={session.serviceId}');
-  expect(page).toContain('onSelect={handleHistorySelect}');
-  expect(page).toContain('className="test-run-step-grid"');
+  expect(page).toContain('onSelect={handleHistoryRunSelect}');
+  expect(page).not.toContain('className="test-run-step-grid"');
   expect(page.indexOf('<TestRunHistorySelect')).toBeGreaterThan(
     page.indexOf('currentStep === 0'),
   );
@@ -35,6 +43,19 @@ it('shows previous test runs as a DB-backed combo in step one without nested Car
   expect(page).not.toContain('test_run_id를 입력하세요');
   expect(page).not.toContain('placeholder="tr_..."');
   expect(page).not.toContain('<Card');
+});
+
+it('keeps previous result selection on step one until the operator confirms result review', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain('const [selectedHistoryRun, setSelectedHistoryRun] = useState<API.TestRunListItem>();');
+  expect(page).toContain('const handleHistoryRunSelect = (testRun: API.TestRunListItem) => {');
+  expect(page).toContain('setSelectedHistoryRun(testRun);');
+  expect(page).toContain('const handleHistoryResultOpen = async () => {');
+  expect(page).toContain('if (!selectedHistoryRun) return;');
+  expect(page).toContain('selectedHistoryRun.test_run_id');
+  expect(page).toContain('결과 확인 → Step 3');
+  expect(page).not.toContain('onSelect={handleHistorySelect}');
 });
 
 it('keeps test policy selection in step two and detailed values in the modal', () => {

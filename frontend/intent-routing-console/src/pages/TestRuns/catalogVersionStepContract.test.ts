@@ -11,9 +11,10 @@ describe('CatalogVersionStep contract', () => {
     const source = read('CatalogVersionStep.tsx');
 
     expect(source).toContain('listCatalogVersions(serviceId');
+    expect(source).toContain('fetchCatalogVersion(serviceId');
     expect(source).toContain('CATALOG_VERSION_LIMIT');
-    expect(source).toContain('const defaultVersion = nextVersions.find');
-    expect(source).toContain("version.status === 'active'");
+    expect(source).toContain("status: 'active'");
+    expect(source).toContain('const defaultVersion = nextVersions[0];');
     expect(source).toContain('onChangeRef.current(defaultVersion);');
     expect(source).toContain('htmlFor="test-run-catalog-version-select"');
     expect(source).toContain('id="test-run-catalog-version-select"');
@@ -47,7 +48,7 @@ describe('CatalogVersionStep contract', () => {
   it('keeps old catalog selection available through option metadata and warning state', () => {
     const source = read('CatalogVersionStep.tsx');
 
-    expect(source).toContain('status: undefined');
+    expect(source).toContain("status: 'active'");
     expect(source).toContain('reproducibility_status');
     expect(source).toContain('선택한 Catalog 버전 상태를 확인하세요');
     expect(source).toContain('optionRender');
@@ -56,11 +57,29 @@ describe('CatalogVersionStep contract', () => {
     expect(source).not.toContain('intent_catalog_version"');
   });
 
+  it('shows the selected catalog version immutable intent snapshot as a searchable grid', () => {
+    const source = read('CatalogVersionStep.tsx');
+
+    expect(source).toContain('extractCatalogSnapshotIntents');
+    expect(source).toContain('setSnapshotIntents');
+    expect(source).toContain('선택한 Catalog의 Intent 목록');
+    expect(source).toContain('test-run-catalog-intent-toolbar');
+    expect(source).toContain('placeholder="Intent 검색"');
+    expect(source).toContain('placeholder="전체 상태"');
+    expect(source).toContain('<Table<CatalogSnapshotIntent>');
+    expect(source).toContain("title: 'Intent'");
+    expect(source).toContain("title: 'Route key'");
+    expect(source).toContain("title: '예시 수'");
+    expect(source).toContain("title: 'Status'");
+    expect(source).toContain('filteredSnapshotIntents.length');
+  });
+
   it('uses the catalog-only step in the Test Runs wizard', () => {
     const page = read('index.tsx');
 
     expect(page).toContain('<Steps');
     expect(page).toContain('<CatalogVersionStep');
+    expect(page).toContain('items={testRunModeTabs}');
     expect(page).toContain('key={session.serviceId}');
     expect(page).not.toContain('<ValidationVersionsPanel');
   });

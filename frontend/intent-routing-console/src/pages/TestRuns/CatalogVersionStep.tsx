@@ -1,7 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Descriptions, Select, Space, Tag, Typography } from 'antd';
+import type { TableProps } from 'antd';
+import {
+  Alert,
+  Descriptions,
+  Empty,
+  Input,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
 import { VersionChip } from '@/components/VersionChip';
-import { listCatalogVersions } from '@/services/adminServices';
+import { fetchCatalogVersion, listCatalogVersions } from '@/services/adminServices';
+import {
+  extractCatalogSnapshotIntents,
+  type CatalogSnapshotIntent,
+} from './catalogSnapshot';
 
 type CatalogVersionStepProps = {
   serviceId: string;
@@ -38,9 +54,15 @@ export function CatalogVersionStep({
 }: CatalogVersionStepProps) {
   const [loading, setLoading] = useState(false);
   const [versions, setVersions] = useState<API.CatalogVersionListItem[]>([]);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [snapshotIntents, setSnapshotIntents] = useState<CatalogSnapshotIntent[]>([]);
+  const [snapshotError, setSnapshotError] = useState<string>();
+  const [intentKeyword, setIntentKeyword] = useState('');
+  const [intentStatus, setIntentStatus] = useState<string>();
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
   const versionRequestRef = useRef(0);
+  const snapshotRequestRef = useRef(0);
 
   valueRef.current = value;
   onChangeRef.current = onChange;
@@ -57,6 +79,64 @@ export function CatalogVersionStep({
     ? selectedVersion.status !== 'active' ||
       selectedVersion.reproducibility_status !== 'complete'
     : false;
+  const filteredSnapshotIntents = useMemo(() => {
+    const keyword = intentKeyword.trim().toLowerCase();
+    return snapshotIntents.filter((intent) => {
+      const matchesStatus = !intentStatus || intent.status === intentStatus;
+      const matchesKeyword =
+        !keyword ||
+        [
+          intent.intent_id,
+          intent.display_name,
+          intent.description,
+          intent.route_key,
+          intent.status,
+        ].some((value) => value.toLowerCase().includes(keyword));
+      return matchesStatus && matchesKeyword;
+    });
+  }, [intentKeyword, intentStatus, snapshotIntents]);
+  const intentStatusOptions = useMemo(
+    () =>
+      Array.from(new Set(snapshotIntents.map((intent) => intent.status).filter(Boolean))).map(
+        (status) => ({ label: status, value: status }),
+      ),
+    [snapshotIntents],
+  );
+  const snapshotIntentColumns: TableProps<CatalogSnapshotIntent>['columns'] = [
+    {
+      title: 'Intent',
+      dataIndex: 'intent_id',
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text strong>{row.intent_id}</Typography.Text>
+          <Typography.Text type="secondary">{row.display_name || row.description || '-'}</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: 'Route key',
+      dataIndex: 'route_key',
+      render: (value: string) => (
+        <Tooltip title={value}>
+          <Typography.Text code ellipsis style={{ maxWidth: 320 }}>
+            {value || '-'}
+          </Typography.Text>
+        </Tooltip>
+      ),
+    },
+    {
+      title: '예시 수',
+      width: 144,
+      render: (_, row) =>
+        `포함 ${row.positive_example_count} · 제외 ${row.negative_example_count}`,
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      width: 112,
+      render: (value: string) => <Tag color={value === 'active' ? 'green' : 'default'}>{value || '-'}</Tag>,
+    },
+  ];
 
   const loadVersions = useCallback(async () => {
     const requestId = versionRequestRef.current + 1;
@@ -65,12 +145,12 @@ export function CatalogVersionStep({
     try {
       const nextVersions = await listCatalogVersions(serviceId, {
         limit: CATALOG_VERSION_LIMIT,
-        status: undefined,
+        status: 'active',
       });
       if (versionRequestRef.current !== requestId) return;
       setVersions(nextVersions);
       if (!valueRef.current) {
-        const defaultVersion = nextVersions.find((version) => version.status === 'active') ?? nextVersions[0];
+        const defaultVersion = nextVersions[0];
         onChangeRef.current(defaultVersion);
       }
     } finally {
@@ -85,8 +165,36 @@ export function CatalogVersionStep({
   useEffect(() => {
     return () => {
       versionRequestRef.current += 1;
+      snapshotRequestRef.current += 1;
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedValue) {
+      setSnapshotIntents([]);
+      setSnapshotError(undefined);
+      setSnapshotLoading(false);
+      return;
+    }
+
+    const requestId = snapshotRequestRef.current + 1;
+    snapshotRequestRef.current = requestId;
+    setSnapshotLoading(true);
+    setSnapshotError(undefined);
+    void fetchCatalogVersion(serviceId, selectedValue)
+      .then((catalog) => {
+        if (snapshotRequestRef.current !== requestId) return;
+        setSnapshotIntents(extractCatalogSnapshotIntents(catalog.snapshot));
+      })
+      .catch(() => {
+        if (snapshotRequestRef.current !== requestId) return;
+        setSnapshotIntents([]);
+        setSnapshotError('선택한 Catalog의 Intent snapshot을 불러오지 못했습니다.');
+      })
+      .finally(() => {
+        if (snapshotRequestRef.current === requestId) setSnapshotLoading(false);
+      });
+  }, [selectedValue, serviceId]);
 
   return (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -214,6 +322,56 @@ export function CatalogVersionStep({
           description={`status=${selectedVersion.status}, reproducibility=${selectedVersion.reproducibility_status}`}
         />
       ) : null}
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <div className="test-run-catalog-intent-toolbar">
+          <Space direction="vertical" size={2}>
+            <Typography.Title level={5} style={{ margin: 0 }}>
+              선택한 Catalog의 Intent 목록
+            </Typography.Title>
+            <Typography.Text type="secondary">
+              테스트할 내용을 미리 확인하세요.
+            </Typography.Text>
+          </Space>
+          <Space wrap>
+            <Input
+              allowClear
+              placeholder="Intent 검색"
+              value={intentKeyword}
+              onChange={(event) => setIntentKeyword(event.target.value)}
+              className="test-run-catalog-intent-search"
+            />
+            <Select
+              allowClear
+              placeholder="전체 상태"
+              value={intentStatus}
+              onChange={setIntentStatus}
+              options={intentStatusOptions}
+              className="test-run-catalog-intent-status"
+            />
+            <Typography.Text type="secondary">{filteredSnapshotIntents.length}개</Typography.Text>
+          </Space>
+        </div>
+        {snapshotError ? (
+          <Alert type="warning" showIcon message={snapshotError} />
+        ) : (
+          <Table<CatalogSnapshotIntent>
+            rowKey={(row) => row.intent_id || row.route_key}
+            size="small"
+            loading={snapshotLoading}
+            columns={snapshotIntentColumns}
+            dataSource={filteredSnapshotIntents}
+            pagination={false}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="선택한 Catalog에 표시할 Intent가 없습니다."
+                />
+              ),
+            }}
+          />
+        )}
+      </Space>
     </Space>
   );
 }

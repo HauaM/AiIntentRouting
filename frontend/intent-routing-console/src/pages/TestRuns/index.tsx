@@ -10,6 +10,7 @@ import {
   Input,
   Space,
   Steps,
+  Tabs,
   Tag,
   Typography,
   message,
@@ -59,6 +60,11 @@ const csvTemplate = [
   'tc-002,maybe login maybe password,,clarify,should request clarification',
 ].join('\n');
 
+const testRunModeTabs = [
+  { key: 'new', label: '새 테스트 실행' },
+  { key: 'history', label: '기존 결과 불러오기' },
+];
+
 export default function TestRunsPage() {
   const { session } = useModel('adminSession');
   const [createForm] = Form.useForm<API.TestRunCreateRequest>();
@@ -73,6 +79,8 @@ export default function TestRunsPage() {
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [selectedCatalogVersion, setSelectedCatalogVersion] =
     useState<API.CatalogVersionListItem>();
+  const [testRunMode, setTestRunMode] = useState<'new' | 'history'>('new');
+  const [selectedHistoryRun, setSelectedHistoryRun] = useState<API.TestRunListItem>();
   const serviceIdRef = useRef(session.serviceId);
   const runRequestGenerationRef = useRef(0);
   const ready = isAdminSessionReady(session);
@@ -90,6 +98,8 @@ export default function TestRunsPage() {
     setCsvCases([]);
     setCsvText(csvTemplate);
     setCsvImportOpen(false);
+    setTestRunMode('new');
+    setSelectedHistoryRun(undefined);
     setCurrentStep(0);
     createForm.resetFields();
   }, [createForm, session.serviceId]);
@@ -161,12 +171,23 @@ export default function TestRunsPage() {
     }
   };
 
-  const handleHistorySelect = async (testRunId: string) => {
+  const handleHistoryRunSelect = (testRun: API.TestRunListItem) => {
+    setSelectedHistoryRun(testRun);
+    setSummary(testRun);
+    setResults([]);
+  };
+
+  const handleHistoryResultOpen = async () => {
+    if (!selectedHistoryRun) return;
     const serviceId = session.serviceId;
     const requestGeneration = beginRunRequest();
     setLoading(true);
     try {
-      const loaded = await loadRun(testRunId, serviceId, requestGeneration);
+      const loaded = await loadRun(
+        selectedHistoryRun.test_run_id,
+        serviceId,
+        requestGeneration,
+      );
       if (loaded) message.success('테스트 실행 결과를 불러왔습니다.');
     } catch {
       if (isCurrentRunRequest(requestGeneration, serviceId)) {
@@ -265,29 +286,36 @@ export default function TestRunsPage() {
                     ]}
                   />
                   {currentStep === 0 ? (
-                    <div className="test-run-step-grid">
-                      <CatalogVersionStep
-                        key={session.serviceId}
-                        serviceId={session.serviceId}
-                        value={selectedCatalogVersion}
-                        onChange={(nextCatalogVersion) => {
-                          setSelectedCatalogVersion(nextCatalogVersion);
-                          setCatalogVersion(nextCatalogVersion?.intent_catalog_version);
-                          createForm.setFieldsValue({
-                            intent_catalog_version: nextCatalogVersion?.intent_catalog_version,
-                          });
-                        }}
-                      />
-                      <div aria-label="기존 테스트 실행 결과">
+                    <Tabs
+                      activeKey={testRunMode}
+                      onChange={(key) => setTestRunMode(key as 'new' | 'history')}
+                      items={testRunModeTabs}
+                    />
+                  ) : null}
+                  {currentStep === 0 && testRunMode === 'new' ? (
+                    <CatalogVersionStep
+                      key={session.serviceId}
+                      serviceId={session.serviceId}
+                      value={selectedCatalogVersion}
+                      onChange={(nextCatalogVersion) => {
+                        setSelectedCatalogVersion(nextCatalogVersion);
+                        setCatalogVersion(nextCatalogVersion?.intent_catalog_version);
+                        createForm.setFieldsValue({
+                          intent_catalog_version: nextCatalogVersion?.intent_catalog_version,
+                        });
+                      }}
+                    />
+                  ) : null}
+                  {currentStep === 0 && testRunMode === 'history' ? (
+                    <div aria-label="기존 테스트 실행 결과">
                         <TestRunHistorySelect
                           key={session.serviceId}
                           serviceId={session.serviceId}
-                          value={summary?.test_run_id}
+                          value={selectedHistoryRun?.test_run_id}
                           disabled={!canRun}
                           loading={loading}
-                          onSelect={handleHistorySelect}
+                          onSelect={handleHistoryRunSelect}
                         />
-                      </div>
                     </div>
                   ) : null}
                   {currentStep === 1 ? (
@@ -446,13 +474,23 @@ export default function TestRunsPage() {
                     >
                       이전
                     </Button>
-                    {currentStep < 1 ? (
+                    {currentStep < 1 && testRunMode === 'new' ? (
                       <Button
                         type="primary"
                         disabled={!catalogVersion}
                         onClick={() => setCurrentStep(1)}
                       >
-                        다음
+                        다음 → 테스트 설정
+                      </Button>
+                    ) : null}
+                    {currentStep < 1 && testRunMode === 'history' ? (
+                      <Button
+                        type="primary"
+                        loading={loading}
+                        disabled={!selectedHistoryRun}
+                        onClick={handleHistoryResultOpen}
+                      >
+                        결과 확인 → Step 3
                       </Button>
                     ) : null}
                     {currentStep === 1 ? (
