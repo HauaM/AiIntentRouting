@@ -56,6 +56,7 @@ import {
   deleteDepartment,
   deleteOrganizationUser,
   fetchRuntimeMetrics,
+  revealServiceApiKey,
   revokeServiceRole,
   revokeServiceApiKey,
   rollbackRelease,
@@ -329,6 +330,7 @@ describe('admin service Phase 1 write flow requests', () => {
       app_id: 'app-web',
       key_id: 'key/a',
     });
+    await revealServiceApiKey('svc/admin', 'key/a');
 
     expect(requestMock).toHaveBeenNthCalledWith(
       1,
@@ -362,6 +364,11 @@ describe('admin service Phase 1 write flow requests', () => {
           key_id: 'key/a',
         },
       },
+    );
+    expect(requestMock).toHaveBeenNthCalledWith(
+      5,
+      '/services/svc%2Fadmin/api-keys/key%2Fa:reveal',
+      { method: 'POST' },
     );
     const calls = requestMock.mock.calls as unknown as Array<
       [string, Record<string, unknown>]

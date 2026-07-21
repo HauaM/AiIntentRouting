@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -14,6 +14,11 @@ const apiKeysPageSource = () =>
 
 const globalStyleSource = () =>
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../global.less'), 'utf8');
+
+const runtimeServicesPath = () =>
+  join(dirname(fileURLToPath(import.meta.url)), '../../services/runtimeServices.ts');
+
+const runtimeServicesSource = () => readFileSync(runtimeServicesPath(), 'utf8');
 
 const guidance: API.RuntimeSetupGuidance = {
   service_id: 'svc-a',
@@ -74,16 +79,22 @@ describe('runtime setup guidance helpers', () => {
     expect(runtimeSetupContainsRawSecret(guidance, 'irt_secret_once')).toBe(false);
   });
 
-  it('renders the one-time API key secret in a close-to-clear modal, not a page alert', () => {
+  it('limits a created API secret to the creation modal and clears it when the modal closes', () => {
     const source = apiKeysPageSource();
 
     expect(source).toContain('<Modal');
-    expect(source).toContain('open={Boolean(createdKey)}');
+    expect(source).toContain('open={createdKeyModalOpen}');
     expect(source).toContain('onCancel={clearCreatedKey}');
     expect(source).toContain('setCreatedKey(undefined)');
-    expect(source).toContain('이 secret은 이 모달을 닫으면 다시 볼 수 없습니다.');
+    expect(source).toContain('Secret 지우기');
     expect(source).toContain('API Secret Key');
     expect(source).toContain('Routing Key ID');
+    expect(source).toContain('이 모달을 닫으면 화면에 남은 secret은 지워집니다.');
+    expect(source).toContain('Secret 보기/복사를 눌러 감사 로그를 남긴 뒤 다시 복사');
+    expect(source).not.toContain('oneTimeApiSecretForSelectedKey');
+    expect(source).not.toContain('RuntimeSetupOneTimeSecret');
+    expect(source).toContain('runtimeSetupHeaderRows(runtimeSetup)');
+    expect(source.match(/createdKey\.response\.api_key/g)).toHaveLength(1);
     expect(source).not.toContain('key_id {createdKey.key_id}');
     expect(source).not.toContain('message="새 API key secret"');
   });
@@ -112,20 +123,65 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toContain('selectApiKey(row)');
   });
 
-  it('renders setup templates without a browser live test or raw secret input', () => {
+  it('renders an explicit runtime live test without auto-filling the one-time secret', () => {
     const source = apiKeysPageSource();
 
     expect(source).not.toContain('Dify variable mapping');
     expect(source).not.toContain('dify_variable_mapping.map');
-    expect(source).not.toContain('라이브 테스트');
-    expect(source).not.toContain('runRuntimeIntentRoute');
-    expect(source).not.toContain('runtimeServices');
-    expect(source).not.toContain('/v1/intent-route');
-    expect(source).not.toContain('window.fetch');
-    expect(source).not.toContain('headers: {');
-    expect(source).not.toContain('api_secret');
-    expect(source).not.toContain('Input.Password');
-    expect(source).not.toContain('fetch(');
+    expect(source).toContain('라이브 테스트');
+    expect(source).toContain('runRuntimeIntentRoute');
+    expect(source).toContain('runtimeServices');
+    expect(source).toContain('Input.Password');
+    expect(source).toContain("setLiveTestSecret('')");
+    expect(source).toContain('liveTestSecret.trim()');
+    expect(source).not.toContain('setLiveTestSecret(createdKey');
+    expect(source).not.toContain('setLiveTestSecret(oneTimeApiSecretForSelectedKey');
+    expect(source).toContain('const apiSecret = liveTestSecret.trim()');
+  });
+
+  it('copies Authorization through the audited reveal endpoint instead of page-scoped secret replay', () => {
+    const source = apiKeysPageSource();
+
+    expect(source).toContain('revealServiceApiKey');
+    expect(source).toContain('handleCopyHeader');
+    expect(source).toContain("row.name.toLowerCase() !== 'authorization'");
+    expect(source).toContain('response.authorization_header');
+    expect(source).toContain('navigator.clipboard.writeText');
+    expect(source).toContain('Secret 보기/복사');
+    expect(source).toContain('selectedApiKeyIdRef');
+    expect(source).toContain('selectedApiKeyIdRef.current !== keyId');
+    expect(source).not.toContain('oneTimeApiSecretForSelectedKey');
+  });
+
+  it('rejects stale live-test completions after the selected scope changes', () => {
+    const source = apiKeysPageSource();
+
+    expect(source).toContain('liveTestScopeTokenRef');
+    expect(source).toContain('invalidateLiveTestScope');
+    expect(source).toMatch(/const liveTestScopeToken = liveTestScopeTokenRef\.current/);
+    expect(source).toMatch(/liveTestScopeTokenRef\.current\s*===\s*liveTestScopeToken/);
+    expect(source).toContain('if (!isLiveTestScopeCurrent()) return;');
+    expect(source).toContain('if (isLiveTestScopeCurrent()) setLiveTestRunning(false);');
+  });
+
+  it('runs the live test as a runtime call without Admin UI credentials', () => {
+    const path = runtimeServicesPath();
+
+    expect(existsSync(path)).toBe(true);
+    if (!existsSync(path)) return;
+
+    const source = runtimeServicesSource();
+
+    expect(source).toContain('fetch(runtimeEndpoint');
+    expect(source).toContain("credentials: 'omit'");
+    expect(source).toContain('Authorization: `Bearer ${apiSecret.trim()}`');
+    expect(source).toContain("'X-Key-Id': keyId");
+    expect(source).toContain("'X-App-Id': appId");
+    expect(source).toContain("'X-Service-Id': serviceId");
+    expect(source).toContain("'X-Request-Id': requestId");
+    expect(source).toContain('Content-Type');
+    expect(source).not.toContain('@umijs/max');
+    expect(source).not.toContain('withCredentials');
   });
 
   it('supports unlimited expiry from the create form without hiding the finite-day option', () => {
@@ -171,6 +227,16 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toContain('const environment = selectedEnvironment');
     expect(source).toMatch(/selectedEnvironmentRef\.current\s*===\s*environment/);
     expect(source).toMatch(/apiKeyPageRequestIdRef\.current\s*===\s*requestId/);
+  });
+
+  it('explains empty API key scope selectors until the selected environment has an active release', () => {
+    const source = apiKeysPageSource();
+
+    expect(source).toContain('const hasActiveRelease = Boolean(runtimeSetup?.active_release);');
+    expect(source).toContain('선택한 환경에 active Release가 없습니다.');
+    expect(source).toContain('Release를 활성화한 뒤 API key를 발급하세요.');
+    expect(source).toContain('disabled={!hasActiveRelease || loadingKeys}');
+    expect(source).toContain('loading={loadingKeys}');
   });
 
   it('wraps runtime setup checklist items inside a bounded container', () => {

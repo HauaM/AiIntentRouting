@@ -191,6 +191,11 @@ Keep using `FutureFeatureNotice` for unsupported capabilities:
 - Runtime setup guidance: `GET /services/{sid}/runtime-setup`. This guidance
   may render `selected_key` metadata and Dify/client templates, but must never
   return or replay the raw `api_key` secret.
+- Runtime live test: API Keys may call `/v1/intent-route` only as an explicit
+  runtime workflow after the operator manually enters the selected key's API
+  Secret. The UI must clear live-test input when the selected Service,
+  environment, or key changes, must use the selected key metadata only, and
+  must not store, auto-fill, recover, or echo the Secret.
 - Raw query approval workflow:
   `POST /services/{sid}/runtime-logs/{trace_id}/raw-query-view-requests`,
   `POST /services/{sid}/raw-query-view-requests/{request_id}:approve`,

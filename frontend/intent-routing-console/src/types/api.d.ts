@@ -652,6 +652,16 @@ declare namespace API {
     created_at: string;
   };
 
+  type ApiKeyRevealResponse = {
+    key_id: string;
+    service_id: string;
+    environment: string;
+    app_id: string;
+    api_key: string;
+    authorization_header: string;
+    api_key_revealed: boolean;
+  };
+
   type RuntimeSetupActiveRelease = {
     release_version: string;
     policy_version: string;

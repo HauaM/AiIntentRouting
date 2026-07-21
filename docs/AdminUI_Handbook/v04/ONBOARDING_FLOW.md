@@ -126,8 +126,12 @@ Expected UX:
 - Creation displays and copies the initial raw secret; later copying uses the audited reveal endpoint.
 - Keep API key inventory free of raw secrets.
 - Provide runtime setup guidance for Dify or another client system.
-- Use checklist and docs guidance for runtime validation. Do not run a browser
-  sample call with the one-time secret.
+- Use checklist/docs guidance plus the explicit runtime live-test workflow for
+  runtime validation.
+- The live test may call `/v1/intent-route` only after the operator manually enters an API Secret for the selected key.
+- The live-test input must be cleared on selected-Service or selected-key
+  changes, and the API Secret must not be stored, auto-filled, recovered, or
+  echoed in failures.
 - Show masked Runtime Logs and append-only Audit Logs after runtime usage.
 
 Backend contract note:

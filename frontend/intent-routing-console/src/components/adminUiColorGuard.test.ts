@@ -89,6 +89,7 @@ describe('Admin UI color guard', () => {
       '.ant-select-dropdown .ant-select-item-option-selected',
     );
     expect(globalLess).toContain('.admin-page-content .ant-alert-error');
+    expect(globalLess).toContain('.ant-modal-root .ant-alert-error');
     expect(globalLess).toContain('.admin-page-content .ant-steps .ant-steps-item-finish');
   });
 });

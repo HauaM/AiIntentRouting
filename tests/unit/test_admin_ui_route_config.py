@@ -32,3 +32,12 @@ def test_admin_ui_routes_keep_phase0_read_screens() -> None:
         "{ path: '/audit-logs', component: './AuditLogs' }",
     ):
         assert route in text
+
+
+def test_admin_ui_dev_proxy_forwards_admin_and_runtime_api_paths() -> None:
+    text = CONFIG.read_text(encoding="utf-8")
+
+    assert "'/admin/v1':" in text
+    runtime_proxy = text.split("'/v1':", maxsplit=1)[1].split("},", maxsplit=1)[0]
+    assert "target: adminApiProxy" in runtime_proxy
+    assert "changeOrigin: true" in runtime_proxy

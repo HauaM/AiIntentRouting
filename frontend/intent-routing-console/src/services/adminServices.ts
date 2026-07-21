@@ -731,6 +731,15 @@ export async function revokeServiceApiKey(serviceId: string, keyId: string) {
   );
 }
 
+export async function revealServiceApiKey(serviceId: string, keyId: string) {
+  return request<API.ApiKeyRevealResponse>(
+    servicePath(serviceId, `/api-keys/${encodeURIComponent(keyId)}:reveal`),
+    {
+      method: 'POST',
+    },
+  );
+}
+
 export async function fetchRuntimeSetupGuidance(
   serviceId: string,
   params: {
