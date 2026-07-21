@@ -493,6 +493,14 @@ def test_service_owner_can_reveal_encrypted_service_api_key_secret(
         )
         assert created_body["api_key"] not in audit_state
         assert body["authorization_header"] not in audit_state
+        assert created_body["key_fingerprint"] not in audit_state
+        assert audit_log.after_state == {
+            "key_id": created_body["key_id"],
+            "service_id": service_id,
+            "environment": "dev",
+            "app_id": "dify-helpdesk",
+            "status": "active",
+        }
     finally:
         _purge_rows(db_session, service_ids=[service_id])
         if service_owner_session_fixture is not None:
@@ -545,13 +553,17 @@ def test_service_api_key_reveal_rejects_revoked_expired_and_legacy_keys(
             f"/admin/v1/services/{service_id}/api-keys/{legacy_key.key_id}:reveal"
         )
         assert unavailable.status_code == 409
-        assert "encrypted secret" in unavailable.json()["error"]["message"].lower()
+        assert unavailable.json()["error"]["message"] == (
+            "API key secret is unavailable; rotate or reissue this legacy key."
+        )
 
         expired = client.post(
             f"/admin/v1/services/{service_id}/api-keys/{expired_key.key_id}:reveal"
         )
         assert expired.status_code == 400
-        assert "expired" in expired.json()["error"]["message"].lower()
+        assert expired.json()["error"]["message"] == (
+            "Expired API key secrets cannot be revealed."
+        )
 
         legacy_key.status = "revoked"
         legacy_key.revoked_at = datetime.now(UTC)
@@ -560,7 +572,9 @@ def test_service_api_key_reveal_rejects_revoked_expired_and_legacy_keys(
             f"/admin/v1/services/{service_id}/api-keys/{legacy_key.key_id}:reveal"
         )
         assert revoked.status_code == 400
-        assert "revoked" in revoked.json()["error"]["message"].lower()
+        assert revoked.json()["error"]["message"] == (
+            "Revoked API key secrets cannot be revealed."
+        )
     finally:
         _purge_rows(db_session, service_ids=[service_id])
         _purge_session_fixture(db_session, session_fixture)

@@ -1,42 +1,86 @@
-# Task 4 Report: Frontend Route, Services, And Helpers
+# Task 4 Report: Backend Create And Reveal Endpoint
 
-## 변경 파일
+Status: DONE_WITH_CONCERNS
 
-- `frontend/intent-routing-console/config/config.ts`
-  - `/permission-management` 라우트를 추가했습니다.
-- `frontend/intent-routing-console/src/components/AdminShell.tsx`
-  - 좌측 메뉴에 `권한관리` 항목과 `SafetyOutlined` 아이콘을 추가했습니다.
-- `frontend/intent-routing-console/src/types/api.d.ts`
-  - Permission Management Admin 사용자 요약, Service 역할 요약, 위험 finding, query param 타입을 추가했습니다.
-  - `API.AuditLog.service_id`를 백엔드 응답에 맞춰 `string | null`로 수정했습니다.
-- `frontend/intent-routing-console/src/services/adminServices.ts`
-  - `listPermissionAdminUsers`
-  - `listPermissionServiceRoles`
-  - `listPermissionAuditLogs`
-  - `listPermissionRiskFindings`
-- `frontend/intent-routing-console/src/services/adminServices.test.ts`
-  - Permission Management 서비스 함수가 GET과 query params만 사용하는지 검증하는 테스트를 추가했습니다.
-- `frontend/intent-routing-console/src/pages/PermissionManagement/permissionManagement.ts`
-  - 탭 키, 접근 가드, 위험도 색상, 역할 라벨, row key helper를 추가했습니다.
-- `frontend/intent-routing-console/src/pages/PermissionManagement/permissionManagement.test.ts`
-  - 접근 가드, 위험도 색상, 역할 라벨, 탭 키, row key helper 테스트를 추가했습니다.
+Implemented encrypted API key secret persistence on create and the service-scoped
+audited reveal endpoint. Reveal is restricted to `system_admin` and selected-Service
+`service_owner`, with the specified missing, cross-service, revoked, expired, and
+legacy-secret responses.
 
-## 테스트 결과
+## Files Changed
 
-- RED 확인:
-  - `pnpm vitest run src/services/adminServices.test.ts src/pages/PermissionManagement/permissionManagement.test.ts`
-  - 기대한 실패 확인: `listPermissionAdminUsers is not a function`, `./permissionManagement` 모듈 부재.
-- GREEN 확인:
-  - `pnpm vitest run src/services/adminServices.test.ts src/pages/PermissionManagement/permissionManagement.test.ts`
-  - 결과: 2개 파일, 22개 테스트 통과.
-- Typecheck:
-  - `pnpm run typecheck`
-  - 결과: 실패.
-  - 원인: Umi route setup 단계에서 `./PermissionManagement` 페이지 컴포넌트를 찾지 못함. 이번 Task 4는 실제 UI 페이지 구현(Task 5)을 제외하므로 `index.tsx`는 만들지 않았습니다.
-- 금지 패턴 검색:
-  - 지정된 금지 구현 패턴 검색 결과 매치 없음.
+- `src/intent_routing/api/admin.py`
+- `tests/unit/test_admin_api_key_helpers.py`
+- `tests/integration/test_admin_runtime_setup_api.py`
 
-## 남은 리스크
+## Verification
 
-- `/permission-management` 라우트는 추가되었지만 실제 페이지 컴포넌트는 Task 5 범위라 아직 없습니다.
-- Task 5에서 `frontend/intent-routing-console/src/pages/PermissionManagement/index.tsx`가 추가되기 전까지 `pnpm run typecheck`는 Umi route resolve 단계에서 실패합니다.
+Commands run:
+
+```bash
+UV_CACHE_DIR=/private/tmp/ai-intent-routing-uv-cache uv run pytest tests/unit/test_admin_api_key_helpers.py tests/integration/test_admin_runtime_setup_api.py -q -rs
+UV_CACHE_DIR=/private/tmp/ai-intent-routing-uv-cache uv run pytest tests/unit/test_admin_api_key_helpers.py tests/unit/test_api_key_secret_encryption.py tests/integration/test_admin_runtime_setup_api.py tests/integration/test_admin_api_key_inventory_flow.py -q -rs
+git diff --check -- src/intent_routing/api/admin.py tests/unit/test_admin_api_key_helpers.py tests/integration/test_admin_runtime_setup_api.py tests/integration/test_admin_api_key_inventory_flow.py
+UV_CACHE_DIR=/private/tmp/ai-intent-routing-uv-cache uv run ruff check src/intent_routing/api/admin.py tests/unit/test_admin_api_key_helpers.py tests/integration/test_admin_runtime_setup_api.py tests/integration/test_admin_api_key_inventory_flow.py
+```
+
+Results:
+
+```text
+First focused test run: 9 passed, 9 skipped, 1 warning in 0.45s
+Full focused test run: 10 passed, 12 skipped, 1 warning in 0.40s
+Ruff: All checks passed!
+git diff --check: passed with no output
+```
+
+Exact skip output from the full focused test run:
+
+```text
+SKIPPED [1] tests/integration/test_admin_runtime_setup_api.py:355: DB integration tests require TEST_DATABASE_URL or explicit DATABASE_URL.
+SKIPPED [1] tests/integration/test_admin_runtime_setup_api.py:448: DB integration tests require TEST_DATABASE_URL or explicit DATABASE_URL.
+SKIPPED [1] tests/integration/test_admin_runtime_setup_api.py:503: DB integration tests require TEST_DATABASE_URL or explicit DATABASE_URL.
+SKIPPED [1] tests/integration/test_admin_runtime_setup_api.py:569: DB integration tests require TEST_DATABASE_URL or explicit DATABASE_URL.
+SKIPPED [1] tests/integration/test_admin_runtime_setup_api.py:592: DB integration tests require TEST_DATABASE_URL or explicit DATABASE_URL.
+SKIPPED [1] tests/integration/test_admin_runtime_setup_api.py:632: DB integration tests require TEST_DATABASE_URL or explicit DATABASE_URL.
+SKIPPED [1] tests/integration/test_admin_runtime_setup_api.py:672: DB integration tests require TEST_DATABASE_URL or explicit DATABASE_URL.
+SKIPPED [1] tests/integration/test_admin_runtime_setup_api.py:760: DB integration tests require TEST_DATABASE_URL or explicit DATABASE_URL.
+SKIPPED [1] tests/integration/test_admin_runtime_setup_api.py:803: DB integration tests require TEST_DATABASE_URL or explicit DATABASE_URL.
+SKIPPED [1] tests/integration/test_admin_api_key_inventory_flow.py:118: DB integration tests require TEST_DATABASE_URL or explicit DATABASE_URL.
+SKIPPED [1] tests/integration/test_admin_api_key_inventory_flow.py:165: DB integration tests require TEST_DATABASE_URL or explicit DATABASE_URL.
+SKIPPED [1] tests/integration/test_admin_api_key_inventory_flow.py:186: DB integration tests require TEST_DATABASE_URL or explicit DATABASE_URL.
+```
+
+## Self-Review Notes
+
+- Confirmed create-time encryption stores the encrypted envelope while preserving
+  the hash and fingerprint used for authentication.
+- Confirmed reveal requires API-key-management access, checks service ownership
+  before decryption, rejects revoked, expired, and legacy keys, and emits the
+  redacted `api_key.secret_revealed` audit event.
+- Database-backed endpoint paths remain unverified locally because the database
+  URL required by those integration fixtures was not configured.
+
+## Review Fixes: 2026-07-22
+
+Addressed the Task 4 review findings:
+
+- The legacy/no-encrypted-material response now exactly matches the documented
+  contract in both the primary guard and the defensive endpoint branch:
+  `API key secret is unavailable; rotate or reissue this legacy key.`
+- Reveal audits now use a dedicated metadata-only payload. It excludes the API
+  key, authorization header, fingerprint, hash, and all secret-derived fields.
+- Unit and integration coverage now asserts exact revoked, expired, and legacy
+  reveal messages. The reveal integration test also asserts the persisted audit
+  payload contains only safe metadata.
+
+Verification run:
+
+```bash
+UV_CACHE_DIR=/private/tmp/ai-intent-routing-uv-cache uv run pytest tests/unit/test_admin_api_key_helpers.py tests/unit/test_api_key_secret_encryption.py tests/integration/test_admin_runtime_setup_api.py tests/integration/test_admin_api_key_inventory_flow.py -q -rs
+UV_CACHE_DIR=/private/tmp/ai-intent-routing-uv-cache uv run ruff check src/intent_routing/api/admin.py tests/unit/test_admin_api_key_helpers.py tests/integration/test_admin_runtime_setup_api.py tests/integration/test_admin_api_key_inventory_flow.py
+git diff --check -- src/intent_routing/api/admin.py tests/unit/test_admin_api_key_helpers.py tests/integration/test_admin_runtime_setup_api.py tests/integration/test_admin_api_key_inventory_flow.py
+```
+
+Results: `12 passed, 12 skipped, 1 warning`. The 12 skipped tests are
+database-backed integration cases that require `TEST_DATABASE_URL` or an
+explicit `DATABASE_URL`. Ruff passed and `git diff --check` produced no output.

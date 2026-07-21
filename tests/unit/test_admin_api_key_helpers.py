@@ -169,8 +169,26 @@ def test_revoke_api_key_record_writes_single_audit_event_for_active_key() -> Non
     assert repository.audit_events[0]["event_type"] == "api_key.revoked"
 
 
+def test_api_key_reveal_audit_state_omits_secret_derived_fields() -> None:
+    key = _api_key()
+
+    state = admin._api_key_reveal_audit_state(key)
+
+    assert state == {
+        "key_id": key.key_id,
+        "service_id": key.service_id,
+        "environment": key.environment,
+        "app_id": key.app_id,
+        "status": key.status,
+    }
+    assert "api_key" not in state
+    assert "authorization_header" not in state
+    assert "key_fingerprint" not in state
+    assert "key_hash" not in state
+
+
 @pytest.mark.parametrize(
-    ("api_key", "status_code", "message_fragment"),
+    ("api_key", "status_code", "message"),
     [
         (
             _api_key(
@@ -178,20 +196,29 @@ def test_revoke_api_key_record_writes_single_audit_event_for_active_key() -> Non
                 revoked_at=datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
             ),
             400,
-            "revoked",
+            "Revoked API key secrets cannot be revealed.",
         ),
         (
             _api_key(expires_at=datetime(2026, 7, 21, 0, 59, tzinfo=UTC)),
             400,
-            "expired",
+            "Expired API key secrets cannot be revealed.",
         ),
-        (_api_key(), 409, "encrypted secret"),
+        (
+            _api_key(status="expired", expires_at=None),
+            400,
+            "Expired API key secrets cannot be revealed.",
+        ),
+        (
+            _api_key(),
+            409,
+            "API key secret is unavailable; rotate or reissue this legacy key.",
+        ),
     ],
 )
 def test_raise_if_api_key_not_revealable_rejects_non_recoverable_keys(
     api_key: models.ApiKey,
     status_code: int,
-    message_fragment: str,
+    message: str,
 ) -> None:
     with pytest.raises(HTTPException) as exc_info:
         admin._raise_if_api_key_not_revealable(
@@ -200,4 +227,4 @@ def test_raise_if_api_key_not_revealable_rejects_non_recoverable_keys(
         )
 
     assert exc_info.value.status_code == status_code
-    assert message_fragment in exc_info.value.detail["error"]["message"].lower()
+    assert exc_info.value.detail["error"]["message"] == message

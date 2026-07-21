@@ -2076,6 +2076,16 @@ def _api_key_after_state(api_key: ApiKey) -> dict[str, object]:
     }
 
 
+def _api_key_reveal_audit_state(api_key: ApiKey) -> dict[str, object]:
+    return {
+        "key_id": api_key.key_id,
+        "service_id": api_key.service_id,
+        "environment": api_key.environment,
+        "app_id": api_key.app_id,
+        "status": api_key.status,
+    }
+
+
 def _runtime_setup_environment(environment: str | None) -> str:
     target_environment = environment or "dev"
     if target_environment not in SUPPORTED_RUNTIME_ENVIRONMENTS:
@@ -2206,12 +2216,13 @@ def _create_api_key_for_service(
 def _raise_if_api_key_not_revealable(api_key: ApiKey, now: datetime) -> None:
     if api_key.status == ApiKeyStatus.revoked.value or api_key.revoked_at is not None:
         _raise_bad_request("Revoked API key secrets cannot be revealed.")
+    if api_key.status == ApiKeyStatus.expired.value:
+        _raise_bad_request("Expired API key secrets cannot be revealed.")
     if api_key.expires_at is not None and api_key.expires_at <= now:
         _raise_bad_request("Expired API key secrets cannot be revealed.")
     if encrypted_api_key_secret(api_key) is None:
         _raise_conflict(
-            "API key encrypted secret material is unavailable. "
-            "Rotate or reissue this key."
+            "API key secret is unavailable; rotate or reissue this legacy key."
         )
 
 
@@ -4310,8 +4321,7 @@ def reveal_service_api_key(
     encrypted = encrypted_api_key_secret(api_key)
     if encrypted is None:
         _raise_conflict(
-            "API key encrypted secret material is unavailable. "
-            "Rotate or reissue this key."
+            "API key secret is unavailable; rotate or reissue this legacy key."
         )
     api_key_secret = load_api_key_secret_keyring().decrypt_text(encrypted)
     repository.insert_audit_log(
@@ -4324,7 +4334,7 @@ def reveal_service_api_key(
         view_reason="runtime_setup_authorization_copy",
         source_ip=None,
         before_state=None,
-        after_state=_api_key_after_state(api_key),
+        after_state=_api_key_reveal_audit_state(api_key),
         created_at=now,
     )
     session.commit()
