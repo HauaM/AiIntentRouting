@@ -63,6 +63,7 @@ The same focused command passed after the documentation updates:
 
 - Pre-existing unrelated changes remain in the worktree and were intentionally not staged or modified.
 - The docs contract tests verify documentation only; backend, frontend, migration, and runtime implementation behavior remain outside Task 1 and unverified here.
+- Controller note: commit `36e1608 feat: add api key secret kek configuration` was created early and belongs to Task 2, not Task 1. Task 1 review packages after that point must be path-limited to the Task 1 docs/tests listed in this report.
 
 ## Re-review Fix Report
 

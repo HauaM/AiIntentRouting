@@ -1,32 +1,21 @@
-# Task 5 Report: Permission Management Page UI
+# Task 5 Report: Frontend Reveal Service And API Keys UI
 
-## Summary
+## Status
 
-- Built `PermissionManagementPage` at `/permission-management` with `AdminShell title="권한관리"` and a server-derived `session.globalRoles` guard for `system_admin`.
-- Added five ProTable-based tabs: `Admin 계정`, `전역 권한`, `서비스 권한`, `권한 변경 이력`, and `운영 점검`.
-- Wired Admin account status/global role actions to `patchManagedAdminUser` through `ConfirmActionButton`; the last active login-eligible `system_admin` state is disabled in the UI.
-- Wired Service role grant/revoke to `searchAdminUsers`, `grantServiceRole`, `revokeServiceRole`, and `listPermissionServiceRoles`; grant and revoke use confirm.
-- Added Permission Management audit/risk views without rendering before/after raw JSON.
-- Added the OrganizationDirectory Admin Access shortcut to `/permission-management?admin_user_id=...` while preserving the existing modal controls.
+DONE
 
-## Changed Files
+## Implementation
 
-- Created: `frontend/intent-routing-console/src/pages/PermissionManagement/index.tsx`
-- Modified: `frontend/intent-routing-console/src/pages/PermissionManagement/permissionManagement.ts`
-- Modified: `frontend/intent-routing-console/src/pages/PermissionManagement/permissionManagement.test.ts`
-- Modified: `frontend/intent-routing-console/src/pages/OrganizationDirectory/index.tsx`
-- Modified: `frontend/intent-routing-console/src/pages/OrganizationDirectory/directoryForms.ts`
-- Modified: `frontend/intent-routing-console/src/pages/OrganizationDirectory/directoryForms.test.ts`
-- Review fix: `frontend/intent-routing-console/src/pages/PermissionManagement/index.tsx` now wraps Service role grant in `ConfirmActionButton`, with a regression test in `permissionManagement.test.ts`.
+- The service-scoped reveal client posts to `/services/{serviceId}/api-keys/{keyId}:reveal` through Umi `request` without trusted browser headers.
+- The API Keys Authorization template row displays `Bearer {{intent_routing_api_key}}`; its `Secret 보기/복사` action reveals through the audited endpoint and copies `authorization_header`.
+- The created-key modal is controlled directly by `createdKey`, so closing it clears the initial creation secret without retaining page-scoped modal or secret replay state.
 
 ## Verification
 
-- `cd frontend/intent-routing-console && pnpm vitest run src/pages/PermissionManagement/permissionManagement.test.ts src/pages/OrganizationDirectory/directoryForms.test.ts` passed.
-- `cd frontend/intent-routing-console && pnpm run typecheck` passed.
-- `git diff --check` passed.
-- Prohibited pattern search found no matches in changed frontend files.
+- `./node_modules/.bin/vitest run src/services/adminServices.test.ts src/pages/ApiKeys/runtimeSetup.test.ts src/pages/ApiKeys/apiKeyCreateFlow.test.ts src/components/intentRouteMultiSelectContract.test.ts` passed: 4 files, 46 tests.
+- `./node_modules/.bin/tsc --noEmit` passed.
+- Scoped diff check and Admin UI prohibited-pattern scans passed; the only trusted-header matches are the intentional runtime guidance filtering fixture.
 
-## Notes
+## Scope
 
-- Did not read, modify, stage, or commit `.env`.
-- Did not stage `docs/superpowers/plans/2026-07-14-central-iam-permission-management-console.md`.
+Only Task 5 API Keys source and test files were changed in this completion commit. Pre-existing unrelated dirty files were preserved.

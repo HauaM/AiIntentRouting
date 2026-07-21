@@ -227,4 +227,8 @@ def test_raise_if_api_key_not_revealable_rejects_non_recoverable_keys(
         )
 
     assert exc_info.value.status_code == status_code
-    assert exc_info.value.detail["error"]["message"] == message
+    detail = exc_info.value.detail
+    assert isinstance(detail, dict)
+    error = detail["error"]
+    assert isinstance(error, dict)
+    assert error["message"] == message

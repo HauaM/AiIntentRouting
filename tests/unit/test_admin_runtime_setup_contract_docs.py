@@ -39,7 +39,8 @@ def test_c3_runtime_setup_adr_records_accepted_decisions() -> None:
         "X-App-Id",
         "X-Service-Id",
         "X-Request-Id",
-        "authorized\n`system_admin` and selected-Service `service_owner` users may explicitly\nreveal/copy",
+        "authorized\n`system_admin` and selected-Service `service_owner` users may "
+        "explicitly\nreveal/copy",
         "source=active_release",
         "`/api-keys` remains the selected-Service runtime setup workspace",
         "explicit Admin UI\nlive-test workflow",
@@ -83,7 +84,8 @@ def test_c3_runtime_setup_contract_doc_defines_admin_api_and_runtime_guidance() 
         "  selected Service's authorized `service_owner`.",
         "`service_developer`, `service_operator`, and `auditor` cannot create or "
         "revoke\n  API keys.",
-        "Unauthorized roles or out-of-scope actors cannot create or revoke selected-Service API keys.",
+        "Unauthorized roles or out-of-scope actors cannot create or revoke "
+        "selected-Service API keys.",
         "Reveal access denied for unauthorized roles or an out-of-scope actor",
         "Legacy key without encrypted secret material",
         "409 Conflict",
