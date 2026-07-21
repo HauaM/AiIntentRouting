@@ -22,11 +22,13 @@ import { canEditCatalog, isAdminSessionReady } from '@/models/adminSession';
 import {
   createTestRun,
   fetchTestRun,
+  fetchTestRunDiagnostics,
   fetchTestRunResults,
 } from '@/services/adminServices';
 import { CatalogVersionStep } from './CatalogVersionStep';
 import { CsvCasesGrid } from './CsvCasesGrid';
 import { CsvImportModal } from './CsvImportModal';
+import { TestRunCatalogStatusPanel } from './TestRunCatalogStatusPanel';
 import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
 import { TestRunHistorySelect } from './TestRunHistorySelect';
 import { TestPolicyPanel } from './TestPolicyPanel';
@@ -64,6 +66,9 @@ export default function TestRunsPage() {
   const [createForm] = Form.useForm<API.TestRunCreateRequest>();
   const [summary, setSummary] = useState<API.TestRunSummary>();
   const [results, setResults] = useState<API.TestRunResult[]>([]);
+  const [diagnostics, setDiagnostics] = useState<API.TestRunDiagnostics | null>(null);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [policy, setPolicy] = useState<API.PolicyVersion>();
   const [catalogVersion, setCatalogVersion] = useState<string>();
@@ -86,6 +91,9 @@ export default function TestRunsPage() {
     setLoading(false);
     setSummary(undefined);
     setResults([]);
+    setDiagnostics(null);
+    setDiagnosticsLoading(false);
+    setDiagnosticsError(null);
     setPolicy(undefined);
     setCatalogVersion(undefined);
     setSelectedCatalogVersion(undefined);
@@ -97,6 +105,37 @@ export default function TestRunsPage() {
     setCurrentStep(0);
     createForm.resetFields();
   }, [createForm, session.serviceId]);
+
+  useEffect(() => {
+    const testRunId = summary?.test_run_id;
+    if (currentStep !== 2 || !testRunId) {
+      setDiagnostics(null);
+      setDiagnosticsLoading(false);
+      setDiagnosticsError(null);
+      return;
+    }
+
+    let alive = true;
+    setDiagnostics(null);
+    setDiagnosticsError(null);
+    setDiagnosticsLoading(true);
+    fetchTestRunDiagnostics(session.serviceId, testRunId)
+      .then((nextDiagnostics) => {
+        if (alive) setDiagnostics(nextDiagnostics);
+      })
+      .catch(() => {
+        if (alive) {
+          setDiagnosticsError('진단 결과를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        }
+      })
+      .finally(() => {
+        if (alive) setDiagnosticsLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [currentStep, session.serviceId, summary?.test_run_id]);
 
   const beginRunRequest = () => {
     runRequestGenerationRef.current += 1;
@@ -442,8 +481,11 @@ export default function TestRunsPage() {
                         />
                       )}
                       <TestRunDiagnosticsPanel
-                        serviceId={session.serviceId}
                         testRunId={summary?.test_run_id}
+                        diagnostics={diagnostics}
+                        diagnosticsLoading={diagnosticsLoading}
+                        diagnosticsError={diagnosticsError}
+                        results={results}
                       />
                       <ProTable<API.TestRunResult>
                         rowKey="case_id"
@@ -461,6 +503,7 @@ export default function TestRunsPage() {
                           ),
                         }}
                       />
+                      <TestRunCatalogStatusPanel diagnostics={diagnostics} />
                     </Space>
                   ) : null}
                   <Space wrap>

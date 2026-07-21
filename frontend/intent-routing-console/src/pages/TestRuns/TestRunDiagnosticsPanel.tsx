@@ -1,153 +1,112 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Descriptions, Empty, Spin, Space, Typography } from 'antd';
+import { useMemo } from 'react';
+import { Alert, Card, Empty, List, Spin, Space, Typography } from 'antd';
 import { StatusTag } from '@/components/StatusTag';
-import { fetchTestRunDiagnostics } from '@/services/adminServices';
+import { formatIssueTitle } from './testRunResultCopy';
+import { buildTestRunInsights } from './testRunResultInsights';
 
 type TestRunDiagnosticsPanelProps = {
-  serviceId: string;
   testRunId?: string;
-};
-
-const issueCopy: Record<string, string> = {
-  catalog_version_not_active: '선택한 Catalog 버전이 활성 상태가 아닙니다.',
-  catalog_version_not_reproducible: '선택한 Catalog 버전의 재현성 상태가 완전하지 않습니다.',
-  catalog_version_has_no_intents: '선택한 Catalog 버전에 Intent가 없습니다.',
-  catalog_version_has_no_examples: '선택한 Catalog 버전에 예시 데이터가 없습니다.',
-  catalog_version_has_no_ready_vector_index: '선택한 Catalog 버전에 준비된 vector index가 없습니다.',
-  catalog_version_has_no_embeddings: '선택한 Catalog 버전에 활성 embedding이 없습니다.',
-  test_run_vector_index_not_ready: 'Test Run이 사용한 vector index가 현재 준비 상태와 일치하지 않습니다.',
-  risk_case_failed: 'Risk 테스트 케이스가 실패했습니다.',
-  fallback_failures_dominant: '실패한 케이스 중 fallback 결과가 많습니다.',
-  intent_mismatch_exists: 'Decision은 맞았지만 Intent가 다른 실패가 있습니다.',
-  pass_rate_below_gate: 'Pass rate가 release gate 기준보다 낮습니다.',
-  review_rate_above_guidance: 'Review 비율이 권장 기준보다 높습니다.',
+  diagnostics?: API.TestRunDiagnostics | null;
+  diagnosticsLoading?: boolean;
+  diagnosticsError?: string | null;
+  results?: API.TestRunResult[];
 };
 
 export function TestRunDiagnosticsPanel({
-  serviceId,
   testRunId,
+  diagnostics,
+  diagnosticsLoading = false,
+  diagnosticsError,
+  results,
 }: TestRunDiagnosticsPanelProps) {
-  const [loading, setLoading] = useState(false);
-  const [diagnostics, setDiagnostics] = useState<API.TestRunDiagnostics>();
-  const [error, setError] = useState<string>();
-
-  useEffect(() => {
-    if (!testRunId) {
-      setDiagnostics(undefined);
-      setError(undefined);
-      setLoading(false);
-      return;
-    }
-    let alive = true;
-    setDiagnostics(undefined);
-    setError(undefined);
-    setLoading(true);
-    fetchTestRunDiagnostics(serviceId, testRunId)
-      .then((nextDiagnostics) => {
-        if (alive) setDiagnostics(nextDiagnostics);
-      })
-      .catch(() => {
-        if (alive) {
-          setError('진단 결과를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
-        }
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [serviceId, testRunId]);
-
-  const primaryIssue = diagnostics?.primary_issue;
-  const catalog = diagnostics?.catalog_version;
-  const primaryCopy = useMemo(
-    () =>
-      primaryIssue
-        ? issueCopy[primaryIssue.code] ?? primaryIssue.code
-        : '진단 가능한 주요 이슈가 없습니다.',
-    [primaryIssue],
+  const insights = useMemo(
+    () => buildTestRunInsights(results ?? [], diagnostics ?? undefined),
+    [diagnostics, results],
   );
+  const primaryIssue = diagnostics?.primary_issue;
 
   if (!testRunId) {
-    return (
-      <section>
-        <Typography.Title level={5} style={{ marginTop: 0 }}>
-          진단
-        </Typography.Title>
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="조회된 Test Run이 없습니다." />
-      </section>
-    );
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="조회된 Test Run이 없습니다." />;
   }
 
   return (
-    <section>
-      <Typography.Title level={5} style={{ marginTop: 0 }}>
-        진단
-      </Typography.Title>
-      <Spin spinning={loading}>
-        {diagnostics ? (
-          <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <Alert
-              type={primaryIssue?.severity === 'blocker' ? 'error' : 'info'}
-              showIcon
-              message={primaryCopy}
-              description={
-                primaryIssue
-                  ? (
-                    <>
-                      이슈 코드: <Typography.Text code>{primaryIssue.code}</Typography.Text>
-                    </>
-                  )
-                  : '백엔드 진단에서 주요 이슈를 찾지 못했습니다.'
-              }
-            />
-            {catalog ? (
-              <Descriptions bordered size="small" column={{ xs: 1, md: 2, xl: 3 }}>
-                <Descriptions.Item label="Catalog 버전">
-                  <Typography.Text code>{catalog.intent_catalog_version}</Typography.Text>
-                </Descriptions.Item>
-                <Descriptions.Item label="상태">{catalog.status}</Descriptions.Item>
-                <Descriptions.Item label="재현성">
-                  {catalog.reproducibility_status}
-                </Descriptions.Item>
-                <Descriptions.Item label="Intent 수">{catalog.intent_count}</Descriptions.Item>
-                <Descriptions.Item label="예시 수">{catalog.example_count}</Descriptions.Item>
-                <Descriptions.Item label="Embedding 수">{catalog.embedding_count}</Descriptions.Item>
-                <Descriptions.Item label="준비된 vector index">
-                  {catalog.ready_vector_index_version ?? '없음'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Test Run vector index">
-                  {catalog.test_run_vector_index_version ?? '없음'}
-                </Descriptions.Item>
-              </Descriptions>
-            ) : null}
-            <Space wrap>
-              {diagnostics.issues.map((issue) => (
-                <StatusTag
-                  key={issue.code}
-                  status={issue.severity}
-                  label={`${issue.severity}: ${issue.code}`}
-                />
-              ))}
-            </Space>
-            <Descriptions bordered size="small" column={{ xs: 1, md: 2 }}>
-              <Descriptions.Item label="결과 집계">
-                <Typography.Text code>{JSON.stringify(diagnostics.result_counts)}</Typography.Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="실제 결정 집계">
-                <Typography.Text code>
-                  {JSON.stringify(diagnostics.actual_decision_counts)}
+    <Spin spinning={diagnosticsLoading}>
+      {diagnostics ? (
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Alert
+            type={primaryIssue?.severity === 'blocker' ? 'error' : 'info'}
+            showIcon
+            message="가장 먼저 확인할 문제"
+            description={
+              <Space direction="vertical" size={6}>
+                <Typography.Text strong>
+                  {primaryIssue ? formatIssueTitle(primaryIssue.code) : insights.primaryProblem}
                 </Typography.Text>
-              </Descriptions.Item>
-            </Descriptions>
+                {insights.impactBullets.map((item) => (
+                  <Typography.Text key={item}>{item}</Typography.Text>
+                ))}
+              </Space>
+            }
+          />
+
+          <Card size="small" title="실패 패턴 요약">
+            {insights.patterns.length ? (
+              <List
+                size="small"
+                dataSource={insights.patterns}
+                renderItem={(pattern) => (
+                  <List.Item>
+                    <Space>
+                      <Typography.Text code>{pattern.expected}</Typography.Text>
+                      <Typography.Text>→</Typography.Text>
+                      <Typography.Text code>{pattern.actual}</Typography.Text>
+                      <StatusTag status={pattern.kind} label={`${pattern.count}건`} />
+                    </Space>
+                  </List.Item>
+                )}
+              />
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="집계된 실패 패턴이 없습니다." />
+            )}
+          </Card>
+
+          <Card size="small" title="다음 조치">
+            {insights.nextActions.length ? (
+              <List
+                size="small"
+                dataSource={insights.nextActions}
+                renderItem={(action, index) => (
+                  <List.Item>
+                    <Typography.Text>{index + 1}. {action}</Typography.Text>
+                  </List.Item>
+                )}
+              />
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="추가 권장 조치가 없습니다." />
+            )}
+          </Card>
+
+          {/* Includes program_supported_question이 구체 Intent를 과도하게 흡수하는지 점검하는 action. */}
+          <Space wrap>
+            {diagnostics.issues.map((issue) => (
+              <StatusTag
+                key={issue.code}
+                status={issue.severity}
+                label={formatIssueTitle(issue.code)}
+              />
+            ))}
           </Space>
-        ) : error ? (
-          <Alert type="error" showIcon message="진단 결과를 불러오지 못했습니다." description={error} />
-        ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="조회된 진단 결과가 없습니다." />
-        )}
-      </Spin>
-    </section>
+        </Space>
+      ) : diagnosticsError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="진단 결과를 불러오지 못했습니다."
+          description={diagnosticsError}
+        />
+      ) : (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="조회된 진단 결과가 없습니다." />
+      )}
+    </Spin>
   );
 }

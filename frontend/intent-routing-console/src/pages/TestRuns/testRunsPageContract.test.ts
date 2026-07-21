@@ -167,6 +167,31 @@ it('wires diagnostics to the selected test run in the results step', () => {
   const page = read('index.tsx');
 
   expect(page).toContain('<TestRunDiagnosticsPanel');
-  expect(page).toContain('serviceId={session.serviceId}');
   expect(page).toContain('testRunId={summary?.test_run_id}');
+  expect(page).toContain('diagnostics={diagnostics}');
+  expect(page).toContain('diagnosticsLoading={diagnosticsLoading}');
+  expect(page).toContain('diagnosticsError={diagnosticsError}');
+  expect(page).toContain('results={results}');
+});
+
+it('loads and resets diagnostics in page state for the selected test run', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain('fetchTestRunDiagnostics');
+  expect(page).toContain('const [diagnostics, setDiagnostics] = useState<API.TestRunDiagnostics | null>(null);');
+  expect(page).toContain('const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);');
+  expect(page).toContain('const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);');
+  expect(page).toContain("setDiagnosticsError('진단 결과를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');");
+});
+
+it('renders catalog and vector status after the detailed results table', () => {
+  const source = read('index.tsx');
+
+  const diagnosticsIndex = source.indexOf('<TestRunDiagnosticsPanel');
+  const tableIndex = source.indexOf('<ProTable<API.TestRunResult>');
+  const catalogStatusIndex = source.indexOf('<TestRunCatalogStatusPanel');
+
+  expect(diagnosticsIndex).toBeGreaterThan(-1);
+  expect(tableIndex).toBeGreaterThan(diagnosticsIndex);
+  expect(catalogStatusIndex).toBeGreaterThan(tableIndex);
 });
