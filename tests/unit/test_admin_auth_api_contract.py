@@ -253,14 +253,13 @@ def test_c2_membership_mutation_session_wins_over_trusted_headers(
 @pytest.mark.parametrize(
     ("role", "expected_service_roles"),
     [
-        ("service_owner", ("service_owner",)),
         ("service_developer", ("service_developer",)),
         ("service_operator", ("service_operator",)),
         ("auditor", ("auditor",)),
         (None, ()),
     ],
 )
-def test_c2_membership_mutations_reject_non_system_admin_session(
+def test_c2_membership_mutations_reject_non_owner_session(
     monkeypatch: pytest.MonkeyPatch,
     role: str | None,
     expected_service_roles: tuple[str, ...],
@@ -295,6 +294,51 @@ def test_c2_membership_mutations_reject_non_system_admin_session(
     assert grant_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
     assert revoke_response.status_code == 403
     assert revoke_response.json()["error"]["code"] == "SERVICE_SCOPE_DENIED"
+
+
+def test_c2_membership_mutations_allow_service_owner_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app()
+    assigned_at = datetime(2026, 7, 10, 1, 2, 3, tzinfo=UTC)
+    session_context = _service_role_session_context("service_owner")
+    repository = _FakeMembershipRepository(
+        users=[
+            SimpleNamespace(
+                user_id="user-a",
+                email="developer-c2@example.com",
+                display_name="Developer C2",
+                status="active",
+            )
+        ],
+        service=SimpleNamespace(service_id="svc-a"),
+        member_roles=[],
+    )
+    fake_session = _FakeSession(repository.calls)
+
+    app.dependency_overrides[require_admin_session_context] = lambda: session_context
+    app.dependency_overrides[get_admin_session] = lambda: fake_session
+    monkeypatch.setattr(admin_module, "IntentRoutingRepository", lambda _session: repository)
+    monkeypatch.setattr(
+        admin_module,
+        "datetime",
+        SimpleNamespace(now=lambda _timezone: assigned_at),
+    )
+
+    client = TestClient(app)
+
+    grant_response = client.post(
+        "/admin/v1/services/svc-a/members/user-a/roles",
+        json={"role": "service_developer"},
+    )
+    revoke_response = client.delete(
+        "/admin/v1/services/svc-a/members/user-a/roles/service_developer",
+    )
+
+    assert grant_response.status_code == 200
+    assert grant_response.json()["assigned_by"] == "session-service_owner"
+    assert revoke_response.status_code == 200
+    assert revoke_response.json()["revoked_by"] == "session-service_owner"
 
 
 def test_c2_membership_api_success_flow_uses_repository_and_omits_secrets(
@@ -796,7 +840,6 @@ def test_me_services_system_admin_response_uses_session_context(
                 SimpleNamespace(
                     service_id="svc-a",
                     display_name="Service A",
-                    environment="test",
                     status="active",
                 )
             ]
@@ -829,7 +872,6 @@ def test_me_services_system_admin_response_uses_session_context(
         {
             "service_id": "svc-a",
             "display_name": "Service A",
-            "environment": "test",
             "status": "active",
             "roles": ["system_admin"],
         }
@@ -853,7 +895,6 @@ def test_me_services_reads_session_context_service_roles_per_request(
                 SimpleNamespace(
                     service_id="svc-a",
                     display_name="Service A",
-                    environment="test",
                     status="active",
                 )
             ]
@@ -890,7 +931,6 @@ def test_me_services_reads_session_context_service_roles_per_request(
         {
             "service_id": "svc-a",
             "display_name": "Service A",
-            "environment": "test",
             "status": "active",
             "roles": ["service_developer"],
         }

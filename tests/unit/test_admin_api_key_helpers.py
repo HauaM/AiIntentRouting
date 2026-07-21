@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -8,6 +9,11 @@ from pydantic import ValidationError
 
 from intent_routing.api import admin
 from intent_routing.db import models
+
+ApiKeyCreateRequestFactory = Callable[
+    ...,
+    admin.ApiKeyCreateRequest | admin.ServiceApiKeyCreateRequest,
+]
 
 
 class FakeApiKeyRepository:
@@ -97,7 +103,7 @@ def test_api_key_create_request_and_response_allow_unlimited_expiry() -> None:
 
 
 @pytest.mark.parametrize(
-    "request_type, values",
+    "request_factory, values",
     [
         (
             admin.ApiKeyCreateRequest,
@@ -110,13 +116,13 @@ def test_api_key_create_request_and_response_allow_unlimited_expiry() -> None:
     ],
 )
 def test_api_key_create_requests_normalize_app_id_and_reject_blank_values(
-    request_type: type[admin.ApiKeyCreateRequest | admin.ServiceApiKeyCreateRequest],
-    values: dict[str, str],
+    request_factory: ApiKeyCreateRequestFactory,
+    values: dict[str, object],
 ) -> None:
-    assert request_type(**values).app_id == "checkout-web"
+    assert request_factory(**values).app_id == "checkout-web"
 
     with pytest.raises(ValidationError):
-        request_type(**{**values, "app_id": " \t "})
+        request_factory(**{**values, "app_id": " \t "})
 
 
 def test_revoke_api_key_record_is_idempotent_for_already_revoked_key() -> None:

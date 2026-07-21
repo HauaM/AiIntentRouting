@@ -1,11 +1,13 @@
 from types import SimpleNamespace
+from typing import cast
 
+from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.versions.catalogs import build_catalog_version_diff
 
 
 class FakeCatalogVersionRepository:
     def __init__(self) -> None:
-        self.versions = {
+        self.versions: dict[str, SimpleNamespace] = {
             "cat-v1": SimpleNamespace(
                 intent_catalog_version="cat-v1",
                 snapshot={
@@ -54,14 +56,18 @@ class FakeCatalogVersionRepository:
             ),
         }
 
-    def get_catalog_version(self, service_id: str, intent_catalog_version: str):
+    def get_catalog_version(
+        self,
+        service_id: str,
+        intent_catalog_version: str,
+    ) -> SimpleNamespace | None:
         assert service_id == "svc-test"
         return self.versions.get(intent_catalog_version)
 
 
 def test_catalog_version_diff_examples_include_intent_context_and_text() -> None:
     diff = build_catalog_version_diff(
-        FakeCatalogVersionRepository(),
+        cast(IntentRoutingRepository, FakeCatalogVersionRepository()),
         service_id="svc-test",
         intent_catalog_version="cat-v2",
         compare_to="cat-v1",
