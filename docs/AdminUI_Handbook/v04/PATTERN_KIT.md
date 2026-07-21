@@ -175,6 +175,9 @@ Keep using `FutureFeatureNotice` for unsupported capabilities:
 - API key secret copy uses `Secret 보기/복사` and the audited reveal endpoint
   `POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal`.
 - Persisted API keys use encrypted secret material; raw secret is copied only through the audited reveal endpoint and never through inventory or guidance.
+- API key live tests first perform audited reveal, then use the secret only for
+  the single runtime request; the secret is not displayed or persisted in UI
+  state.
 - Intent delete: `DELETE /services/{sid}/intents/{intent_id}`.
 - Example update: `PATCH /services/{sid}/examples/{example_id}`.
 - Example approve: `PATCH /services/{sid}/examples/{example_id}:approve`.

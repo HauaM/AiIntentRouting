@@ -140,6 +140,7 @@ Backend contract note:
 - Secret reveal uses
   `POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal` and writes
   `api_key.secret_revealed` audit evidence.
+- 라이브 테스트는 audited reveal을 먼저 수행한 뒤 runtime 호출에만 secret을 사용한다.
 - Runtime setup guidance comes from
   `GET /admin/v1/services/{service_id}/runtime-setup` and returns
   `selected_key` metadata only, never the raw secret.

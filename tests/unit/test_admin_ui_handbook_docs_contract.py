@@ -207,6 +207,7 @@ def test_admin_ui_v04_records_audited_api_key_secret_reveal() -> None:
         "권한 있는 `system_admin` 또는 선택한 Service의 `service_owner`만",
         "감사되는 명시적 reveal/copy 동작으로 secret을 확인할 수 있다.",
         "생성 응답에 raw API key secret이 표시되고, 이후에는 명시적 audited",
+        "라이브 테스트는 audited reveal을 먼저 수행한 뒤 runtime 호출에만 secret을 사용한다.",
     ):
         assert phrase in text
 

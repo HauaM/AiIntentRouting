@@ -19,9 +19,10 @@ otherwise.
 - Runtime clients do not use the Admin UI session cookie. They call
   `/v1/intent-route` with Bearer API-key authentication.
 - Admin UI live testing may call `/v1/intent-route` only after the operator
-  manually enters an API Secret for the selected key. The UI must not
-  auto-fill, persist, or automatically replay raw secret material into UI
-  state.
+  selects an active key and explicitly clicks the live-test action. The UI
+  obtains the API Secret through the audited reveal endpoint, uses it for that
+  runtime request only, and must not display or persist raw secret material in
+  UI state.
 - API key secret material is never stored in plaintext. Authorized operators may
   explicitly reveal encrypted secret material through the audited reveal
   endpoint documented below.
@@ -389,12 +390,15 @@ Rules:
 
 - The operator selects a key from inventory. The UI uses only selected key
   metadata from inventory/runtime setup guidance.
-- The operator must manually input the API Secret for the request.
+- The UI obtains the API Secret through the audited reveal endpoint and uses it
+  only as a transient runtime request argument.
 - The UI must not store the API Secret in local storage, inventory state, audit
   state, runtime setup guidance, or exported evidence. These state and
   evidence surfaces must omit or redact `api_key`, `authorization_header`, and
   any response field derived from the raw secret.
 - The UI must clear live-test input on selected-Service or selected-key change.
+- Each live test reveal writes `api_key.secret_revealed` audit evidence before
+  the runtime call.
 - The live test creates normal runtime log evidence with masked query behavior.
 - Failures must display runtime error code/message without echoing the secret.
 
