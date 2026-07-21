@@ -60,7 +60,6 @@ def service_id(client: TestClient) -> str:
         json={
             "service_id": value,
             "display_name": "Catalog version test service",
-            "environment": "test",
             "max_input_tokens": 256,
         },
     )
@@ -345,7 +344,7 @@ def test_catalog_version_deactivation_is_blocked_when_release_references_it(
          "gate_passed": True, "created_by": "test", "created_at": now}, []
     )
     repository.create_release(
-        release_version=f"release-{uuid4().hex}", service_id=service_id, environment="test",
+        release_version=f"release-{uuid4().hex}", service_id=service_id, environment="dev",
         policy_version=policy_version, intent_catalog_version=catalog_version,
         model_version=created.json()["model_version"],
         vector_index_version=created.json()["vector_index_version"],
