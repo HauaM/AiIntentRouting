@@ -83,7 +83,7 @@ describe('runtime setup guidance helpers', () => {
     const source = apiKeysPageSource();
 
     expect(source).toContain('<Modal');
-    expect(source).toContain('open={createdKeyModalOpen}');
+    expect(source).toContain('open={Boolean(createdKey)}');
     expect(source).toContain('onCancel={clearCreatedKey}');
     expect(source).toContain('setCreatedKey(undefined)');
     expect(source).toContain('Secret 지우기');
@@ -93,6 +93,7 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toContain('Secret 보기/복사를 눌러 감사 로그를 남긴 뒤 다시 복사');
     expect(source).not.toContain('oneTimeApiSecretForSelectedKey');
     expect(source).not.toContain('RuntimeSetupOneTimeSecret');
+    expect(source).not.toContain('createdKeyModalOpen');
     expect(source).toContain('runtimeSetupHeaderRows(runtimeSetup)');
     expect(source.match(/createdKey\.response\.api_key/g)).toHaveLength(1);
     expect(source).not.toContain('key_id {createdKey.key_id}');

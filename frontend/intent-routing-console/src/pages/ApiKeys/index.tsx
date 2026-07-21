@@ -99,7 +99,6 @@ export default function ApiKeysPage() {
   const [createForm] = Form.useForm<ApiKeyFormValues>();
   const [activeTabKey, setActiveTabKey] = useState('new');
   const [createdKey, setCreatedKey] = useState<CreatedApiKey<API.ApiKeyCreateResponse>>();
-  const [createdKeyModalOpen, setCreatedKeyModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [keys, setKeys] = useState<API.ApiKey[]>([]);
@@ -209,7 +208,6 @@ export default function ApiKeysPage() {
     serviceIdRef.current = session.serviceId;
     selectedEnvironmentRef.current = selectedEnvironment;
     setCreatedKey(undefined);
-    setCreatedKeyModalOpen(false);
     setKeys([]);
     setSelectedApiKey(undefined);
     setScopeCandidates([]);
@@ -247,7 +245,6 @@ export default function ApiKeysPage() {
           serviceIdRef.current === serviceId && selectedEnvironmentRef.current === environment,
         onCreated: (created) => {
           setCreatedKey(created);
-          setCreatedKeyModalOpen(true);
           setActiveTabKey('existing');
           message.success('API key가 생성되었습니다. 페이지를 떠나기 전에 secret을 복사해 주세요.');
         },
@@ -270,7 +267,6 @@ export default function ApiKeysPage() {
       message.success('API key가 폐기되었습니다.');
       if (createdKey?.response.key_id === keyId) {
         setCreatedKey(undefined);
-        setCreatedKeyModalOpen(false);
       }
       await loadApiKeyPageData();
     } finally {
@@ -288,7 +284,6 @@ export default function ApiKeysPage() {
 
   const clearCreatedKey = () => {
     setCreatedKey(undefined);
-    setCreatedKeyModalOpen(false);
   };
 
   const copyText = async (text: string) => {
@@ -496,7 +491,6 @@ export default function ApiKeysPage() {
                 invalidateLiveTestScope();
                 setSelectedEnvironment(value);
                 setCreatedKey(undefined);
-                setCreatedKeyModalOpen(false);
                 setKeys([]);
                 setScopeCandidates([]);
                 setRuntimeSetup(undefined);
@@ -896,7 +890,7 @@ export default function ApiKeysPage() {
                 items={apiKeyTabs}
               />
               <Modal
-                open={createdKeyModalOpen}
+                open={Boolean(createdKey)}
                 title="새 API Key 발급 완료"
                 onCancel={clearCreatedKey}
                 footer={[
