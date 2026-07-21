@@ -116,6 +116,14 @@ it('normalizes uppercase backend result values before rendering semantic StatusT
   expect(page).toContain('resultLabel[normalizedResult] ?? row.result');
 });
 
+it('localizes detailed result reasons while retaining raw reasons only as tooltip detail', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain("import { formatResultReason } from './testRunResultCopy';");
+  expect(page).toContain('title={row.reason}');
+  expect(page).toContain('{formatResultReason(row.reason)}');
+});
+
 it('localizes test run summary state and gate labels', () => {
   const page = read('index.tsx');
 

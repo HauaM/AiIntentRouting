@@ -58,4 +58,23 @@ describe('TestRunDiagnosticsPanel contract after actionable diagnostics redesign
     expect(source).toContain('program_supported_question이 구체 Intent를 과도하게 흡수');
     expect(source).not.toContain('label={`${issue.severity}: ${issue.code}`}');
   });
+
+  it('maps failure patterns to supported semantic status tones', () => {
+    const source = read('TestRunDiagnosticsPanel.tsx');
+
+    expect(source).toContain("intent_mismatch: 'warning'");
+    expect(source).toContain("decision_mismatch: 'fail'");
+    expect(source).toContain("fallback: 'fallback'");
+    expect(source).toContain('status={patternStatus[pattern.kind]}');
+    expect(source).not.toContain('status={pattern.kind}');
+  });
+
+  it('shows actual decision counts with localized decision labels', () => {
+    const source = read('TestRunDiagnosticsPanel.tsx');
+
+    expect(source).toContain('actual_decision_counts');
+    expect(source).toContain('formatDecisionLabel');
+    expect(source).toContain('실제 결정 분포');
+    expect(source).toContain('Object.entries(diagnostics.actual_decision_counts)');
+  });
 });

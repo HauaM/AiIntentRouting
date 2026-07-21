@@ -32,6 +32,7 @@ import { TestRunCatalogStatusPanel } from './TestRunCatalogStatusPanel';
 import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
 import { TestRunHistorySelect } from './TestRunHistorySelect';
 import { TestPolicyPanel } from './TestPolicyPanel';
+import { formatResultReason } from './testRunResultCopy';
 import {
   buildCsvText,
   downloadCsvFile,
@@ -300,6 +301,7 @@ export default function TestRunsPage() {
       dataIndex: 'reason',
       search: false,
       ellipsis: true,
+      render: (_, row) => <span title={row.reason}>{formatResultReason(row.reason)}</span>,
     },
   ];
 

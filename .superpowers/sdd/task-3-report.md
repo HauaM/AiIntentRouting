@@ -67,3 +67,40 @@ Results: 12 TestRuns test files and 62 tests passed; `max setup && tsc --noEmit`
 ## Concerns
 
 - Verification is contract/unit/type focused. No authenticated browser session was available for a live visual check of the Test Runs workflow, so runtime layout with production diagnostics data remains unverified.
+
+## Review Fixes
+
+- Localized the detailed results-table reason with `formatResultReason`; the raw backend reason is now retained only in the cell `title` tooltip.
+- Mapped failure patterns to supported `StatusTag` tones: Intent mismatch to warning, decision mismatch to fail, and fallback to fallback.
+- Rendered Catalog lifecycle and reproducibility as Korean `StatusTag` values rather than plain backend status text.
+- Changed unknown diagnostic issue copy to the Korean-only generic `해석되지 않은 진단 이슈입니다.` so raw codes are not visible as primary labels.
+- Restored `actual_decision_counts` as the `실제 결정 분포` card with localized decision labels and counts.
+
+## Review Fix TDD Evidence
+
+### RED
+
+Updated the four covering contract/copy suites first, then ran:
+
+```bash
+npm run test:unit -- testRunResultCopy.test.ts
+npm run test:unit -- testRunDiagnosticsPanelContract.test.ts
+npm run test:unit -- testRunCatalogStatusPanelContract.test.ts
+npm run test:unit -- testRunsPageContract.test.ts
+```
+
+Observed the intended failures: unknown issue copy included the raw code; the diagnostics panel lacked pattern-tone mapping and actual-decision distribution; the catalog panel lacked semantic tags; and the page lacked localized reason rendering with raw tooltip detail.
+
+### GREEN
+
+Reran the same suites after the fixes:
+
+```bash
+npm run test:unit -- testRunResultCopy.test.ts
+npm run test:unit -- testRunDiagnosticsPanelContract.test.ts
+npm run test:unit -- testRunCatalogStatusPanelContract.test.ts
+npm run test:unit -- testRunsPageContract.test.ts
+npm run typecheck
+```
+
+Results: 7/7, 7/7, 2/2, and 17/17 tests passed; `max setup && tsc --noEmit` exited 0.

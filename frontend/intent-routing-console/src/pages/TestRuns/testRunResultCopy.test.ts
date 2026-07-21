@@ -83,6 +83,11 @@ describe('testRunResultCopy', () => {
     );
   });
 
+  it('keeps unknown diagnostic issue codes out of visible copy', () => {
+    expect(formatIssueTitle('future_backend_issue')).toBe('해석되지 않은 진단 이슈입니다.');
+    expect(formatIssueTitle('future_backend_issue')).not.toContain('future_backend_issue');
+  });
+
   it('renders null intent values consistently', () => {
     expect(formatIntentLabel('it_api_timeout')).toBe('it_api_timeout');
     expect(formatIntentLabel(null)).toBe('인텐트 없음');

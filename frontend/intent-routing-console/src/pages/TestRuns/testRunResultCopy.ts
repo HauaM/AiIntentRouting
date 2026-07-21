@@ -45,7 +45,7 @@ export function formatResultReason(reason?: string | null) {
 }
 
 export function formatIssueTitle(code: string) {
-  return issueTitleCopy[code] ?? `해석되지 않은 진단 코드: ${code}`;
+  return issueTitleCopy[code] ?? '해석되지 않은 진단 이슈입니다.';
 }
 
 export function formatBlockReason(reason: string) {

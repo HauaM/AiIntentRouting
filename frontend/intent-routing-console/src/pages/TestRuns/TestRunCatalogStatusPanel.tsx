@@ -1,4 +1,22 @@
 import { Card, Descriptions, Empty, Typography } from 'antd';
+import { StatusTag } from '@/components/StatusTag';
+
+const catalogStatusTone = (status: string) => {
+  if (status === 'active') return 'active';
+  if (status === 'inactive') return 'inactive';
+  return 'warning';
+};
+
+const catalogStatusLabel = (status: string) => {
+  if (status === 'active') return '활성';
+  if (status === 'inactive') return '비활성';
+  return '상태 확인 필요';
+};
+
+const reproducibilityTone = (status: string) => (status === 'complete' ? 'pass' : 'warning');
+
+const reproducibilityLabel = (status: string) =>
+  status === 'complete' ? '완전' : '확인 필요';
 
 type TestRunCatalogStatusPanelProps = {
   diagnostics?: API.TestRunDiagnostics | null;
@@ -14,8 +32,18 @@ export function TestRunCatalogStatusPanel({ diagnostics }: TestRunCatalogStatusP
           <Descriptions.Item label="Catalog 버전">
             <Typography.Text code>{catalog.intent_catalog_version}</Typography.Text>
           </Descriptions.Item>
-          <Descriptions.Item label="상태">{catalog.status}</Descriptions.Item>
-          <Descriptions.Item label="재현성">{catalog.reproducibility_status}</Descriptions.Item>
+          <Descriptions.Item label="상태">
+            <StatusTag
+              status={catalogStatusTone(catalog.status)}
+              label={catalogStatusLabel(catalog.status)}
+            />
+          </Descriptions.Item>
+          <Descriptions.Item label="재현성">
+            <StatusTag
+              status={reproducibilityTone(catalog.reproducibility_status)}
+              label={reproducibilityLabel(catalog.reproducibility_status)}
+            />
+          </Descriptions.Item>
           <Descriptions.Item label="Intent 수">{catalog.intent_count}</Descriptions.Item>
           <Descriptions.Item label="예시 수">{catalog.example_count}</Descriptions.Item>
           <Descriptions.Item label="Embedding 수">{catalog.embedding_count}</Descriptions.Item>

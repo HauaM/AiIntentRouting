@@ -1,8 +1,14 @@
 import { useMemo } from 'react';
 import { Alert, Card, Empty, List, Spin, Space, Typography } from 'antd';
 import { StatusTag } from '@/components/StatusTag';
-import { formatIssueTitle } from './testRunResultCopy';
+import { formatDecisionLabel, formatIssueTitle } from './testRunResultCopy';
 import { buildTestRunInsights } from './testRunResultInsights';
+
+const patternStatus = {
+  intent_mismatch: 'warning',
+  decision_mismatch: 'fail',
+  fallback: 'fallback',
+} as const;
 
 type TestRunDiagnosticsPanelProps = {
   testRunId?: string;
@@ -60,7 +66,7 @@ export function TestRunDiagnosticsPanel({
                       <Typography.Text code>{pattern.expected}</Typography.Text>
                       <Typography.Text>→</Typography.Text>
                       <Typography.Text code>{pattern.actual}</Typography.Text>
-                      <StatusTag status={pattern.kind} label={`${pattern.count}건`} />
+                      <StatusTag status={patternStatus[pattern.kind]} label={`${pattern.count}건`} />
                     </Space>
                   </List.Item>
                 )}
@@ -83,6 +89,25 @@ export function TestRunDiagnosticsPanel({
               />
             ) : (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="추가 권장 조치가 없습니다." />
+            )}
+          </Card>
+
+          <Card size="small" title="실제 결정 분포">
+            {Object.entries(diagnostics.actual_decision_counts).length ? (
+              <List
+                size="small"
+                dataSource={Object.entries(diagnostics.actual_decision_counts)}
+                renderItem={([decision, count]) => (
+                  <List.Item>
+                    <Space>
+                      <StatusTag status={decision} label={formatDecisionLabel(decision)} />
+                      <Typography.Text>{count}건</Typography.Text>
+                    </Space>
+                  </List.Item>
+                )}
+              />
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="집계된 실제 결정이 없습니다." />
             )}
           </Card>
 
