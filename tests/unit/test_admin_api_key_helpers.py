@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
+from starlette.responses import Response
 
 from intent_routing.api import admin
 from intent_routing.db import models
@@ -35,6 +37,43 @@ class FakeApiKeyRepository:
 
     def insert_audit_log(self, **values: Any) -> None:
         self.audit_events.append(values)
+
+
+class FakeReleasedCatalogRepository:
+    def __init__(self, *, has_release: bool = True) -> None:
+        self.has_release = has_release
+        self.requested_environment: str | None = None
+
+    def list_releases(
+        self,
+        service_id: str,
+        environment: str | None = None,
+    ) -> list[SimpleNamespace]:
+        assert service_id == "svc-a"
+        self.requested_environment = environment
+        if not self.has_release:
+            return []
+        return [SimpleNamespace(intent_catalog_version="cat-released-001")]
+
+    def get_catalog_version(
+        self,
+        service_id: str,
+        catalog_version: str,
+    ) -> SimpleNamespace:
+        assert service_id == "svc-a"
+        assert catalog_version == "cat-released-001"
+        return SimpleNamespace(
+            snapshot={
+                "intents": [
+                    {
+                        "intent_id": "billing_refund",
+                        "display_name": "Billing refund",
+                        "route_key": "billing.refund.request",
+                        "status": "active",
+                    }
+                ]
+            }
+        )
 
 
 def _api_key(
@@ -74,6 +113,17 @@ def test_api_key_create_response_includes_revoked_at_null() -> None:
     assert "revoked_at" in response.model_dump()
 
 
+def test_secret_response_cache_headers_disable_storage() -> None:
+    assert hasattr(admin, "_apply_secret_response_cache_headers")
+    response = Response()
+
+    admin._apply_secret_response_cache_headers(response)
+
+    assert response.headers["cache-control"] == "no-store, no-cache, must-revalidate"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["expires"] == "0"
+
+
 def test_api_key_create_request_and_response_allow_unlimited_expiry() -> None:
     request = admin.ServiceApiKeyCreateRequest(
         environment="prod",
@@ -106,6 +156,47 @@ def test_api_key_create_request_and_response_allow_unlimited_expiry() -> None:
     assert request.expires_in_days is None
     assert response.expires_at is None
     assert response.model_dump()["expires_at"] is None
+
+
+def test_api_key_scope_validation_uses_latest_released_catalog_without_activation() -> None:
+    repository = FakeReleasedCatalogRepository()
+    request = admin.ServiceApiKeyCreateRequest(
+        environment="qa",
+        app_id="checkout-web",
+        allowed_intents=["billing_refund"],
+        allowed_route_keys=["billing.refund.request"],
+        expires_in_days=90,
+    )
+
+    release = admin._validate_runtime_api_key_scope(
+        repository,  # type: ignore[arg-type]
+        SimpleNamespace(service_id="svc-a"),  # type: ignore[arg-type]
+        request,
+    )
+
+    assert release.intent_catalog_version == "cat-released-001"
+    assert repository.requested_environment == "qa"
+
+
+def test_api_key_scope_validation_reports_missing_released_catalog() -> None:
+    repository = FakeReleasedCatalogRepository(has_release=False)
+    request = admin.ServiceApiKeyCreateRequest(
+        environment="prod",
+        app_id="checkout-web",
+        allowed_intents=[],
+        allowed_route_keys=[],
+        expires_in_days=90,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        admin._validate_runtime_api_key_scope(
+            repository,  # type: ignore[arg-type]
+            SimpleNamespace(service_id="svc-a"),  # type: ignore[arg-type]
+            request,
+        )
+
+    assert exc_info.value.status_code == 422
+    assert "released catalog" in str(exc_info.value.detail).lower()
 
 
 @pytest.mark.parametrize(

@@ -19,6 +19,18 @@ def load_api_key_secret_keyring(
     )
 
 
+def api_key_secret_encryption_context(
+    *,
+    service_id: str,
+    key_id: str,
+) -> dict[str, str]:
+    return {
+        "purpose": "api_key_secret",
+        "service_id": service_id,
+        "key_id": key_id,
+    }
+
+
 def encrypted_api_key_secret(api_key: ApiKey) -> EncryptedText | None:
     if (
         api_key.secret_ciphertext is None

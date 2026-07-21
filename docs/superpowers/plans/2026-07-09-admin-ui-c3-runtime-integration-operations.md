@@ -238,7 +238,7 @@ Query:
 
 ```json
 {
-  "source": "active_release",
+  "source": "released_catalog",
   "environment": "prod"
 }
 ```
@@ -252,7 +252,7 @@ Response:
     "display_name": "API timeout incident",
     "route_key": "it.api_timeout.manual_lookup",
     "status": "active",
-    "source": "active_release"
+    "source": "released_catalog"
   }
 ]
 ```
@@ -262,8 +262,8 @@ C-3 rule:
 - API key scope selectors must load known candidates from this endpoint.
 - The C-3 UI must not ask operators to type manual `intent_id` or `route_key` scope strings.
 - C-3 create endpoint must reject `allowed_intents` or `allowed_route_keys` that are not present in the selected candidate source.
-- C-3 baseline should use `source=active_release` so keys cannot be scoped to unreleased draft routes.
-- If no active release exists, candidate response can be `[]`, but key creation must block with an explicit error that an active release is required for scoped runtime setup.
+- C-3 baseline should use `source=released_catalog` so keys cannot be scoped to unreleased draft routes and do not require activation.
+- If no release exists, candidate response can be `[]`, but key creation must block with an explicit error that a released catalog is required for scoped runtime setup.
 
 ### Runtime Setup/Guidance Endpoint
 
@@ -770,7 +770,7 @@ Docs/tests:
   - `POST /admin/v1/services/{service_id}/api-keys/{key_id}:revoke` revokes only a key belonging to that Service.
   - `POST /admin/v1/services/{other_service_id}/api-keys/{key_id}:revoke` fails.
 - [ ] Add tests for candidate validation:
-  - create with active-release candidates succeeds.
+  - create with released-catalog candidates succeeds.
   - create with unknown `allowed_intents` fails.
   - create with unknown `allowed_route_keys` fails.
   - create with no active release fails if C-3 baseline requires active release.
@@ -957,7 +957,7 @@ Expected before implementation: fails because helper file does not exist.
 
 - [ ] Switch `/api-keys` to Service-scoped wrapper calls.
 - [ ] Keep selected Service and environment from `adminSession`/`ServiceScopeBar`.
-- [ ] Load `source=active_release` scope candidates.
+- [ ] Load `source=released_catalog` scope candidates.
 - [ ] Disable create when there is no active-release candidate source.
 - [ ] Show raw secret only in the create success alert.
 - [ ] Clear raw secret on selected-Service change and page remount.

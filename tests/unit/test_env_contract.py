@@ -176,7 +176,23 @@ def test_closed_network_env_uses_secret_placeholders_without_live_key_material()
         == "replace-with-32-byte-base64-kek-from-approved-secret-store"
     )
     assert values["RAW_TEXT_LEGACY_KEKS_JSON"] == "{}"
+    assert (
+        values["API_KEY_SECRET_KEK_BASE64"]
+        == "replace-with-32-byte-base64-kek-from-approved-secret-store"
+    )
+    assert values["API_KEY_SECRET_LEGACY_KEKS_JSON"] == "{}"
     assert "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" not in text
+
+
+def test_ci_verification_docs_include_api_key_secret_kek_contract() -> None:
+    text = (ROOT / "docs/ops/ci-verification.md").read_text(encoding="utf-8")
+
+    assert "export API_KEY_SECRET_KEK_ID=ci-api-key-secret-kek-001" in text
+    assert (
+        "export API_KEY_SECRET_KEK_BASE64="
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" in text
+    )
+    assert 'export API_KEY_SECRET_LEGACY_KEKS_JSON="{}"' in text
 
 
 def test_gitignore_excludes_local_operator_outputs() -> None:

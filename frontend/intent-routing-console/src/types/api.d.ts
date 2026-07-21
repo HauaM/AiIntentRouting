@@ -606,7 +606,7 @@ declare namespace API {
     display_name: string;
     route_key: string;
     status: IntentStatus;
-    source: 'current_catalog' | 'active_release';
+    source: 'current_catalog' | 'active_release' | 'released_catalog';
   };
 
   type ApiKeyCreateRequest = {

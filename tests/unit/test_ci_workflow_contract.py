@@ -46,6 +46,12 @@ def test_ci_workflow_uses_fake_embedding_and_no_real_secrets() -> None:
     assert "EMBEDDING_PROVIDER: fake" in text
     assert "ALLOWED_RUNTIME_ENVIRONMENTS: dev,qa,prod" in text
     assert "RAW_TEXT_KEK_ID: ci-kek-001" in text
+    assert "API_KEY_SECRET_KEK_ID: ci-api-key-secret-kek-001" in text
+    assert (
+        "API_KEY_SECRET_KEK_BASE64: "
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" in text
+    )
+    assert 'API_KEY_SECRET_LEGACY_KEKS_JSON: "{}"' in text
     for forbidden in (
         "replace-with",
         "intent_routing_api_key",

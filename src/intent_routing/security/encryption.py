@@ -2,7 +2,9 @@
 
 import base64
 import binascii
+import json
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -30,11 +32,16 @@ class EnvelopeEncryptor:
         self._kek_id = kek_id
         self._kek = self._decode_kek(kek_base64)
 
-    def encrypt_text(self, plaintext: str) -> EncryptedText:
+    def encrypt_text(
+        self,
+        plaintext: str,
+        *,
+        context: Mapping[str, str] | None = None,
+    ) -> EncryptedText:
         dek = os.urandom(AES_256_KEY_BYTES)
         text_iv = os.urandom(AES_GCM_IV_BYTES)
         dek_iv = os.urandom(AES_GCM_IV_BYTES)
-        associated_data = self._associated_data(self._kek_id, ALGORITHM)
+        associated_data = self._associated_data(self._kek_id, ALGORITHM, context)
 
         text_ciphertext_with_tag = AESGCM(dek).encrypt(
             text_iv,
@@ -63,14 +70,23 @@ class EnvelopeEncryptor:
             encrypted_dek_auth_tag=encrypted_dek_auth_tag,
         )
 
-    def decrypt_text(self, encrypted: EncryptedText) -> str:
+    def decrypt_text(
+        self,
+        encrypted: EncryptedText,
+        *,
+        context: Mapping[str, str] | None = None,
+    ) -> str:
         if encrypted.algorithm != ALGORITHM:
             raise ValueError("encrypted text algorithm mismatch")
         if encrypted.key_id != self._kek_id:
             raise ValueError("encrypted text key_id mismatch")
         self._validate_envelope(encrypted)
 
-        associated_data = self._associated_data(encrypted.key_id, encrypted.algorithm)
+        associated_data = self._associated_data(
+            encrypted.key_id,
+            encrypted.algorithm,
+            context,
+        )
         encrypted_dek_with_tag = encrypted.encrypted_dek + encrypted.encrypted_dek_auth_tag
         dek = AESGCM(self._kek).decrypt(
             encrypted.encrypted_dek_iv,
@@ -116,5 +132,18 @@ class EnvelopeEncryptor:
             raise ValueError("encrypted DEK ciphertext must be 32 bytes")
 
     @staticmethod
-    def _associated_data(key_id: str, algorithm: str) -> bytes:
-        return f"key_id={key_id};algorithm={algorithm}".encode()
+    def _associated_data(
+        key_id: str,
+        algorithm: str,
+        context: Mapping[str, str] | None,
+    ) -> bytes:
+        base = f"key_id={key_id};algorithm={algorithm}"
+        if context is None:
+            return base.encode()
+        encoded_context = json.dumps(
+            dict(context),
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        return f"{base};context={encoded_context}".encode()

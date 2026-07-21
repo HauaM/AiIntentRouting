@@ -1234,7 +1234,7 @@ def test_runtime_uses_active_release_versions_after_activation(
     assert missing_release_response.status_code == 422
     assert (
         missing_release_response.json()["error"]["message"]
-        == "active release is required for scoped API key creation."
+        == "released catalog is required for scoped API key creation."
     )
     test_run_id = _seed_test_run(
         db_session,

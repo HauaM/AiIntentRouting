@@ -1,4 +1,5 @@
 import base64
+import inspect
 from dataclasses import replace
 
 import pytest
@@ -20,6 +21,26 @@ def test_encrypts_and_decrypts_raw_text_without_plaintext_in_ciphertext() -> Non
     assert encrypted.key_id == "local-kek-001"
     assert b"010-1234-5678" not in encrypted.ciphertext
     assert encryptor.decrypt_text(encrypted) == "보험금 청구 010-1234-5678"
+
+
+def test_context_bound_encryption_rejects_wrong_context_without_changing_legacy_behavior() -> None:
+    encryptor = EnvelopeEncryptor(kek_id="local-kek-001", kek_base64=_kek())
+    assert "context" in inspect.signature(encryptor.encrypt_text).parameters
+    assert "context" in inspect.signature(encryptor.decrypt_text).parameters
+    context = {
+        "purpose": "api_key_secret",
+        "service_id": "svc-a",
+        "key_id": "key_live_a",
+    }
+
+    encrypted = encryptor.encrypt_text("irt_secret", context=context)
+
+    assert encryptor.decrypt_text(encrypted, context=context) == "irt_secret"
+    with pytest.raises(InvalidTag):
+        encryptor.decrypt_text(
+            encrypted,
+            context=context | {"key_id": "key_live_b"},
+        )
 
 
 def test_same_plaintext_encrypts_with_distinct_iv_ciphertext_and_encrypted_dek() -> None:

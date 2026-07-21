@@ -55,14 +55,27 @@ class RawTextKeyring:
     def key_ids(self) -> Sequence[str]:
         return tuple(self._encryptors)
 
-    def encrypt_text(self, plaintext: str) -> EncryptedText:
-        return self._encryptors[self._active_key_id].encrypt_text(plaintext)
+    def encrypt_text(
+        self,
+        plaintext: str,
+        *,
+        context: Mapping[str, str] | None = None,
+    ) -> EncryptedText:
+        return self._encryptors[self._active_key_id].encrypt_text(
+            plaintext,
+            context=context,
+        )
 
-    def decrypt_text(self, encrypted: EncryptedText) -> str:
+    def decrypt_text(
+        self,
+        encrypted: EncryptedText,
+        *,
+        context: Mapping[str, str] | None = None,
+    ) -> str:
         encryptor = self._encryptors.get(encrypted.key_id)
         if encryptor is None:
             raise ValueError("No KEK configured for encrypted text key_id")
-        return encryptor.decrypt_text(encrypted)
+        return encryptor.decrypt_text(encrypted, context=context)
 
     def __repr__(self) -> str:
         return (

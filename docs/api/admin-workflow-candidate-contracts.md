@@ -153,8 +153,9 @@ Lists known intent and route candidates for API key scope selection.
 
 Query:
 
-- `source`: `current_catalog` or `active_release`, default `current_catalog`.
-- `environment`: optional string for active release lookup.
+- `source`: `current_catalog`, `active_release`, or `released_catalog`; default
+  `current_catalog`.
+- `environment`: required for `active_release` and `released_catalog` lookup.
 
 Response: `IntentRouteCandidateResponse[]`.
 
@@ -166,8 +167,9 @@ Each item includes:
 - `status`
 - `source`
 
-Authorization: catalog access for `current_catalog`; release access for
-`active_release` snapshot.
+Authorization: catalog access. `active_release` reads the runtime-active snapshot;
+`released_catalog` reads the newest release snapshot for the environment without
+requiring activation.
 
 ## GET /admin/v1/api-keys
 

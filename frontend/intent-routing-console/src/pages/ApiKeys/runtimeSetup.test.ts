@@ -197,6 +197,8 @@ describe('runtime setup guidance helpers', () => {
   it('does not gate API key creation or scope selection on active-release availability', () => {
     const source = apiKeysPageSource();
 
+    expect(source).toContain("source: 'released_catalog'");
+    expect(source).not.toContain("source: 'active_release'");
     expect(source).not.toContain('const hasActiveRelease = Boolean(runtimeSetup?.active_release);');
     expect(source).not.toContain('선택한 환경에 active Release가 없습니다.');
     expect(source).not.toContain('Active Release에 허용할 intent/route 후보가 없습니다.');

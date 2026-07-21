@@ -183,7 +183,7 @@ def test_api_key_inventory_rejects_unsupported_environment_filter(
     )
 
 
-def test_api_key_create_endpoints_reject_blank_app_id_before_active_release_validation(
+def test_api_key_create_endpoints_reject_blank_app_id_before_released_catalog_validation(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -208,14 +208,14 @@ def test_api_key_create_endpoints_reject_blank_app_id_before_active_release_vali
         assert global_response.status_code == 422
         assert service_response.status_code == 422
 
-        active_release_response = client.post(
+        released_catalog_response = client.post(
             f"/admin/v1/services/{service_id}/api-keys",
             headers=_admin_headers(),
             json={"environment": "dev", "app_id": " checkout-web "},
         )
-        assert active_release_response.status_code == 422
-        assert active_release_response.json()["error"]["message"] == (
-            "active release is required for scoped API key creation."
+        assert released_catalog_response.status_code == 422
+        assert released_catalog_response.json()["error"]["message"] == (
+            "released catalog is required for scoped API key creation."
         )
     finally:
         _purge_rows(

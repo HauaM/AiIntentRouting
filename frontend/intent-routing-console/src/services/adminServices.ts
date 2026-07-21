@@ -648,7 +648,10 @@ export async function rollbackRelease(serviceId: string, releaseVersion: string)
 
 export async function listIntentRouteCandidates(
   serviceId: string,
-  params: { source?: 'current_catalog' | 'active_release'; environment?: string } = {},
+  params: {
+    source?: 'current_catalog' | 'active_release' | 'released_catalog';
+    environment?: string;
+  } = {},
 ) {
   return request<API.IntentRouteCandidate[]>(
     servicePath(serviceId, '/intent-route-candidates'),

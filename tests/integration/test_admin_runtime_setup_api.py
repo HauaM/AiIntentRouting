@@ -167,7 +167,12 @@ def _create_service(client: TestClient, service_id: str) -> None:
     assert response.status_code == 201
 
 
-def _seed_active_release(db_session: Session, service_id: str) -> str:
+def _seed_active_release(
+    db_session: Session,
+    service_id: str,
+    *,
+    active: bool = True,
+) -> str:
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(db_session)
     policy_version = f"pol-{service_id}-{uuid4().hex[:8]}"
@@ -253,7 +258,7 @@ def _seed_active_release(db_session: Session, service_id: str) -> str:
         test_run_id=test_run_id,
         pass_rate=Decimal("1.0"),
         risk_pass_rate=Decimal("1.0"),
-        active=True,
+        active=active,
         released_by="integration-test",
         released_at=now,
         rollback_target=None,
@@ -367,6 +372,9 @@ def test_service_scoped_api_key_lifecycle_never_replays_secret(
         )
 
         assert created.status_code == 201
+        assert created.headers["cache-control"] == "no-store, no-cache, must-revalidate"
+        assert created.headers["pragma"] == "no-cache"
+        assert created.headers["expires"] == "0"
         created_body = created.json()
         raw_secret = created_body["api_key"]
         key_id = created_body["key_id"]
@@ -472,6 +480,9 @@ def test_service_owner_can_reveal_encrypted_service_api_key_secret(
         )
 
         assert revealed.status_code == 200
+        assert revealed.headers["cache-control"] == "no-store, no-cache, must-revalidate"
+        assert revealed.headers["pragma"] == "no-cache"
+        assert revealed.headers["expires"] == "0"
         body = revealed.json()
         assert body["key_id"] == created_body["key_id"]
         assert body["service_id"] == service_id
@@ -643,7 +654,7 @@ def test_service_scoped_api_key_can_be_created_without_expiry(
         _purge_session_fixture(db_session, session_fixture)
 
 
-def test_service_scoped_key_creation_requires_active_release_candidates(
+def test_service_scoped_key_creation_requires_released_catalog_candidates(
     db_session: Session,
 ) -> None:
     client, session_fixture = _system_admin_client(db_session)
@@ -656,9 +667,9 @@ def test_service_scoped_key_creation_requires_active_release_candidates(
             json=_api_key_payload(),
         )
         assert without_release.status_code == 422
-        assert "active release" in without_release.json()["error"]["message"].lower()
+        assert "released catalog" in without_release.json()["error"]["message"].lower()
 
-        _seed_active_release(db_session, service_id)
+        _seed_active_release(db_session, service_id, active=False)
         unknown_intent = client.post(
             f"/admin/v1/services/{service_id}/api-keys",
             json=_api_key_payload(allowed_intents=["manual_internal_id"]),
@@ -673,11 +684,17 @@ def test_service_scoped_key_creation_requires_active_release_candidates(
         )
 
         assert unknown_intent.status_code == 422
-        assert "allowed_intents" in unknown_intent.json()["error"]["message"]
+        assert "released catalog candidates" in unknown_intent.json()["error"]["message"]
         assert unknown_route.status_code == 422
-        assert "allowed_route_keys" in unknown_route.json()["error"]["message"]
+        assert "released catalog candidates" in unknown_route.json()["error"]["message"]
         assert wrong_environment.status_code == 422
-        assert "active release" in wrong_environment.json()["error"]["message"].lower()
+        assert "released catalog" in wrong_environment.json()["error"]["message"].lower()
+
+        valid = client.post(
+            f"/admin/v1/services/{service_id}/api-keys",
+            json=_api_key_payload(),
+        )
+        assert valid.status_code == 201
     finally:
         _purge_rows(db_session, service_ids=[service_id])
         _purge_session_fixture(db_session, session_fixture)

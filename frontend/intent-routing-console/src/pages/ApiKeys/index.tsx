@@ -131,7 +131,7 @@ export default function ApiKeysPage() {
       const [nextKeys, nextScopeCandidates] = await Promise.all([
         listServiceApiKeys(serviceId, { environment }),
         listIntentRouteCandidates(serviceId, {
-          source: 'active_release',
+          source: 'released_catalog',
           environment,
         }),
       ]);

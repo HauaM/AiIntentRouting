@@ -63,8 +63,9 @@ exports still never embed raw `api_key`. Key inventory and evidence may show onl
 expiry, creator, and timestamps.
 
 Allowed intents and route keys are selected from known candidate/list
-endpoints. The C-3 baseline source is `source=active_release` so runtime keys
-are scoped to released behavior rather than draft catalog state.
+endpoints. API key scope uses `source=released_catalog` so a key can be issued
+from the newest environment release without requiring runtime activation, while
+runtime setup guidance continues to display `active_release` independently.
 
 `/api-keys` remains the selected-Service runtime setup workspace. `/services`
 may later add only a compact next-step panel that points the user to
@@ -159,7 +160,7 @@ outside the create response.
 The Admin UI must use server-derived session identity and selected Service
 state. It must not reintroduce trusted actor headers or manual internal ID
 entry for runtime key scope. It must load allowed intents and route keys from
-candidate endpoints, baseline `source=active_release`.
+candidate endpoints, baseline `source=released_catalog`.
 
 Runtime client documentation remains explicit about Bearer API-key calls to
 `/v1/intent-route`, while Admin UI code remains explicit about
@@ -218,7 +219,7 @@ tests proving:
 - Raw `api_key` is present only in create response.
 - Inventory, revoke, runtime setup guidance, audit logs, and runtime logs never
   return the raw secret.
-- Candidate scope comes from `source=active_release`.
+- Candidate scope comes from `source=released_catalog`.
 - Normal Admin UI browser requests use `irt_admin_session` and do not send
   trusted headers.
 - Runtime clients use Bearer key plus key/app/service/request headers.

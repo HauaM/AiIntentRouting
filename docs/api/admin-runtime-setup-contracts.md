@@ -25,6 +25,10 @@ otherwise.
 - API key secret material is never stored in plaintext. Authorized operators may
   explicitly reveal encrypted secret material through the audited reveal
   endpoint documented below.
+- API key secret encryption binds AEAD associated data to purpose + `service_id` + `key_id`.
+  Moving encrypted columns to another Service or API key row must fail authentication.
+- Reveal and revoke load the API key row with `SELECT ... FOR UPDATE` so their
+  transaction order cannot return a secret after a concurrent revoke commits.
 - Inventory, revoke responses, runtime setup guidance, audit logs, runtime logs,
   and exports never include raw secret material. In audit, log, export, and
   persisted or UI state, both `api_key` and `authorization_header`, plus any
@@ -41,8 +45,8 @@ otherwise.
 
 Runtime environment is resolved from the verified API key metadata. The client
 must not send an environment header. Admin API key creation chooses one of
-`dev`, `qa`, or `prod` after an active release exists for the selected Service
-and environment.
+`dev`, `qa`, or `prod` after a release exists for the selected Service and
+environment. API key issuance does not require that release to be activated.
 
 The existing global `/admin/v1/api-keys` endpoints remain transitional for
 scripts and backward compatibility. New Admin UI C-3 work should use the
@@ -117,6 +121,7 @@ Response:
 {
   "key_id": "key_live_012345",
   "api_key": "irt_<secret>",
+  "api_key_displayed_once": true,
   "key_fingerprint": "sha256:<digest>:9AbC",
   "environment": "prod",
   "app_id": "dify-platform",
@@ -134,6 +139,12 @@ Response:
 Rules:
 
 - The create response includes the raw `api_key` for the initial setup flow.
+- `api_key_displayed_once` means the create response includes the secret; it does
+  not mean create is the only authorized display path because the audited reveal
+  endpoint can return it later.
+- Both global and Service-scoped create responses set
+  `Cache-Control: no-store, no-cache, must-revalidate`, `Pragma: no-cache`, and
+  `Expires: 0`.
 - The secret must be generated with at least 256-bit randomness.
 - The secret must not be stored in plaintext; encrypted secret material is
   retained for authorized audited reveal, alongside hash/fingerprint fields
@@ -143,7 +154,8 @@ Rules:
 - UI state must not automatically re-show or replay the secret after refresh,
   navigation, logout, selected-Service change, or selected-key change. Explicit
   reveal/copy requires the audited reveal endpoint.
-- Allowed scope must be validated against active-release candidates.
+- Allowed scope must be validated against released-catalog candidates for the
+  requested environment.
 
 ### POST /admin/v1/services/{service_id}/api-keys/{key_id}:revoke
 
@@ -220,6 +232,8 @@ Rules:
   omit or redact `api_key`, `authorization_header`, and any response field
   derived from the raw secret.
 - Each successful reveal writes `api_key.secret_revealed` with redacted audit state.
+- Successful reveal responses set `Cache-Control: no-store, no-cache, must-revalidate`,
+  `Pragma: no-cache`, and `Expires: 0`.
 
 ## Intent-Route Candidate Scope Contract
 
@@ -231,7 +245,7 @@ Query:
 
 ```json
 {
-  "source": "active_release",
+  "source": "released_catalog",
   "environment": "prod"
 }
 ```
@@ -245,20 +259,24 @@ Response:
     "display_name": "API timeout incident",
     "route_key": "it.api_timeout.manual_lookup",
     "status": "active",
-    "source": "active_release"
+    "source": "released_catalog"
   }
 ]
 ```
 
 Rules:
 
-- The C-3 baseline uses `source=active_release`.
+- API key scope selectors use `source=released_catalog`, which selects the newest
+  release for the requested environment without requiring runtime activation.
 - Admin UI selectors must not ask operators to type manual `intent_id` or
   `route_key` scope strings.
 - Create must reject `allowed_intents` or `allowed_route_keys` not returned by
   the selected candidate source.
-- If no active release exists, key creation must fail with an explicit active
-  release requirement.
+- If no release exists for the environment, candidate listing returns `[]` and
+  scoped key creation fails with an explicit released-catalog requirement.
+- Runtime setup guidance continues to report the active release independently;
+  its runtime display and setup templates do not use `released_catalog` as an
+  activation substitute.
 
 ## GET /admin/v1/services/{service_id}/runtime-setup
 
@@ -556,4 +574,4 @@ Future optional hardening for later:
 - Consider JSONB validation or check constraints for `allowed_intents` and
   `allowed_route_keys` if API-time validation is not enough.
 - Do not add a separate scope table in the C-3 baseline because allowed intent
-  and route values come from active release snapshots, not stable draft rows.
+  and route values come from released catalog snapshots, not stable draft rows.

@@ -41,7 +41,7 @@ def test_c3_runtime_setup_adr_records_accepted_decisions() -> None:
         "X-Request-Id",
         "authorized\n`system_admin` and selected-Service `service_owner` users may "
         "explicitly\nreveal/copy",
-        "source=active_release",
+        "source=released_catalog",
         "`/api-keys` remains the selected-Service runtime setup workspace",
         "explicit Admin UI\nlive-test workflow",
         "operator manually enters an API Secret",
@@ -93,7 +93,8 @@ def test_c3_runtime_setup_contract_doc_defines_admin_api_and_runtime_guidance() 
         "The create response includes the raw `api_key` for the initial setup flow.",
         "`api_key` raw secret is never present in inventory",
         '"selected_key"',
-        "`source=active_release`",
+        "`source=released_catalog`",
+        "Runtime setup guidance continues to report the active release independently",
         "GET /admin/v1/services/{service_id}/runtime-setup",
         "future/not baseline",
         "The operator must manually input the API Secret",
@@ -157,6 +158,12 @@ def test_api_key_secret_reveal_contract_is_documented() -> None:
         "issue a new API key if runtime access is still needed",
         "Expired API key reveal returns HTTP `400` with code `INVALID_REQUEST`",
         "Expired API key secrets cannot be revealed.",
+        "`api_key_displayed_once` means the create response includes the secret",
+        "`Cache-Control: no-store, no-cache, must-revalidate`",
+        "`Pragma: no-cache`",
+        "`Expires: 0`",
+        "purpose + `service_id` + `key_id`",
+        "`SELECT ... FOR UPDATE`",
     ):
         assert phrase in text
 
@@ -165,6 +172,5 @@ def test_api_key_secret_reveal_contract_is_documented() -> None:
         "`api_key` is present only in the create response.",
         "shown only once in the create response",
         '"api_key": "irt_<one-time-secret>"',
-        '"api_key_displayed_once": true',
     ):
         assert stale_phrase not in text
