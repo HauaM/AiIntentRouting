@@ -705,6 +705,80 @@ describe('admin service Phase 1 write flow requests', () => {
     );
   });
 
+  it('hydrates legacy catalog version diff example ids from catalog snapshots', async () => {
+    requestMock
+      .mockResolvedValueOnce({
+        service_id: 'svc/admin',
+        from_version: 'cat/v1',
+        to_version: 'cat/v2',
+        added_intents: [],
+        removed_intents: [],
+        changed_intents: [],
+        added_examples: ['ex-added'],
+        removed_examples: ['ex-removed'],
+        changed_examples: [],
+      })
+      .mockResolvedValueOnce({
+        snapshot: {
+          intents: [
+            {
+              intent_id: 't1',
+              display_name: '테스트 문의',
+              route_key: 'test.route',
+              examples: [
+                {
+                  example_id: 'ex-added',
+                  example_type: 'positive',
+                  text_masked: '추가된 예시 내용',
+                },
+              ],
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        snapshot: {
+          intents: [
+            {
+              intent_id: 't1',
+              display_name: '테스트 문의',
+              route_key: 'test.route',
+              examples: [
+                {
+                  example_id: 'ex-removed',
+                  example_type: 'negative',
+                  text_masked: '삭제된 예시 내용',
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+    const diff = await fetchCatalogVersionDiff('svc/admin', 'cat/v2', {
+      compare_to: 'cat/v1',
+    });
+
+    expect(diff.added_examples).toEqual([
+      {
+        intent_id: 't1',
+        intent_display_name: '테스트 문의',
+        route_key: 'test.route',
+        example_type: 'positive',
+        text_masked: '추가된 예시 내용',
+      },
+    ]);
+    expect(diff.removed_examples).toEqual([
+      {
+        intent_id: 't1',
+        intent_display_name: '테스트 문의',
+        route_key: 'test.route',
+        example_type: 'negative',
+        text_masked: '삭제된 예시 내용',
+      },
+    ]);
+  });
+
   it('uses Permission Management read endpoints with GET query params only', async () => {
     await listPermissionAdminUsers({
       query: 'admin@example.com',

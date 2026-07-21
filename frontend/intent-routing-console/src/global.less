@@ -238,6 +238,137 @@ body {
   max-width: 100%;
 }
 
+.catalog-diff-body {
+  width: 100%;
+}
+
+.catalog-diff-version-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+}
+
+.catalog-diff-version-panel,
+.catalog-diff-summary-panel,
+.catalog-diff-section-block,
+.catalog-diff-example-group {
+  border: 1px solid #dce1e8;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.catalog-diff-version-panel {
+  min-width: 0;
+  padding: 12px;
+}
+
+.catalog-diff-version-arrow {
+  align-self: center;
+  color: #64748b;
+}
+
+.catalog-diff-version-description {
+  margin: 6px 0 0;
+  color: #334155;
+}
+
+.catalog-diff-summary-panel {
+  padding: 12px;
+}
+
+.catalog-diff-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(78px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.catalog-diff-summary-item {
+  min-width: 0;
+  border: 1px solid #e6eaef;
+  border-radius: 6px;
+  background: #f7f9fb;
+  padding: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.catalog-diff-group .ant-typography {
+  margin-bottom: 8px;
+}
+
+.catalog-diff-section-block {
+  padding: 12px;
+}
+
+.catalog-diff-section-block + .catalog-diff-section-block {
+  margin-top: 10px;
+}
+
+.catalog-diff-section-title {
+  display: flex;
+  margin-bottom: 8px;
+}
+
+.catalog-diff-list {
+  width: 100%;
+}
+
+.catalog-diff-empty {
+  margin: 0;
+  padding: 8px 0;
+}
+
+.catalog-diff-example-group {
+  padding: 12px;
+}
+
+.catalog-diff-example-group-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #e6eaef;
+  padding-bottom: 8px;
+}
+
+.catalog-diff-example-bucket {
+  margin-top: 10px;
+}
+
+.catalog-diff-example-bucket-title {
+  display: flex;
+}
+
+.catalog-diff-example-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: #1c2733;
+}
+
+.catalog-diff-example-list li + li {
+  margin-top: 4px;
+}
+
+@media (max-width: 1100px) {
+  .catalog-diff-version-compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .catalog-diff-version-arrow {
+    display: none;
+  }
+
+  .catalog-diff-summary-grid {
+    grid-template-columns: repeat(3, minmax(92px, 1fr));
+  }
+
+  .catalog-diff-example-group-head {
+    flex-direction: column;
+  }
+}
+
 .admin-nowrap-cell {
   white-space: nowrap;
 }

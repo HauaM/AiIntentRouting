@@ -461,6 +461,14 @@ declare namespace API {
 
   type CatalogVersionListItem = CatalogVersionLifecycle;
 
+  type CatalogVersionDiffExample = {
+    intent_id: string;
+    intent_display_name: string;
+    route_key: string;
+    example_type: 'positive' | 'negative';
+    text_masked: string;
+  };
+
   type CatalogVersionDiff = {
     service_id: string;
     from_version: string | null;
@@ -468,9 +476,9 @@ declare namespace API {
     added_intents: string[];
     removed_intents: string[];
     changed_intents: string[];
-    added_examples: string[];
-    removed_examples: string[];
-    changed_examples: string[];
+    added_examples: CatalogVersionDiffExample[];
+    removed_examples: CatalogVersionDiffExample[];
+    changed_examples: CatalogVersionDiffExample[];
   };
 
   type TestRunCreateRequest = {
@@ -679,6 +687,18 @@ declare namespace API {
     checklist: string[];
     docs: string[];
     warnings: string[];
+  };
+
+  type RuntimeIntentRouteResponse = {
+    trace_id: string;
+    decision: RuntimeDecision;
+    request_id?: string | null;
+    domain?: string | null;
+    intent_id?: string | null;
+    confidence?: number | null;
+    route_key?: string | null;
+    clarify_question?: string | null;
+    release_version?: string | null;
   };
 
   type RuntimeLog = {
