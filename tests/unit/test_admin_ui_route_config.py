@@ -32,3 +32,10 @@ def test_admin_ui_routes_keep_phase0_read_screens() -> None:
         "{ path: '/audit-logs', component: './AuditLogs' }",
     ):
         assert route in text
+
+
+def test_admin_ui_dev_proxy_supports_runtime_live_test_calls() -> None:
+    text = CONFIG.read_text(encoding="utf-8")
+
+    assert "'/v1'" in text
+    assert "target: adminApiProxy" in text

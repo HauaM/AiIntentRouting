@@ -119,20 +119,22 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toContain('selectApiKey(row)');
   });
 
-  it('renders setup templates without a browser live test or raw secret input', () => {
+  it('runs live tests by audited reveal without rendering a raw secret input', () => {
     const source = apiKeysPageSource();
 
     expect(source).not.toContain('Dify variable mapping');
     expect(source).not.toContain('dify_variable_mapping.map');
-    expect(source).not.toContain('라이브 테스트');
-    expect(source).not.toContain('runRuntimeIntentRoute');
-    expect(source).not.toContain('runtimeServices');
-    expect(source).not.toContain('/v1/intent-route');
-    expect(source).not.toContain('window.fetch');
-    expect(source).not.toContain('headers: {');
+    expect(source).toContain('라이브 테스트');
+    expect(source).toContain('handleRunLiveTest');
+    expect(source).toContain('revealServiceApiKey');
+    expect(source).toContain('runRuntimeIntentRoute');
+    expect(source).toContain('apiSecret: revealed.api_key');
+    expect(source).toContain('selectedLiveTestKeyIdRef');
+    expect(source).toContain('liveTestRunRequestIdRef');
     expect(source).not.toContain('api_secret');
     expect(source).not.toContain('Input.Password');
-    expect(source).not.toContain('fetch(');
+    expect(source).not.toContain('liveTestSecret');
+    expect(source).toContain('Secret은 화면에 표시하지 않고 테스트 요청에만 사용됩니다.');
   });
 
   it('copies Authorization through the audited reveal endpoint instead of page-scoped secret replay', () => {

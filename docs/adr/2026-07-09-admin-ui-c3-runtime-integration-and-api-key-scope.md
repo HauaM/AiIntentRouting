@@ -72,11 +72,12 @@ may later add only a compact next-step panel that points the user to
 `/api-keys` after C-2 role assignment and release readiness are complete.
 
 The C-3 baseline uses checklist/docs client guidance plus an explicit Admin UI
-live-test workflow. The live test may call `/v1/intent-route` only after the
-operator manually enters an API Secret. The UI must not auto-fill, persist,
-replay, or recover the one-time raw API key secret from the create response.
-The secret must not be written to local storage, inventory responses, runtime
-setup guidance, audit state, runtime logs, or exported evidence.
+live-test workflow. The live test automatically reveals the encrypted API Secret
+through the audited service-scoped reveal endpoint, then uses it only for the
+single `/v1/intent-route` request. The UI must not display, persist, store, or
+reuse the revealed raw secret in UI state. The secret must not be written to
+local storage, inventory responses, runtime setup guidance, audit state,
+runtime logs, or exported evidence.
 
 Runtime Logs show `query_masked` by default and must not expose raw query text
 in baseline runtime setup views. Audit Logs remain append-only evidence for API

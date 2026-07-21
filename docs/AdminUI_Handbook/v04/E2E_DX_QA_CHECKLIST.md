@@ -389,6 +389,8 @@
 - [ ] 검토: 자동 재노출과 권한 있는 감사 reveal의 경계를 이해할 수 있다.
 
 - [ ] Authorization의 `Secret 보기/복사`는 `POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal`을 호출하고 `Bearer irt_<decrypted-secret>`만 클립보드에 복사한다.
+- [ ] 라이브 테스트는 audited reveal을 먼저 수행한 뒤 runtime 호출에만 secret을 사용한다.
+- [ ] 라이브 테스트 결과와 오류 메시지에는 raw `api_key` 또는 `authorization_header`가 표시되지 않는다.
 - [ ] Audit Logs에 `api_key.secret_revealed` event가 남고 audit state에는 raw `api_key`가 포함되지 않는다.
 
 ### TC-040 Runtime Setup Guidance 확인
