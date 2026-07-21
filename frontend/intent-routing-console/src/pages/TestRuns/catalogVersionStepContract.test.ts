@@ -7,6 +7,16 @@ const read = (file: string) =>
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), file), 'utf8');
 
 describe('CatalogVersionStep contract', () => {
+  it('lets the catalog selection and explanation summary use the full wizard width', () => {
+    const globalLess = read('../../global.less');
+    const selectRule = globalLess.match(/\.test-run-step-select\s*\{[^}]*\}/)?.[0] ?? '';
+    const summaryRule = globalLess.match(/\.test-run-step-summary\s*\{[^}]*\}/)?.[0] ?? '';
+
+    expect(selectRule).toContain('width: 100%');
+    expect(selectRule).not.toContain('max-width: 552px');
+    expect(summaryRule).not.toContain('max-width: 552px');
+  });
+
   it('loads catalog versions into a single labeled combo and selects the latest active version', () => {
     const source = read('CatalogVersionStep.tsx');
 
@@ -55,6 +65,16 @@ describe('CatalogVersionStep contract', () => {
     expect(source).toContain('display_version');
     expect(source).toContain('embedding_count');
     expect(source).not.toContain('intent_catalog_version"');
+  });
+
+  it('renders the selected catalog ID once, shortened to 8 visible characters with copy retained', () => {
+    const source = read('CatalogVersionStep.tsx');
+
+    expect(source).toContain("label: 'Catalog'");
+    expect(source).toContain('<VersionChip');
+    expect(source).toContain('value={selectedVersion.intent_catalog_version}');
+    expect(source).toContain('maxDisplayLength={8}');
+    expect(source).not.toContain('label="Catalog"');
   });
 
   it('shows the selected catalog version immutable intent snapshot as a searchable grid', () => {

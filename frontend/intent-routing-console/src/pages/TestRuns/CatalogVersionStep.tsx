@@ -273,8 +273,8 @@ export function CatalogVersionStep({
               label: 'Catalog',
               children: (
                 <VersionChip
-                  label="Catalog"
                   value={selectedVersion.intent_catalog_version}
+                  maxDisplayLength={8}
                 />
               ),
             },
