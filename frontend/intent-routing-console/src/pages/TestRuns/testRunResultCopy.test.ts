@@ -27,10 +27,9 @@ describe('testRunResultCopy', () => {
     );
   });
 
-  it('keeps unknown result reasons readable without hiding the source value', () => {
-    expect(formatResultReason('custom backend reason')).toBe(
-      '해석되지 않은 사유: custom backend reason',
-    );
+  it('keeps unknown result reasons Korean-only in visible copy', () => {
+    expect(formatResultReason('custom backend reason')).toBe('해석되지 않은 사유입니다.');
+    expect(formatResultReason('custom backend reason')).not.toContain('custom backend reason');
     expect(formatResultReason(null)).toBe('사유 없음');
   });
 

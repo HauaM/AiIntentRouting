@@ -41,7 +41,7 @@ export function formatIntentLabel(intent?: string | null) {
 
 export function formatResultReason(reason?: string | null) {
   if (!reason) return '사유 없음';
-  return resultReasonCopy[reason] ?? `해석되지 않은 사유: ${reason}`;
+  return resultReasonCopy[reason] ?? '해석되지 않은 사유입니다.';
 }
 
 export function formatIssueTitle(code: string) {
