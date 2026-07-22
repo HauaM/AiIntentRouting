@@ -90,6 +90,19 @@ it('keeps CSV import, export, and create wired to the same applied cases state',
   expect(page).toContain('csvCases,');
 });
 
+it('uses the normal four-column CSV template for new test runs', () => {
+  const page = read('index.tsx');
+
+  expect(page).toContain("'case_id,query,expected_intent,memo'");
+  expect(page).toContain(
+    "'tc-001,password reset help,it_password_reset,known happy path'",
+  );
+  expect(page).toContain(
+    "'tc-002,out of scope topic,off_topic_other_subject,service-specific off-topic intent'",
+  );
+  expect(page).not.toContain('case_type');
+});
+
 it('localizes result and lookup labels while preserving technical identifiers', () => {
   const page = read('index.tsx');
 

@@ -85,7 +85,6 @@ export function CsvImportModal({
           헤더는 반드시 <Typography.Text code>case_id</Typography.Text>,{' '}
           <Typography.Text code>query</Typography.Text>,{' '}
           <Typography.Text code>expected_intent</Typography.Text>,{' '}
-          <Typography.Text code>case_type</Typography.Text>,{' '}
           <Typography.Text code>memo</Typography.Text> 순서여야 합니다.
         </Typography.Text>
         {validationErrors.length ? (
@@ -109,8 +108,8 @@ export function CsvImportModal({
           value={csvText}
           onChange={(event) => setCsvText(event.target.value)}
           placeholder={[
-            'case_id,query,expected_intent,case_type,memo',
-            'tc-001,password reset help,it_password_reset,positive,known happy path',
+            'case_id,query,expected_intent,memo',
+            'tc-001,password reset help,it_password_reset,known happy path',
           ].join('\n')}
         />
       </Space>

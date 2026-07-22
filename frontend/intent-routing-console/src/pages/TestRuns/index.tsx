@@ -59,9 +59,9 @@ const resultLabel: Record<string, string> = {
 };
 
 const csvTemplate = [
-  'case_id,query,expected_intent,case_type,memo',
-  'tc-001,password reset help,it_password_reset,positive,known happy path',
-  'tc-002,maybe login maybe password,,clarify,should request clarification',
+  'case_id,query,expected_intent,memo',
+  'tc-001,password reset help,it_password_reset,known happy path',
+  'tc-002,out of scope topic,off_topic_other_subject,service-specific off-topic intent',
 ].join('\n');
 
 const testRunModeTabs = [

@@ -6,32 +6,29 @@ import {
 } from './csvCaseBuilder';
 
 const validCsv = [
-  'case_id,query,expected_intent,case_type,memo',
-  'tc-001,password reset help,it_password_reset,positive,known happy path',
-  'tc-002,ambiguous login problem,it_login,confusing,similar intent coverage',
-  'tc-003,maybe login maybe password,,clarify,should request clarification',
-  'tc-004,show me payroll,,off_topic,out of scope',
-  'tc-005,delete all customer data,,risk,blocked safety case',
-  'tc-006,unknown request,,fallback,no matching intent',
+  'case_id,query,expected_intent,memo',
+  'P001,인터넷뱅킹 오류가 발생해요,program_supported_question,정상 문의',
+  'P002,업무 밖 상담으로 보내줘,off_topic_other_subject,업무밖 intent도 정상 intent로 테스트',
 ].join('\n');
 
-it('parses backend-compatible CSV into case drafts', () => {
-  const result = parseCsvText(validCsv);
-
-  expect(result.ok).toBe(true);
-  if (result.ok) {
-    expect(result.cases).toHaveLength(6);
-    expect(result.cases[0]).toMatchObject({
-      case_id: 'tc-001',
-      expected_intent: 'it_password_reset',
-      case_type: 'positive',
-    });
-    expect(result.cases[2]).toMatchObject({
-      case_id: 'tc-003',
-      expected_intent: '',
-      case_type: 'clarify',
-    });
-  }
+it('parses normal four-column CSV into case drafts', () => {
+  expect(parseCsvText(validCsv)).toEqual({
+    ok: true,
+    cases: [
+      {
+        case_id: 'P001',
+        query: '인터넷뱅킹 오류가 발생해요',
+        expected_intent: 'program_supported_question',
+        memo: '정상 문의',
+      },
+      {
+        case_id: 'P002',
+        query: '업무 밖 상담으로 보내줘',
+        expected_intent: 'off_topic_other_subject',
+        memo: '업무밖 intent도 정상 intent로 테스트',
+      },
+    ],
+  });
 });
 
 it('builds backend-compatible CSV from case drafts', () => {
@@ -40,33 +37,31 @@ it('builds backend-compatible CSV from case drafts', () => {
       case_id: 'tc-001',
       query: 'password reset help',
       expected_intent: 'it_password_reset',
-      case_type: 'positive',
       memo: 'happy path',
     },
     {
       case_id: 'tc-002',
       query: 'show me payroll',
-      expected_intent: '',
-      case_type: 'off_topic',
+      expected_intent: 'off_topic_other_subject',
       memo: 'out of scope',
     },
   ];
 
   expect(buildCsvText(drafts)).toBe(
     [
-      'case_id,query,expected_intent,case_type,memo',
-      'tc-001,password reset help,it_password_reset,positive,happy path',
-      'tc-002,show me payroll,,off_topic,out of scope',
+      'case_id,query,expected_intent,memo',
+      'tc-001,password reset help,it_password_reset,happy path',
+      'tc-002,show me payroll,off_topic_other_subject,out of scope',
     ].join('\n'),
   );
 });
 
 it('handles quoted CSV cells containing commas, quotes, and newlines', () => {
   const csv = [
-    'case_id,query,expected_intent,case_type,memo',
-    'tc-003,"reset password, please","it_password_reset",positive,"contains ""quote"""',
+    'case_id,query,expected_intent,memo',
+    'tc-003,"reset password, please","it_password_reset","contains ""quote"""',
     'tc-004,"line one',
-    'line two",,fallback,"multi-line query"',
+    'line two",it_password_reset,"multi-line query"',
   ].join('\n');
 
   const result = parseCsvText(csv);
@@ -79,28 +74,17 @@ it('handles quoted CSV cells containing commas, quotes, and newlines', () => {
   }
 });
 
-it('reports detailed validation errors for invalid CSV', () => {
-  const result = parseCsvText(
-    [
-      'case_id,query,expected_intent,case_type,memo',
-      'tc-001,password reset,,positive,missing expected intent',
-      'tc-001,another query,,fallback,duplicate id',
-      'tc-003,off topic,it_payroll,off_topic,intent must be empty',
-      'tc-004,unknown,,unknown,bad type',
-    ].join('\n'),
-  );
-
-  expect(result.ok).toBe(false);
-  if (!result.ok) {
-    expect(result.errors).toContain('row 2: expected_intent is required');
-    expect(result.errors).toContain('row 3: duplicate case_id tc-001');
-    expect(result.errors).toContain('row 4: expected_intent must be empty');
-    expect(result.errors).toContain('row 5: unknown case_type unknown');
-  }
+it('requires expected intent for every normal CSV row', () => {
+  expect(
+    parseCsvText('case_id,query,expected_intent,memo\nP001,문의,,memo'),
+  ).toEqual({
+    ok: false,
+    errors: ['row 2: expected_intent is required'],
+  });
 });
 
 it('rejects empty CSV and incorrect headers', () => {
-  const emptyResult = parseCsvText('case_id,query,expected_intent,case_type,memo');
+  const emptyResult = parseCsvText('case_id,query,expected_intent,memo');
   const badHeaderResult = parseCsvText('case_id,query\nTC001,hello');
 
   expect(emptyResult.ok).toBe(false);
@@ -110,7 +94,7 @@ it('rejects empty CSV and incorrect headers', () => {
   }
   if (!badHeaderResult.ok) {
     expect(badHeaderResult.errors[0]).toContain(
-      'CSV columns must be exactly: case_id, query, expected_intent, case_type, memo',
+      'CSV columns must be exactly: case_id, query, expected_intent, memo',
     );
   }
 });
@@ -133,7 +117,6 @@ it('exports CSV through a browser download without backend export contracts', ()
       case_id: 'tc-001',
       query: 'password reset help',
       expected_intent: 'it_password_reset',
-      case_type: 'positive',
       memo: 'happy path',
     },
   ]);
