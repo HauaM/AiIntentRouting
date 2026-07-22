@@ -172,7 +172,7 @@ Keep using `FutureFeatureNotice` for unsupported capabilities:
 - Runtime metrics: `window_hours`.
 - Runtime logs: `limit`.
 - Runtime log masked field: `query_masked`.
-- API key secret copy uses `Secret 보기/복사` and the audited reveal endpoint
+- API key secret copy uses the Authorization row `복사` action and the audited reveal endpoint
   `POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal`.
 - Persisted API keys use encrypted secret material; raw secret is copied only through the audited reveal endpoint and never through inventory or guidance.
 - API key live tests first perform audited reveal, then use the secret only for

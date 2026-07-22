@@ -120,7 +120,7 @@ Expected UX:
 
 - Create API keys from the selected Service and environment.
 - Select allowed intents and route keys from known candidates.
-- Show the API key secret on create and provide an explicit `Secret 보기/복사`
+- Show the API key secret on create and provide an explicit Authorization `복사`
   action through the audited reveal endpoint.
 - Use encrypted secret material for later authorized reveal.
 - Creation displays and copies the initial raw secret; later copying uses the audited reveal endpoint.

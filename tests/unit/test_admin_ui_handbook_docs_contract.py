@@ -196,7 +196,7 @@ def test_admin_ui_v04_records_audited_api_key_secret_reveal() -> None:
     text = f"{pattern_kit}\n{onboarding}\n{checklist}\n{theme}"
 
     for phrase in (
-        "Secret 보기/복사",
+        "Authorization `복사`",
         "POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal",
         "api_key.secret_revealed",
         "encrypted secret material",

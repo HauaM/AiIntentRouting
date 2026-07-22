@@ -62,6 +62,40 @@ describe('runtime live test service', () => {
     expect(result).toEqual({
       ok: true,
       status: 200,
+      exchange: {
+        request: {
+          method: 'POST',
+          url: '/v1/intent-route',
+          headers: {
+            Authorization: 'Bearer [REDACTED]',
+            'X-Key-Id': 'key_live_1',
+            'X-App-Id': 'checkout-web',
+            'X-Service-Id': 'svc-a',
+            'X-Request-Id': 'admin-live-1',
+            'Content-Type': 'application/json',
+          },
+          body: {
+            query: '비밀번호를 재설정하고 싶어요',
+            channel: 'admin-ui-live-test',
+            user_context: {
+              workflow_run_id: 'admin-live-1',
+              source: 'admin-ui-live-test',
+            },
+          },
+        },
+        response: {
+          status: 200,
+          body: {
+            trace_id: 'irt-live-1',
+            decision: 'confident',
+            request_id: 'admin-live-1',
+            intent_id: 'password_reset',
+            route_key: 'it.password.self_service',
+            confidence: 0.93,
+            release_version: 'rel-1',
+          },
+        },
+      },
       body: {
         trace_id: 'irt-live-1',
         decision: 'confident',
@@ -107,6 +141,44 @@ describe('runtime live test service', () => {
     expect(result).toEqual({
       ok: false,
       status: 401,
+      exchange: {
+        request: {
+          method: 'POST',
+          url: '/v1/intent-route',
+          headers: {
+            Authorization: 'Bearer [REDACTED]',
+            'X-Key-Id': 'key_live_1',
+            'X-App-Id': 'checkout-web',
+            'X-Service-Id': 'svc-a',
+            'X-Request-Id': 'admin-live-2',
+            'Content-Type': 'application/json',
+          },
+          body: {
+            query: 'test query',
+            channel: 'admin-ui-live-test',
+            user_context: {
+              workflow_run_id: 'admin-live-2',
+              source: 'admin-ui-live-test',
+            },
+          },
+        },
+        response: {
+          status: 401,
+          body: {
+            status: 'error [REDACTED]',
+            trace_id: 'irt-live-error-[REDACTED]',
+            request_id: 'admin-live-2-[REDACTED]',
+            release_version: 'rel-[REDACTED]',
+            error: {
+              code: 'AUTHENTICATION_FAILED_[REDACTED]',
+              message: 'API key authentication failed for Bearer [REDACTED].',
+              retryable: false,
+              category: 'authentication_[REDACTED]',
+              layer: 'api_key_[REDACTED]',
+            },
+          },
+        },
+      },
       trace_id: 'irt-live-error-[REDACTED]',
       request_id: 'admin-live-2-[REDACTED]',
       release_version: 'rel-[REDACTED]',
@@ -152,6 +224,42 @@ describe('runtime live test service', () => {
     expect(result).toEqual({
       ok: true,
       status: 200,
+      exchange: {
+        request: {
+          method: 'POST',
+          url: '/v1/intent-route',
+          headers: {
+            Authorization: 'Bearer [REDACTED]',
+            'X-Key-Id': 'key_live_1',
+            'X-App-Id': 'checkout-web',
+            'X-Service-Id': 'svc-a',
+            'X-Request-Id': 'admin-live-4',
+            'Content-Type': 'application/json',
+          },
+          body: {
+            query: 'test query',
+            channel: 'admin-ui-live-test',
+            user_context: {
+              workflow_run_id: 'admin-live-4',
+              source: 'admin-ui-live-test',
+            },
+          },
+        },
+        response: {
+          status: 200,
+          body: {
+            trace_id: 'irt-live-[REDACTED]',
+            decision: 'confident',
+            request_id: 'admin-live-4-[REDACTED]',
+            domain: 'it_[REDACTED]',
+            intent_id: 'password_reset_[REDACTED]',
+            route_key: 'it.password.[REDACTED]',
+            clarify_question: 'retry without [REDACTED]?',
+            confidence: 0.88,
+            release_version: 'rel-[REDACTED]',
+          },
+        },
+      },
       body: {
         trace_id: 'irt-live-[REDACTED]',
         decision: 'confident',
@@ -183,6 +291,38 @@ describe('runtime live test service', () => {
     expect(result).toEqual({
       ok: false,
       status: 0,
+      exchange: {
+        request: {
+          method: 'POST',
+          url: '/v1/intent-route',
+          headers: {
+            Authorization: 'Bearer [REDACTED]',
+            'X-Key-Id': 'key_live_1',
+            'X-App-Id': 'checkout-web',
+            'X-Service-Id': 'svc-a',
+            'X-Request-Id': 'admin-live-3',
+            'Content-Type': 'application/json',
+          },
+          body: {
+            query: 'test query',
+            channel: 'admin-ui-live-test',
+            user_context: {
+              workflow_run_id: 'admin-live-3',
+              source: 'admin-ui-live-test',
+            },
+          },
+        },
+        response: {
+          status: 0,
+          body: {
+            error: {
+              code: 'NETWORK_ERROR',
+              message: 'Request failed for Bearer [REDACTED].',
+              retryable: true,
+            },
+          },
+        },
+      },
       error: {
         code: 'NETWORK_ERROR',
         message: 'Request failed for Bearer [REDACTED].',

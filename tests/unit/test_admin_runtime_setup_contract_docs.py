@@ -98,6 +98,7 @@ def test_c3_runtime_setup_contract_doc_defines_admin_api_and_runtime_guidance() 
         "GET /admin/v1/services/{service_id}/runtime-setup",
         "future/not baseline",
         "The UI obtains the API Secret through the audited reveal endpoint",
+        "Live-test HTTP request and response previews must be redacted",
         "Authorization: Bearer {{intent_routing_api_key}}",
         "X-Key-Id",
         "X-App-Id",
