@@ -28,6 +28,51 @@ VALID_CSV = "\n".join(
 )
 
 
+def test_new_csv_contract_derives_positive_case_type_and_confident_decision() -> None:
+    csv_text = "\n".join(
+        [
+            "case_id,query,expected_intent,memo",
+            "P001,인터넷뱅킹 500 오류가 나요,program_supported_question,정상 문의",
+            "P002,업무 밖 상담으로 보내줘,off_topic_other_subject,서비스별 업무밖 intent",
+        ]
+    )
+
+    cases = parse_test_cases_csv(csv_text)
+
+    assert [(case.case_id, case.case_type, case.expected_decision) for case in cases] == [
+        ("P001", "positive", "confident"),
+        ("P002", "positive", "confident"),
+    ]
+    assert [case.expected_intent for case in cases] == [
+        "program_supported_question",
+        "off_topic_other_subject",
+    ]
+
+
+def test_new_csv_contract_requires_expected_intent_for_every_row() -> None:
+    csv_text = "\n".join(
+        [
+            "case_id,query,expected_intent,memo",
+            "P001,인터넷뱅킹 500 오류가 나요,,정답 intent 누락",
+        ]
+    )
+
+    with pytest.raises(CsvValidationError, match="expected_intent is required"):
+        parse_test_cases_csv(csv_text)
+
+
+def test_legacy_csv_contract_still_parses_during_migration() -> None:
+    cases = parse_test_cases_csv(VALID_CSV)
+
+    assert {case.case_type for case in cases} >= {
+        "positive",
+        "clarify",
+        "risk",
+        "off_topic",
+        "fallback",
+    }
+
+
 def test_gate_passes_when_risk_all_pass_and_total_at_least_70_percent() -> None:
     result = evaluate_gate(GateInput(total=10, passed=7, review=1, risk_total=2, risk_passed=2))
     assert result.gate_passed is True

@@ -32,7 +32,9 @@ from intent_routing.routing.scoring import RoutingDecisionResult
 from intent_routing.security.pii import mask_pii
 from intent_routing.testing.gate import GateInput, GateResult, evaluate_gate
 
-CSV_COLUMNS = ["case_id", "query", "expected_intent", "case_type", "memo"]
+CLASSIFICATION_CSV_COLUMNS = ["case_id", "query", "expected_intent", "memo"]
+LEGACY_CSV_COLUMNS = ["case_id", "query", "expected_intent", "case_type", "memo"]
+CSV_COLUMNS = LEGACY_CSV_COLUMNS
 EXPECTED_DECISIONS = {
     "positive": "confident",
     "confusing": "confident",
@@ -55,6 +57,7 @@ class ParsedTestCase:
     case_type: str
     memo: str
     expected_decision: str
+    expected_route_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,13 +78,50 @@ class CsvTestRunSummary:
 
 def parse_test_cases_csv(csv_text: str) -> list[ParsedTestCase]:
     reader = csv.DictReader(StringIO(csv_text))
-    if reader.fieldnames != CSV_COLUMNS:
-        raise CsvValidationError("CSV columns must be exactly: " + ", ".join(CSV_COLUMNS))
+    if reader.fieldnames == CLASSIFICATION_CSV_COLUMNS:
+        return _parse_classification_cases(reader)
+    if reader.fieldnames == LEGACY_CSV_COLUMNS:
+        return _parse_legacy_cases(reader)
+    raise CsvValidationError(
+        "CSV columns must be exactly: " + ", ".join(CLASSIFICATION_CSV_COLUMNS)
+    )
+
+
+def _parse_classification_cases(reader: csv.DictReader[str]) -> list[ParsedTestCase]:
+    cases: list[ParsedTestCase] = []
+    seen_case_ids: set[str] = set()
+    for row_number, row in enumerate(reader, start=2):
+        if None in row or set(row) != set(CLASSIFICATION_CSV_COLUMNS):
+            raise CsvValidationError(f"row {row_number}: CSV columns must match header")
+        case_id = _required(row.get("case_id"), row_number, "case_id")
+        query = _required(row.get("query"), row_number, "query")
+        expected_intent = _required(row.get("expected_intent"), row_number, "expected_intent")
+        memo = _required(row.get("memo"), row_number, "memo")
+        if case_id in seen_case_ids:
+            raise CsvValidationError(f"row {row_number}: duplicate case_id {case_id}")
+        seen_case_ids.add(case_id)
+        cases.append(
+            ParsedTestCase(
+                case_id=case_id,
+                query=query,
+                expected_intent=expected_intent,
+                case_type="positive",
+                memo=memo,
+                expected_decision=Decision.confident.value,
+            )
+        )
+
+    if not cases:
+        raise CsvValidationError("CSV must include at least one test case")
+    return cases
+
+
+def _parse_legacy_cases(reader: csv.DictReader[str]) -> list[ParsedTestCase]:
 
     cases: list[ParsedTestCase] = []
     seen_case_ids: set[str] = set()
     for row_number, row in enumerate(reader, start=2):
-        if None in row or set(row) != set(CSV_COLUMNS):
+        if None in row or set(row) != set(LEGACY_CSV_COLUMNS):
             raise CsvValidationError(f"row {row_number}: CSV columns must match header")
         case_id = _required(row.get("case_id"), row_number, "case_id")
         query = _required(row.get("query"), row_number, "query")
