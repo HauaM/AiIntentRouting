@@ -633,7 +633,7 @@ def test_intent_route_off_topic_query_returns_off_topic_only_when_service_policy
     assert unmatched.json()["decision"] == "fallback"
 
 
-def test_intent_route_off_topic_query_short_circuits_before_embedding_resolution(
+def test_intent_route_off_topic_policy_does_not_hide_embedding_resolution_failure(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -653,10 +653,22 @@ def test_intent_route_off_topic_query_short_circuits_before_embedding_resolution
     )
 
     body = response.json()
-    assert response.status_code == 200
-    assert body["decision"] == "off_topic"
-    assert "intent_id" not in body
-    assert "route_key" not in body
+    assert response.status_code == 503
+    assert body["status"] == "error"
+    assert body["error"]["code"] == "EMBEDDING_MODEL_UNAVAILABLE"
+    assert body["error"]["layer"] == "embedding_layer"
+    assert body["release_version"] == RELEASE_VERSION
+    assert "decision" not in body
+
+    persisted = _runtime_log(db_session, body["trace_id"])
+    assert persisted is not None
+    assert persisted.request_id == "req-runtime-off-topic-no-embed-1"
+    assert persisted.release_version == RELEASE_VERSION
+    assert persisted.error_code == "EMBEDDING_MODEL_UNAVAILABLE"
+    assert persisted.error_category == "dependency_failure"
+    assert persisted.error_layer == "embedding_layer"
+    assert persisted.http_status == 503
+    assert persisted.retryable is True
 
 
 def test_intent_route_fallback_query_returns_fallback(
