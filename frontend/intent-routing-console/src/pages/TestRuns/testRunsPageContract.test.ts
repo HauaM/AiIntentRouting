@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { testRunCreateErrorMessage } from './testRunCreateError';
 
 const read = (file: string) =>
   readFileSync(resolve(process.cwd(), `src/pages/TestRuns/${file}`), 'utf8');
@@ -170,9 +171,22 @@ it('handles create and history request failures with clear messages', () => {
   const page = read('index.tsx');
 
   expect((page.match(/catch/g) ?? []).length).toBeGreaterThanOrEqual(2);
-  expect(page).toContain("message.error('테스트 실행 생성에 실패했습니다.')");
+  expect(page).toContain("import { testRunCreateErrorMessage } from './testRunCreateError';");
+  expect(page).toContain('message.error(testRunCreateErrorMessage(error));');
   expect(page).toContain("message.error('테스트 실행은 생성되었지만 결과를 불러오지 못했습니다.')");
   expect(page).toContain("message.error('테스트 실행 결과를 불러오지 못했습니다.')");
+});
+
+it('extracts the server validation message for failed test-run creation', () => {
+  expect(testRunCreateErrorMessage({
+    data: {
+      detail: {
+        error: {
+          message: 'Risk policy must be enabled to run risk guardrail cases.',
+        },
+      },
+    },
+  })).toBe('Risk policy must be enabled to run risk guardrail cases.');
 });
 
 it('keeps a successfully created run summary visible when its results request fails', () => {

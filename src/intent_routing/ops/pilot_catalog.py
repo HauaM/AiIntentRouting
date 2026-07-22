@@ -65,8 +65,10 @@ def assert_csv_header(path: Path) -> None:
         try:
             header = next(reader)
         except StopIteration as exc:
-            raise CsvValidationError(f"CSV header must be {CSV_COLUMNS}") from exc
+            raise CsvValidationError(_csv_header_error_message()) from exc
     if header not in (CLASSIFICATION_CSV_COLUMNS, CSV_COLUMNS):
-        raise CsvValidationError(
-            f"CSV header must be {CLASSIFICATION_CSV_COLUMNS} or {CSV_COLUMNS}"
-        )
+        raise CsvValidationError(_csv_header_error_message())
+
+
+def _csv_header_error_message() -> str:
+    return f"CSV header must be {CLASSIFICATION_CSV_COLUMNS} or {CSV_COLUMNS}"

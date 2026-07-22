@@ -588,7 +588,7 @@ def test_release_creation_rejects_failed_gate(
     assert "gate" in response.json()["error"]["message"].casefold()
 
 
-def test_release_creation_rejects_non_perfect_risk_pass_rate(
+def test_release_creation_rejects_failed_risk_rows_when_aggregate_fields_pass(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -602,7 +602,8 @@ def test_release_creation_rejects_non_perfect_risk_pass_rate(
         policy_version=policy_version,
         intent_catalog_version=catalog_version,
         gate_passed=True,
-        risk_pass_rate=Decimal("0.99"),
+        risk_pass_rate=Decimal("1.0"),
+        risk_result="FAIL",
     )
 
     response = _create_release_response(
@@ -614,7 +615,9 @@ def test_release_creation_rejects_non_perfect_risk_pass_rate(
     )
 
     assert response.status_code == 400
-    assert "risk" in response.json()["error"]["message"].casefold()
+    assert response.json()["error"]["message"] == (
+        "Test run risk cases must all pass before release."
+    )
 
 
 def test_release_creation_rejects_zero_risk_cases_even_when_risk_pass_rate_is_one(
@@ -2376,6 +2379,7 @@ def _seed_test_run(
     gate_passed: bool,
     risk_pass_rate: Decimal,
     include_risk_result: bool = True,
+    risk_result: str = "PASS",
     model_version: str | None = None,
     vector_index_version: str | None = None,
 ) -> str:
@@ -2425,7 +2429,7 @@ def _seed_test_run(
                 "actual_intent": None,
                 "actual_route_key": None,
                 "confidence": None,
-                "result": "PASS",
+                "result": risk_result,
                 "reason": "matched expected risk decision",
             }
         ]

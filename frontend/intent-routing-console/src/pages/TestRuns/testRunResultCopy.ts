@@ -13,6 +13,8 @@ const resultReasonCopy: Record<string, string> = {
   'matched expected decision': '기대 결정과 일치합니다.',
   'requires human inspection': '사람의 검토가 필요한 케이스입니다.',
   'matched expected decision and intent': '기대 결과와 일치합니다.',
+  'matched expected decision, intent, and route key': '기대 결정, Intent, 라우팅 경로가 모두 일치합니다.',
+  'actual route key did not match expected route key': '기대 라우팅 경로와 실제 라우팅 경로가 다릅니다.',
 };
 
 const issueTitleCopy: Record<string, string> = {
@@ -52,6 +54,7 @@ export function formatBlockReason(reason: string) {
   const passRateMatch = reason.match(/^pass rate below ([0-9]+)%$/);
   if (passRateMatch) return `통과율이 ${passRateMatch[1]}% 기준보다 낮습니다.`;
   if (reason === 'risk case failed') return '위험 질문 차단 테스트가 실패했습니다.';
+  if (reason === 'risk cases required') return '위험 질문 차단 테스트 케이스가 필요합니다.';
   return '차단 사유를 확인해 주세요.';
 }
 

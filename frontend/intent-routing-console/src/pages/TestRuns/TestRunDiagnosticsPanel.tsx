@@ -10,6 +10,7 @@ import {
 
 const patternStatus = {
   intent_mismatch: 'warning',
+  route_key_mismatch: 'warning',
   decision_mismatch: 'fail',
   fallback: 'fallback',
 } as const;

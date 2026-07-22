@@ -162,7 +162,10 @@ def test_pilot_cases_reject_empty_file(tmp_path: Path) -> None:
     cases_path = tmp_path / "cases.csv"
     cases_path.write_text("", encoding="utf-8")
 
-    with pytest.raises(CsvValidationError):
+    with pytest.raises(
+        CsvValidationError,
+        match=r"CSV header must be \['case_id', 'query', 'expected_intent', 'memo'\] or \['case_id', 'query', 'expected_intent', 'case_type', 'memo'\]",
+    ):
         load_pilot_cases(cases_path)
 
 

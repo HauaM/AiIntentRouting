@@ -81,6 +81,30 @@ describe('buildTestRunInsights', () => {
     expect(insights.patterns[0].kind).toBe('intent_mismatch');
   });
 
+  it('keeps route-key mismatches visible with a route-key action', () => {
+    const insights = buildTestRunInsights([
+      result({
+        case_id: 'RK001',
+        actual_intent: 'it_api_timeout',
+        actual_route_key: 'it.api_timeout.legacy',
+        reason: 'actual route key did not match expected route key',
+      }),
+    ]);
+
+    expect(insights.patterns).toContainEqual({
+      key: 'route_key_mismatch:it_api_timeout→it.api_timeout.legacy',
+      expected: 'it_api_timeout',
+      actual: 'it.api_timeout.legacy',
+      expectedValueType: 'intent',
+      actualValueType: 'route_key',
+      count: 1,
+      kind: 'route_key_mismatch',
+    });
+    expect(insights.nextActions).toContain(
+      'it_api_timeout Intent에 설정된 route_key와 실제 라우팅 경로를 점검하세요.',
+    );
+  });
+
   it('includes review-rate guidance when diagnostics reports review guidance', () => {
     const diagnostics = {
       primary_issue: null,

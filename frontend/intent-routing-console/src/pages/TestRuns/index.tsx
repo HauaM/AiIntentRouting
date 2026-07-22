@@ -33,6 +33,7 @@ import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
 import { TestRunHistorySelect } from './TestRunHistorySelect';
 import { TestPolicyPanel } from './TestPolicyPanel';
 import { type TestRunResultsLoadState } from './testRunResultInsights';
+import { testRunCreateErrorMessage } from './testRunCreateError';
 import {
   formatBlockReason,
   formatDecisionLabel,
@@ -208,13 +209,13 @@ export default function TestRunsPage() {
       setResults(nextResults);
       setResultsLoadState('loaded');
       message.success('테스트 실행을 생성했습니다.');
-    } catch {
+    } catch (error) {
       if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
       if (testRunCreated) {
         setResultsLoadState('error');
         message.error('테스트 실행은 생성되었지만 결과를 불러오지 못했습니다.');
       } else {
-        message.error('테스트 실행 생성에 실패했습니다.');
+        message.error(testRunCreateErrorMessage(error));
       }
     } finally {
       if (isCurrentRunRequest(requestGeneration, serviceId)) setLoading(false);
