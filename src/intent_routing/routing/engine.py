@@ -115,29 +115,6 @@ class RoutingEngine:
                 },
             )
 
-        off_topic_policy = route_input.release.off_topic_policy
-        if off_topic_policy is not None:
-            off_topic_evaluation = off_topic_policy.evaluate(route_input.query)
-            if off_topic_evaluation.matched:
-                fallback_policy = off_topic_evaluation.fallback_policy or FallbackPolicy(
-                    type="client_fallback",
-                    retryable=False,
-                    recommended_action="handoff_to_default_channel",
-                    message=off_topic_evaluation.message,
-                )
-                return RoutingDecisionResult(
-                    decision=Decision.off_topic,
-                    fallback_policy=fallback_policy,
-                    decision_state={
-                        "decision_reason": "off_topic_policy_match",
-                        "matched_keywords": [
-                            keyword
-                            for keyword in off_topic_policy.keywords
-                            if keyword.casefold() in route_input.query.casefold()
-                        ],
-                    },
-                )
-
         candidates = list(self.candidate_loader(route_input.service_id, route_input.release))
         semantic_matches = self.semantic_search(route_input.query, candidates, route_input.release)
         scored_candidates = [
@@ -157,10 +134,45 @@ class RoutingEngine:
                 fallback_score=route_input.release.fallback_score,
             )
         )
-        return composer.compose(
+        semantic_decision = composer.compose(
             scored_candidates,
             allowed_intents=set(route_input.route_scope.allowed_intents),
             allowed_route_keys=set(route_input.route_scope.allowed_route_keys),
+        )
+        if semantic_decision.decision == Decision.confident:
+            return semantic_decision
+
+        off_topic_decision = self._off_topic_decision(route_input)
+        if off_topic_decision is not None:
+            return off_topic_decision
+        return semantic_decision
+
+    def _off_topic_decision(self, route_input: RouteInput) -> RoutingDecisionResult | None:
+        off_topic_policy = route_input.release.off_topic_policy
+        if off_topic_policy is None:
+            return None
+
+        off_topic_evaluation = off_topic_policy.evaluate(route_input.query)
+        if not off_topic_evaluation.matched:
+            return None
+
+        fallback_policy = off_topic_evaluation.fallback_policy or FallbackPolicy(
+            type="client_fallback",
+            retryable=False,
+            recommended_action="handoff_to_default_channel",
+            message=off_topic_evaluation.message,
+        )
+        return RoutingDecisionResult(
+            decision=Decision.off_topic,
+            fallback_policy=fallback_policy,
+            decision_state={
+                "decision_reason": "off_topic_policy_match",
+                "matched_keywords": [
+                    keyword
+                    for keyword in off_topic_policy.keywords
+                    if keyword.casefold() in route_input.query.casefold()
+                ],
+            },
         )
 
     def _score_candidate(

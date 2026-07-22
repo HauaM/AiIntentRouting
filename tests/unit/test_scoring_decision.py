@@ -497,7 +497,7 @@ def test_routing_engine_scores_candidates_and_returns_composer_result() -> None:
     assert result.confidence == pytest.approx(0.88)
 
 
-def test_routing_engine_returns_off_topic_before_scoring() -> None:
+def test_registered_out_of_business_intent_can_route_confident_before_off_topic_policy() -> None:
     semantic_search_called = False
 
     def semantic_search(
@@ -507,11 +507,80 @@ def test_routing_engine_returns_off_topic_before_scoring() -> None:
     ) -> dict[str, SemanticMatch]:
         nonlocal semantic_search_called
         semantic_search_called = True
-        return {}
+        return {
+            "off_topic_other_subject": SemanticMatch(
+                positive_scores=[0.94],
+                negative_scores=[],
+            )
+        }
 
     engine = RoutingEngine(
         risk_policy=_AllowAllRiskPolicy(),
-        candidate_loader=lambda _service_id, _release: [],
+        candidate_loader=lambda _service_id, _release: [
+            IntentCandidate(
+                intent_id="off_topic_other_subject",
+                display_name="서비스 범위 밖 안내",
+                domain="support",
+                route_key="support.off_topic.other_subject",
+                include_keywords=("날씨", "점심", "주가"),
+            )
+        ],
+        semantic_search=semantic_search,
+        composer=DecisionComposer(ThresholdConfig(preset="balanced")),
+    )
+
+    result = engine.route(
+        RouteInput(
+            query="오늘 날씨 안내는 서비스 범위 밖 안내로 보내줘",
+            service_id="svc-a",
+            route_scope=RouteScope(allowed_intents=[], allowed_route_keys=[]),
+            release=ActiveReleaseContext(
+                release_version="rel-1",
+                off_topic_policy=ServiceOffTopicPolicy(
+                    enabled=True,
+                    keywords=["날씨"],
+                    message="서비스 범위 밖 문의입니다.",
+                    fallback_policy=FallbackPolicy(
+                        type="client_fallback",
+                        retryable=False,
+                        recommended_action="handoff_to_default_channel",
+                    ),
+                ),
+            ),
+        )
+    )
+
+    assert semantic_search_called is True
+    assert result.decision == Decision.confident
+    assert result.intent_id == "off_topic_other_subject"
+    assert result.route_key == "support.off_topic.other_subject"
+
+
+def test_routing_engine_returns_off_topic_when_no_confident_catalog_route_exists() -> None:
+    semantic_search_called = False
+
+    def semantic_search(
+        _query: str,
+        _candidates: list[IntentCandidate],
+        _release: ActiveReleaseContext,
+    ) -> dict[str, SemanticMatch]:
+        nonlocal semantic_search_called
+        semantic_search_called = True
+        return {
+            "it_password_reset": SemanticMatch(positive_scores=[0.2], negative_scores=[]),
+        }
+
+    engine = RoutingEngine(
+        risk_policy=_AllowAllRiskPolicy(),
+        candidate_loader=lambda _service_id, _release: [
+            IntentCandidate(
+                intent_id="it_password_reset",
+                display_name="비밀번호 초기화",
+                domain="IT",
+                route_key="it.password_reset.self_service",
+                include_keywords=("비밀번호", "초기화"),
+            )
+        ],
         semantic_search=semantic_search,
         composer=DecisionComposer(ThresholdConfig(preset="balanced")),
     )
@@ -540,7 +609,7 @@ def test_routing_engine_returns_off_topic_before_scoring() -> None:
     assert result.decision == Decision.off_topic
     assert result.fallback_policy is not None
     assert result.fallback_policy.recommended_action == "handoff_to_default_channel"
-    assert semantic_search_called is False
+    assert semantic_search_called is True
 
 
 def test_routing_engine_falls_back_when_single_candidate_lacks_keyword_signal() -> None:
