@@ -12,6 +12,10 @@ The current Test Run CSV asks users to provide `case_type`, but users are primar
 
 The Admin Console user-facing Test Run CSV will use `case_id,query,expected_intent,memo`. Each row is internally stored as `case_type=positive` and `expected_decision=confident`. The backend derives expected `route_key` from the selected Catalog version and compares both actual Intent and actual route key for the new four-column contract. Risk cases are added from a versioned common risk pack plus optional service-specific risk CSV and are internally stored as `case_type=risk`, `expected_decision=risk`.
 
+Common or custom risk rows require `risk_policy.enabled=True`; a risk-disabled policy fails fast with a clear validation error.
+
+The existing database columns `case_type`, `expected_decision`, and `expected_intent` remain unchanged. This change includes no database migration.
+
 ## Alternatives Considered
 
 ### Option 1: Keep `case_type` in user CSV
