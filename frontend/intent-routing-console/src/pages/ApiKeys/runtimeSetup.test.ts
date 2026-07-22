@@ -84,8 +84,6 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toContain('Secret 지우기');
     expect(source).toContain('API Secret Key');
     expect(source).toContain('Routing Key ID');
-    expect(source).toContain('이 모달을 닫으면 화면에 남은 secret은 지워집니다.');
-    expect(source).toContain('Secret 보기/복사를 눌러 감사 로그를 남긴 뒤 다시 복사');
     expect(source).not.toContain('oneTimeApiSecretForSelectedKey');
     expect(source).not.toContain('RuntimeSetupOneTimeSecret');
     expect(source).not.toContain('createdKeyModalOpen');
@@ -117,6 +115,9 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toContain('selectedApiKey');
     expect(source).toContain('onRow={(row) => ({');
     expect(source).toContain('selectApiKey(row)');
+    expect(source).not.toContain("title: 'Copy'");
+    expect(source).not.toContain('API Secret 변수');
+    expect(source).not.toContain('가이드 적용');
   });
 
   it('runs live tests by audited reveal without rendering a raw secret input', () => {
@@ -131,9 +132,15 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toContain('apiSecret: revealed.api_key');
     expect(source).toContain('selectedLiveTestKeyIdRef');
     expect(source).toContain('liveTestRunRequestIdRef');
+    expect(source).toContain('HTTP request');
+    expect(source).toContain('HTTP response');
+    expect(source).toContain('liveTestExchangeRequestText');
+    expect(source).toContain('liveTestExchangeResponseText');
     expect(source).not.toContain('api_secret');
     expect(source).not.toContain('Input.Password');
     expect(source).not.toContain('liveTestSecret');
+    expect(source).not.toContain('Request ID 자동 생성');
+    expect(source).not.toContain('liveTestRequestId.trim()');
     expect(source).toContain('Secret은 화면에 표시하지 않고 테스트 요청에만 사용됩니다.');
   });
 

@@ -6,6 +6,7 @@ import {
   Alert,
   Button,
   Card,
+  Collapse,
   Descriptions,
   Form,
   Input,
@@ -93,6 +94,8 @@ const expiryLabel = (expiresAt: string | null) => {
 
 const selectedKeyMatches = (row: API.ApiKey, selected?: Pick<API.ApiKey, 'key_id'>) =>
   Boolean(selected?.key_id && row.key_id === selected.key_id);
+
+const formatJson = (value: unknown) => JSON.stringify(value, null, 2);
 
 export default function ApiKeysPage() {
   const { session } = useModel('adminSession');
@@ -325,7 +328,7 @@ export default function ApiKeysPage() {
       return;
     }
 
-    const requestId = liveTestRequestId.trim() || `admin-live-${Date.now()}`;
+    const requestId = `admin-live-${Date.now()}`;
     const serviceId = runtimeSetup.service_id;
     const environment = runtimeSetup.environment;
     const keyId = selectedRuntimeKey.key_id;
@@ -418,27 +421,11 @@ export default function ApiKeysPage() {
       ellipsis: true,
     },
     {
-      title: 'Copy',
-      width: 180,
-      search: false,
-      render: (_, row) => (
-        <Space size={8} className="admin-nowrap-cell">
-          <Typography.Text copyable={{ text: row.key_id }}>X-Key-Id</Typography.Text>
-          <Typography.Text copyable={{ text: '{{intent_routing_api_key}}' }}>
-            API Secret 변수
-          </Typography.Text>
-        </Space>
-      ),
-    },
-    {
       title: '',
       valueType: 'option',
-      width: 160,
+      width: 96,
       render: (_, row) => (
         <Space size={8} className="admin-nowrap-cell">
-          <Button type="link" size="small" onClick={() => selectApiKey(row)}>
-            가이드 적용
-          </Button>
           {row.status === 'active' ? (
             <ConfirmActionButton
               danger
@@ -646,6 +633,13 @@ export default function ApiKeysPage() {
     )
   ) : null;
 
+  const liveTestExchangeRequestText = liveTestResult
+    ? formatJson(liveTestResult.exchange.request)
+    : '';
+  const liveTestExchangeResponseText = liveTestResult
+    ? formatJson(liveTestResult.exchange.response)
+    : '';
+
   const existingKeyPanel = (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
       <ProTable<API.ApiKey>
@@ -794,11 +788,6 @@ export default function ApiKeysPage() {
                 placeholder="예: 비밀번호를 재설정하고 싶어요"
               />
               <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                <Input
-                  value={liveTestRequestId}
-                  onChange={(event) => setLiveTestRequestId(event.target.value)}
-                  placeholder="Request ID 자동 생성"
-                />
                 <Button
                   type="primary"
                   icon={<PlayCircleOutlined />}
@@ -812,6 +801,31 @@ export default function ApiKeysPage() {
               </Space>
             </div>
             {liveTestResultPanel}
+            {liveTestResult ? (
+              <Collapse
+                size="small"
+                items={[
+                  {
+                    key: 'request',
+                    label: 'HTTP request',
+                    children: (
+                      <Typography.Paragraph copyable code style={{ marginBottom: 0 }}>
+                        {liveTestExchangeRequestText}
+                      </Typography.Paragraph>
+                    ),
+                  },
+                  {
+                    key: 'response',
+                    label: 'HTTP response',
+                    children: (
+                      <Typography.Paragraph copyable code style={{ marginBottom: 0 }}>
+                        {liveTestExchangeResponseText}
+                      </Typography.Paragraph>
+                    ),
+                  },
+                ]}
+              />
+            ) : null}
           </Space>
         ) : (
           <Alert

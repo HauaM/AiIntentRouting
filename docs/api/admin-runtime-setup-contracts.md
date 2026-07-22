@@ -399,6 +399,9 @@ Rules:
 - The UI must clear live-test input on selected-Service or selected-key change.
 - Each live test reveal writes `api_key.secret_revealed` audit evidence before
   the runtime call.
+- Live-test HTTP request and response previews must be redacted. The request
+  preview may show method, URL, headers, and body, but must render
+  `Authorization` only as `Bearer [REDACTED]`.
 - The live test creates normal runtime log evidence with masked query behavior.
 - Failures must display runtime error code/message without echoing the secret.
 
