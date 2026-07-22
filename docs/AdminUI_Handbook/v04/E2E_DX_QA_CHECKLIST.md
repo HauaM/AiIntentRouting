@@ -373,7 +373,7 @@
 - [ ] 확인이 필요한 경우 확인 모달을 완료한다.
 - [ ] key_id, fingerprint, app_id, environment, scope 정보가 표시된다.
 - [ ] 생성 응답에 raw API key secret이 표시되고, 이후에는 명시적 audited
-      `Secret 보기/복사` 동작으로만 확인할 수 있다.
+      Authorization `복사` 동작으로만 확인할 수 있다.
 - [ ] 검토: 자동 재노출은 막되 권한 있는 reveal/copy 경로는 명확하다.
 
 ### TC-039 API Key Secret 안전성
@@ -388,7 +388,7 @@
       감사되는 명시적 reveal/copy 동작으로 secret을 확인할 수 있다.
 - [ ] 검토: 자동 재노출과 권한 있는 감사 reveal의 경계를 이해할 수 있다.
 
-- [ ] Authorization의 `Secret 보기/복사`는 `POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal`을 호출하고 `Bearer irt_<decrypted-secret>`만 클립보드에 복사한다.
+- [ ] Authorization의 `복사`는 `POST /admin/v1/services/{service_id}/api-keys/{key_id}:reveal`을 호출하고 `Bearer irt_<decrypted-secret>`만 클립보드에 복사한다.
 - [ ] 라이브 테스트는 audited reveal을 먼저 수행한 뒤 runtime 호출에만 secret을 사용한다.
 - [ ] 라이브 테스트 결과와 오류 메시지에는 raw `api_key` 또는 `authorization_header`가 표시되지 않는다.
 - [ ] Audit Logs에 `api_key.secret_revealed` event가 남고 audit state에는 raw `api_key`가 포함되지 않는다.

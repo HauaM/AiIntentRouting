@@ -152,7 +152,8 @@ describe('runtime setup guidance helpers', () => {
     expect(source).toContain("row.name.toLowerCase() !== 'authorization'");
     expect(source).toContain('response.authorization_header');
     expect(source).toContain('navigator.clipboard.writeText');
-    expect(source).toContain('Secret 보기/복사');
+    expect(source).toContain('복사');
+    expect(source).not.toContain('Secret 보기/복사');
     expect(source).toContain('selectedApiKeyIdRef');
     expect(source).toContain('selectedApiKeyIdRef.current !== keyId');
     expect(source).not.toContain('oneTimeApiSecretForSelectedKey');

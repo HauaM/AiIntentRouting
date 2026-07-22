@@ -673,7 +673,7 @@ export default function ApiKeysPage() {
       />
       <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
         행을 클릭하면 아래 Runtime setup guidance에 자동 반영됩니다. raw API Secret은
-        생성 완료 모달과 Authorization의 Secret 보기/복사 작업에서만 표시되며 감사
+        생성 완료 모달과 Authorization의 복사 작업에서만 표시되며 감사
         로그가 남습니다.
       </Typography.Paragraph>
       <Card title="Runtime setup guidance">
@@ -728,7 +728,7 @@ export default function ApiKeysPage() {
                         }
                         onClick={() => handleCopyHeader(row)}
                       >
-                        {isAuthorization ? 'Secret 보기/복사' : '복사'}
+                        복사
                       </Button>
                     </Space>
                   </Descriptions.Item>
@@ -767,7 +767,7 @@ export default function ApiKeysPage() {
               type="info"
               showIcon
               message="Secret은 화면에 표시하지 않고 테스트 요청에만 사용됩니다."
-              description="테스트 실행 시 Secret 보기/복사와 동일한 reveal 감사 로그가 남습니다."
+              description="테스트 실행 시 Authorization 복사와 동일한 reveal 감사 로그가 남습니다."
             />
             <Descriptions size="small" column={{ xs: 1, md: 3 }}>
               <Descriptions.Item label="Selected key">
@@ -880,7 +880,7 @@ export default function ApiKeysPage() {
                       type="warning"
                       showIcon
                       message="이 모달을 닫으면 화면에 남은 secret은 지워집니다."
-                      description="이후에는 기존 키 관리의 Authorization 행에서 Secret 보기/복사를 눌러 감사 로그를 남긴 뒤 다시 복사할 수 있습니다. API Secret은 안전한 보관소에 저장하세요."
+                      description="이후에는 기존 키 관리의 Authorization 행에서 복사를 눌러 감사 로그를 남긴 뒤 다시 복사할 수 있습니다. API Secret은 안전한 보관소에 저장하세요."
                     />
                     <div className="api-key-secret-block">
                       <Typography.Text strong>API Secret Key</Typography.Text>
