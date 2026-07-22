@@ -25,6 +25,12 @@ describe('testRunResultCopy', () => {
     expect(formatResultReason('matched expected decision and intent')).toBe(
       '기대 결과와 일치합니다.',
     );
+    expect(formatResultReason('matched expected decision, intent, and route key')).toBe(
+      '기대 결정, Intent, 라우팅 경로가 모두 일치합니다.',
+    );
+    expect(formatResultReason('actual route key did not match expected route key')).toBe(
+      '기대 라우팅 경로와 실제 라우팅 경로가 다릅니다.',
+    );
   });
 
   it('keeps unknown result reasons Korean-only in visible copy', () => {
@@ -51,6 +57,8 @@ describe('testRunResultCopy', () => {
       'matched expected decision and intent',
       'actual decision did not match expected decision',
       'actual intent did not match expected intent',
+      'matched expected decision, intent, and route key',
+      'actual route key did not match expected route key',
     ];
     const backendDecisions = [
       'confident',
@@ -81,6 +89,9 @@ describe('testRunResultCopy', () => {
       '통과율이 Release 기준보다 낮습니다.',
     );
     expect(formatBlockReason('pass rate below 70%')).toBe('통과율이 70% 기준보다 낮습니다.');
+    expect(formatBlockReason('risk cases required')).toBe(
+      '위험 질문 차단 테스트 케이스가 필요합니다.',
+    );
     expect(formatRecommendation('review rate above 15%')).toBe(
       '검토 대상 비율이 15% 권장 기준보다 높습니다.',
     );

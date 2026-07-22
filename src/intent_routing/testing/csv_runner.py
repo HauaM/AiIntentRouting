@@ -32,7 +32,9 @@ from intent_routing.routing.scoring import RoutingDecisionResult
 from intent_routing.security.pii import mask_pii
 from intent_routing.testing.gate import GateInput, GateResult, evaluate_gate
 
-CSV_COLUMNS = ["case_id", "query", "expected_intent", "case_type", "memo"]
+CLASSIFICATION_CSV_COLUMNS = ["case_id", "query", "expected_intent", "memo"]
+LEGACY_CSV_COLUMNS = ["case_id", "query", "expected_intent", "case_type", "memo"]
+CSV_COLUMNS = LEGACY_CSV_COLUMNS
 EXPECTED_DECISIONS = {
     "positive": "confident",
     "confusing": "confident",
@@ -55,6 +57,7 @@ class ParsedTestCase:
     case_type: str
     memo: str
     expected_decision: str
+    expected_route_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,13 +78,104 @@ class CsvTestRunSummary:
 
 def parse_test_cases_csv(csv_text: str) -> list[ParsedTestCase]:
     reader = csv.DictReader(StringIO(csv_text))
-    if reader.fieldnames != CSV_COLUMNS:
-        raise CsvValidationError("CSV columns must be exactly: " + ", ".join(CSV_COLUMNS))
+    if reader.fieldnames == CLASSIFICATION_CSV_COLUMNS:
+        return _parse_classification_cases(reader)
+    if reader.fieldnames == LEGACY_CSV_COLUMNS:
+        return _parse_legacy_cases(reader)
+    raise CsvValidationError(
+        "CSV columns must be exactly: " + ", ".join(CLASSIFICATION_CSV_COLUMNS)
+    )
+
+
+def _is_classification_csv(csv_text: str) -> bool:
+    return csv.DictReader(StringIO(csv_text)).fieldnames == CLASSIFICATION_CSV_COLUMNS
+
+
+def _expected_route_keys_by_intent(
+    catalog_version: models.IntentCatalogVersion,
+) -> dict[str, str]:
+    snapshot = catalog_version.snapshot
+    if not isinstance(snapshot, Mapping):
+        return {}
+    intents = snapshot.get("intents")
+    if not isinstance(intents, list):
+        return {}
+    route_keys: dict[str, str] = {}
+    for intent in intents:
+        if not isinstance(intent, Mapping):
+            continue
+        intent_id = intent.get("intent_id")
+        route_key = intent.get("route_key")
+        if isinstance(intent_id, str) and isinstance(route_key, str):
+            route_keys[intent_id] = route_key
+    return route_keys
+
+
+def _hydrate_expected_route_keys(
+    cases: list[ParsedTestCase],
+    catalog_version: models.IntentCatalogVersion,
+) -> list[ParsedTestCase]:
+    route_keys = _expected_route_keys_by_intent(catalog_version)
+    hydrated: list[ParsedTestCase] = []
+    for test_case in cases:
+        if test_case.expected_intent is None:
+            hydrated.append(test_case)
+            continue
+        expected_route_key = route_keys.get(test_case.expected_intent)
+        if expected_route_key is None:
+            raise CsvValidationError(
+                f"case {test_case.case_id}: expected_intent "
+                f"{test_case.expected_intent} does not exist in selected catalog"
+            )
+        hydrated.append(
+            ParsedTestCase(
+                case_id=test_case.case_id,
+                query=test_case.query,
+                expected_intent=test_case.expected_intent,
+                case_type=test_case.case_type,
+                memo=test_case.memo,
+                expected_decision=test_case.expected_decision,
+                expected_route_key=expected_route_key,
+            )
+        )
+    return hydrated
+
+
+def _parse_classification_cases(reader: csv.DictReader[str]) -> list[ParsedTestCase]:
+    cases: list[ParsedTestCase] = []
+    seen_case_ids: set[str] = set()
+    for row_number, row in enumerate(reader, start=2):
+        if None in row or set(row) != set(CLASSIFICATION_CSV_COLUMNS):
+            raise CsvValidationError(f"row {row_number}: CSV columns must match header")
+        case_id = _required(row.get("case_id"), row_number, "case_id")
+        query = _required(row.get("query"), row_number, "query")
+        expected_intent = _required(row.get("expected_intent"), row_number, "expected_intent")
+        memo = _required(row.get("memo"), row_number, "memo")
+        if case_id in seen_case_ids:
+            raise CsvValidationError(f"row {row_number}: duplicate case_id {case_id}")
+        seen_case_ids.add(case_id)
+        cases.append(
+            ParsedTestCase(
+                case_id=case_id,
+                query=query,
+                expected_intent=expected_intent,
+                case_type="positive",
+                memo=memo,
+                expected_decision=Decision.confident.value,
+            )
+        )
+
+    if not cases:
+        raise CsvValidationError("CSV must include at least one test case")
+    return cases
+
+
+def _parse_legacy_cases(reader: csv.DictReader[str]) -> list[ParsedTestCase]:
 
     cases: list[ParsedTestCase] = []
     seen_case_ids: set[str] = set()
     for row_number, row in enumerate(reader, start=2):
-        if None in row or set(row) != set(CSV_COLUMNS):
+        if None in row or set(row) != set(LEGACY_CSV_COLUMNS):
             raise CsvValidationError(f"row {row_number}: CSV columns must match header")
         case_id = _required(row.get("case_id"), row_number, "case_id")
         query = _required(row.get("query"), row_number, "query")
@@ -131,8 +225,44 @@ def run_csv_tests(
     source_filename: str,
     csv_text: str,
     created_by: str,
+    risk_source_filename: str | None = None,
+    risk_csv_text: str | None = None,
+    include_common_risk_pack: bool | None = None,
 ) -> CsvTestRunSummary:
-    cases = parse_test_cases_csv(csv_text)
+    from intent_routing.testing.risk_pack import (
+        common_risk_cases,
+        merge_test_cases,
+        parse_risk_cases_csv,
+    )
+
+    classification_cases = parse_test_cases_csv(csv_text)
+    is_classification_csv = _is_classification_csv(csv_text)
+    if is_classification_csv:
+        classification_cases = _hydrate_expected_route_keys(
+            classification_cases,
+            catalog_version,
+        )
+
+    include_common = include_common_risk_pack
+    if include_common is None:
+        include_common = is_classification_csv
+    custom_risk_csv_text = risk_csv_text.strip() if risk_csv_text is not None else ""
+    has_custom_risk_cases = bool(custom_risk_csv_text)
+    if (include_common or has_custom_risk_cases) and not _risk_enabled(
+        policy_version.risk_policy
+    ):
+        raise CsvValidationError("Risk policy must be enabled to run risk guardrail cases.")
+
+    risk_cases = common_risk_cases() if include_common else []
+    if has_custom_risk_cases:
+        risk_cases = [
+            *risk_cases,
+            *parse_risk_cases_csv(
+                custom_risk_csv_text,
+                source=risk_source_filename or "risk-cases.csv",
+            ),
+        ]
+    cases = merge_test_cases(classification_cases, risk_cases)
     now = datetime.now(UTC)
     threshold_preset = policy_version.threshold_preset
     threshold_value = float(policy_version.threshold_value)
@@ -421,14 +551,22 @@ def _compare_result(
         test_case.expected_intent is None
         or decision.intent_id == test_case.expected_intent
     )
-    if decision_matches and intent_matches:
+    route_key_matches = (
+        test_case.expected_route_key is None
+        or decision.route_key == test_case.expected_route_key
+    )
+    if decision_matches and intent_matches and route_key_matches:
         if test_case.expected_intent is None:
             return "PASS", "matched expected decision"
-        return "PASS", "matched expected decision and intent"
+        if test_case.expected_route_key is None:
+            return "PASS", "matched expected decision and intent"
+        return "PASS", "matched expected decision, intent, and route key"
 
     if not decision_matches:
         return "FAIL", "actual decision did not match expected decision"
-    return "FAIL", "actual intent did not match expected intent"
+    if not intent_matches:
+        return "FAIL", "actual intent did not match expected intent"
+    return "FAIL", "actual route key did not match expected route key"
 
 
 def _gate_from_results(results: Iterable[Mapping[str, object]]) -> GateResult:
@@ -444,6 +582,7 @@ def _gate_from_results(results: Iterable[Mapping[str, object]]) -> GateResult:
             review=review,
             risk_total=len(risk_results),
             risk_passed=risk_passed,
+            require_risk_cases=True,
         )
     )
 

@@ -28,6 +28,55 @@ RISK_TYPES = {
 }
 
 
+def test_common_risk_pack_csv_matches_exported_module_contract() -> None:
+    from intent_routing.testing.risk_pack import (
+        COMMON_RISK_PACK_VERSION,
+        common_risk_cases,
+        parse_risk_cases_csv,
+    )
+
+    risk_pack_path = ROOT / "docs/pilot/common-risk-pack-v1.csv"
+
+    assert parse_risk_cases_csv(
+        risk_pack_path.read_text(encoding="utf-8"),
+        source=COMMON_RISK_PACK_VERSION,
+    ) == common_risk_cases()
+
+
+def test_common_risk_pack_covers_risk_types_and_has_no_obvious_secrets() -> None:
+    from intent_routing.domain.enums import RiskType
+    from intent_routing.policy.risk import RiskPolicy
+    from intent_routing.testing.risk_pack import common_risk_cases
+
+    policy = RiskPolicy.default()
+    matched_types = set()
+    for case in common_risk_cases():
+        assert "010-" not in case.query
+        assert "4111" not in case.query
+        assert "sk-" not in case.query.casefold()
+        expected_risk_type = case.memo.split(";", 1)[0].removeprefix("risk_type=")
+        evaluation = policy.evaluate(case.query)
+        assert evaluation.matched
+        assert evaluation.risk_type is not None
+        assert evaluation.risk_type.value == expected_risk_type
+        matched_types.add(evaluation.risk_type.value)
+
+    assert matched_types == {risk_type.value for risk_type in RiskType}
+
+
+def test_pilot_v2_classification_fixture_uses_simplified_contract() -> None:
+    path = ROOT / "docs/pilot/it-helpdesk-pilot-classification-cases-v2.csv"
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.reader(handle)
+        assert next(reader) == ["case_id", "query", "expected_intent", "memo"]
+
+    cases = load_pilot_cases(path)
+    assert cases
+    assert all(case.case_type == "positive" for case in cases)
+    assert all(case.expected_decision == "confident" for case in cases)
+    assert all(case.expected_intent for case in cases)
+
+
 def test_pilot_catalog_has_route_key_and_example_contract() -> None:
     catalog = load_pilot_catalog(CATALOG)
 
@@ -112,8 +161,15 @@ def test_pilot_cases_reject_unknown_header_column(tmp_path: Path) -> None:
 def test_pilot_cases_reject_empty_file(tmp_path: Path) -> None:
     cases_path = tmp_path / "cases.csv"
     cases_path.write_text("", encoding="utf-8")
+    expected_header = (
+        r"CSV header must be \['case_id', 'query', 'expected_intent', 'memo'\] "
+        r"or \['case_id', 'query', 'expected_intent', 'case_type', 'memo'\]"
+    )
 
-    with pytest.raises(CsvValidationError):
+    with pytest.raises(
+        CsvValidationError,
+        match=expected_header,
+    ):
         load_pilot_cases(cases_path)
 
 

@@ -1,4 +1,4 @@
-import { Button, Empty, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Button, Empty, Space, Table, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { CsvCaseDraft } from './csvCaseBuilder';
 
@@ -7,17 +7,6 @@ type CsvCasesGridProps = {
   sourceFilename: string;
   onImport: () => void;
   onExport: () => void;
-};
-
-const expectedIntentRequired = new Set(['positive', 'confusing']);
-
-const caseTypeLabels: Record<CsvCaseDraft['case_type'], string> = {
-  positive: '정상',
-  confusing: '혼동',
-  clarify: '명확화',
-  risk: '위험',
-  off_topic: '주제 외',
-  fallback: '폴백',
 };
 
 const columns: ColumnsType<CsvCaseDraft> = [
@@ -49,20 +38,11 @@ const columns: ColumnsType<CsvCaseDraft> = [
     dataIndex: 'expected_intent',
     width: 180,
     ellipsis: true,
-    render: (value: string, row) =>
-      expectedIntentRequired.has(row.case_type) ? (
-        <Tooltip title={value}>
-          <Typography.Text code ellipsis>{value}</Typography.Text>
-        </Tooltip>
-      ) : (
-        <Typography.Text type="secondary">없음</Typography.Text>
-      ),
-  },
-  {
-    title: '케이스 유형',
-    dataIndex: 'case_type',
-    width: 132,
-    render: (value: CsvCaseDraft['case_type']) => <Tag>{caseTypeLabels[value]}</Tag>,
+    render: (value: string) => (
+      <Tooltip title={value}>
+        <Typography.Text code ellipsis>{value}</Typography.Text>
+      </Tooltip>
+    ),
   },
   {
     title: '메모',
@@ -107,7 +87,7 @@ export function CsvCasesGrid({
         columns={columns}
         dataSource={cases}
         pagination={false}
-        scroll={{ x: 920 }}
+        scroll={{ x: 800 }}
         locale={{
           emptyText: (
             <Empty

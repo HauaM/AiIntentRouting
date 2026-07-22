@@ -1,8 +1,8 @@
 import { formatDecisionLabel, formatIntentLabel } from './testRunResultCopy';
 
-export type TestRunPatternKind = 'intent_mismatch' | 'decision_mismatch' | 'fallback';
+export type TestRunPatternKind = 'intent_mismatch' | 'decision_mismatch' | 'fallback' | 'route_key_mismatch';
 export type TestRunResultsLoadState = 'not_loaded' | 'loading' | 'error' | 'loaded';
-export type TestRunPatternValueType = 'intent' | 'decision';
+export type TestRunPatternValueType = 'intent' | 'decision' | 'route_key';
 
 export type TestRunPattern = {
   key: string;
@@ -28,7 +28,11 @@ const topPatterns = (patterns: TestRunPattern[]) =>
   [...patterns].sort((left, right) => right.count - left.count || left.key.localeCompare(right.key)).slice(0, 5);
 
 const formatPatternValue = (value: string, valueType: TestRunPatternValueType) =>
-  valueType === 'decision' ? formatDecisionLabel(value) : formatIntentLabel(value);
+  valueType === 'decision'
+    ? formatDecisionLabel(value)
+    : valueType === 'intent'
+      ? formatIntentLabel(value)
+      : value;
 
 const diagnosticIssueRecommendations: Record<string, string> = {
   catalog_version_not_active: '활성 상태의 Catalog 버전을 선택하거나 현재 버전을 활성화한 뒤 테스트를 다시 실행하세요.',
@@ -63,12 +67,15 @@ export function buildTestRunInsights(
     if (row.reason === 'actual intent did not match expected intent') kind = 'intent_mismatch';
     else if (row.actual_decision === 'fallback') kind = 'fallback';
     else if (row.reason === 'actual decision did not match expected decision') kind = 'decision_mismatch';
+    else if (row.reason === 'actual route key did not match expected route key') kind = 'route_key_mismatch';
     if (!kind) continue;
 
     const expectedValueType = kind === 'decision_mismatch' || row.expected_intent === null
       ? 'decision'
       : 'intent';
-    const actualValueType = kind === 'decision_mismatch' || (row.actual_intent === null && row.actual_route_key === null)
+    const actualValueType = kind === 'route_key_mismatch'
+      ? 'route_key'
+      : kind === 'decision_mismatch' || (row.actual_intent === null && row.actual_route_key === null)
       ? 'decision'
       : 'intent';
     const expected = kind === 'decision_mismatch'
@@ -76,6 +83,8 @@ export function buildTestRunInsights(
       : row.expected_intent ?? row.expected_decision;
     const actual = kind === 'decision_mismatch'
       ? row.actual_decision
+      : kind === 'route_key_mismatch'
+        ? row.actual_route_key ?? row.actual_decision
       : row.actual_intent ?? row.actual_route_key ?? row.actual_decision;
     const key = `${kind}:${expected}→${actual}`;
     const previous = patternMap.get(key);
@@ -95,11 +104,14 @@ export function buildTestRunInsights(
   const codes = issueCodes(diagnostics);
   const fallbackPattern = allPatterns.find((pattern) => pattern.kind === 'fallback');
   const mismatchPattern = allPatterns.find((pattern) => pattern.kind === 'intent_mismatch');
+  const routeKeyMismatchPattern = allPatterns.find((pattern) => pattern.kind === 'route_key_mismatch');
 
   const primaryProblem = fallbackPattern && !mismatchPattern
     ? '분류 실패로 떨어진 케이스가 먼저 보입니다.'
     : mismatchPattern
       ? '기대 Intent와 실제 Intent가 다른 실패가 가장 먼저 보입니다.'
+      : routeKeyMismatchPattern
+        ? '기대 라우팅 경로와 실제 라우팅 경로가 다른 실패가 보입니다.'
       : codes.has('pass_rate_below_gate')
         ? '통과율이 Release 기준보다 낮습니다.'
         : '진단 가능한 주요 패턴이 없습니다.';
@@ -132,6 +144,8 @@ export function buildTestRunInsights(
       addNextAction(`${expectedLabel} Intent 예시를 보강하세요.`);
     } else if (pattern.kind === 'decision_mismatch') {
       addNextAction(`${expectedLabel}의 기대 결정과 위험/검토 기준을 점검하세요.`);
+    } else if (pattern.kind === 'route_key_mismatch') {
+      addNextAction(`${expectedLabel} Intent에 설정된 route_key와 실제 라우팅 경로를 점검하세요.`);
     }
   }
   if (patterns.some((pattern) => pattern.actualValueType === 'intent' && pattern.actual === 'program_supported_question')) {

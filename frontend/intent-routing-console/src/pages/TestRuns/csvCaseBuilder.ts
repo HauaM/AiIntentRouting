@@ -1,16 +1,7 @@
-export type CsvCaseType =
-  | 'positive'
-  | 'confusing'
-  | 'clarify'
-  | 'risk'
-  | 'off_topic'
-  | 'fallback';
-
 export type CsvCaseDraft = {
   case_id: string;
   query: string;
   expected_intent: string;
-  case_type: CsvCaseType;
   memo: string;
 };
 
@@ -22,20 +13,8 @@ export const CSV_COLUMNS: Array<keyof CsvCaseDraft> = [
   'case_id',
   'query',
   'expected_intent',
-  'case_type',
   'memo',
 ];
-
-export const CSV_CASE_TYPES: CsvCaseType[] = [
-  'positive',
-  'confusing',
-  'clarify',
-  'risk',
-  'off_topic',
-  'fallback',
-];
-
-const expectedIntentRequiredTypes = new Set<CsvCaseType>(['positive', 'confusing']);
 
 const escapeCell = (value: string) => {
   if (/[",\n\r]/.test(value)) {
@@ -130,27 +109,17 @@ export function parseCsvText(csvText: string): CsvParseResult {
       case_id: row[0].trim(),
       query: row[1].trim(),
       expected_intent: row[2].trim(),
-      case_type: row[3].trim() as CsvCaseType,
-      memo: row[4].trim(),
+      memo: row[3].trim(),
     };
 
     if (!draft.case_id) errors.push(`row ${rowNumber}: case_id is required`);
     if (!draft.query) errors.push(`row ${rowNumber}: query is required`);
+    if (!draft.expected_intent) errors.push(`row ${rowNumber}: expected_intent is required`);
     if (!draft.memo) errors.push(`row ${rowNumber}: memo is required`);
     if (draft.case_id && seenCaseIds.has(draft.case_id)) {
       errors.push(`row ${rowNumber}: duplicate case_id ${draft.case_id}`);
     }
     seenCaseIds.add(draft.case_id);
-
-    if (!CSV_CASE_TYPES.includes(draft.case_type)) {
-      errors.push(`row ${rowNumber}: unknown case_type ${draft.case_type}`);
-    } else if (expectedIntentRequiredTypes.has(draft.case_type)) {
-      if (!draft.expected_intent) {
-        errors.push(`row ${rowNumber}: expected_intent is required`);
-      }
-    } else if (draft.expected_intent) {
-      errors.push(`row ${rowNumber}: expected_intent must be empty`);
-    }
 
     cases.push(draft);
   });

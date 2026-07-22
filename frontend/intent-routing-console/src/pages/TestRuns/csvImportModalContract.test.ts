@@ -32,6 +32,7 @@ describe('CsvImportModal contract', () => {
 
     expect(modal).toContain('<Typography.Text code>case_id</Typography.Text>');
     expect(modal).toContain('<Typography.Text code>expected_intent</Typography.Text>');
-    expect(modal).toContain('<Typography.Text code>case_type</Typography.Text>');
+    expect(modal).toContain('<Typography.Text code>memo</Typography.Text>');
+    expect(modal).not.toContain('case_type');
   });
 });

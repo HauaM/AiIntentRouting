@@ -486,6 +486,9 @@ declare namespace API {
     intent_catalog_version: string;
     source_filename: string;
     csv_text: string;
+    risk_source_filename?: string | null;
+    risk_csv_text?: string | null;
+    include_common_risk_pack?: boolean | null;
   };
 
   type TestRunSummary = {

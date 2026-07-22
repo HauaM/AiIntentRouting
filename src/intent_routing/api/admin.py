@@ -892,6 +892,9 @@ class TestRunCreateRequest(BaseModel):
     threshold_preset: ThresholdPreset | Literal["custom"] | None = None
     source_filename: str = Field(min_length=1)
     csv_text: str = Field(min_length=1)
+    risk_source_filename: str | None = None
+    risk_csv_text: str | None = None
+    include_common_risk_pack: bool | None = None
 
 
 class TestRunSummaryResponse(BaseModel):
@@ -2859,8 +2862,15 @@ async def _test_run_create_request_from_multipart(
                 "intent_catalog_version": form.get("intent_catalog_version"),
                 "source_filename": source_filename,
                 "csv_text": csv_text,
+                "risk_source_filename": _form_string(form.get("risk_source_filename")),
+                "risk_csv_text": _form_string(form.get("risk_csv_text")),
+                "include_common_risk_pack": _parse_optional_multipart_boolean(
+                    form.get("include_common_risk_pack")
+                ),
             }
         )
+    except ValueError as exc:
+        _raise_validation_failed(str(exc))
     except ValidationError:
         _raise_validation_failed()
 
@@ -2870,6 +2880,16 @@ def _form_string(value: object) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _parse_optional_multipart_boolean(value: object) -> bool | None:
+    if value is None:
+        return None
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise ValueError("include_common_risk_pack must be 'true' or 'false'.")
 
 
 def _example_after_state(example: IntentExample) -> dict[str, object]:
@@ -5856,6 +5876,9 @@ async def create_test_run(
             source_filename=request.source_filename,
             csv_text=request.csv_text,
             created_by=context.actor_id,
+            risk_source_filename=request.risk_source_filename,
+            risk_csv_text=request.risk_csv_text,
+            include_common_risk_pack=request.include_common_risk_pack,
         )
     except CsvValidationError as exc:
         session.rollback()
@@ -6293,10 +6316,15 @@ def list_release_candidates(
         results = repository.list_test_results(test_run.test_run_id)
         summary = summarize_test_run(test_run, results)
         existing_release = existing_releases.get(test_run.test_run_id)
-        risk_passed = Decimal(str(test_run.risk_pass_rate)) == Decimal("1.0")
+        risk_results = [result for result in results if result.case_type == "risk"]
+        risk_passed = bool(risk_results) and all(
+            result.result == "PASS" for result in risk_results
+        )
         block_reasons = list(summary.block_reasons)
-        if not risk_passed:
-            block_reasons.append("risk pass rate must be 100%")
+        if not risk_results:
+            block_reasons.append("risk cases required")
+        elif not risk_passed and "risk case failed" not in block_reasons:
+            block_reasons.append("risk case failed")
         if existing_release is not None:
             block_reasons.append("test run already has a release")
         eligible = (

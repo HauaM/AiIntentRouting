@@ -33,6 +33,7 @@ import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
 import { TestRunHistorySelect } from './TestRunHistorySelect';
 import { TestPolicyPanel } from './TestPolicyPanel';
 import { type TestRunResultsLoadState } from './testRunResultInsights';
+import { testRunCreateErrorMessage } from './testRunCreateError';
 import {
   formatBlockReason,
   formatDecisionLabel,
@@ -59,9 +60,9 @@ const resultLabel: Record<string, string> = {
 };
 
 const csvTemplate = [
-  'case_id,query,expected_intent,case_type,memo',
-  'tc-001,password reset help,it_password_reset,positive,known happy path',
-  'tc-002,maybe login maybe password,,clarify,should request clarification',
+  'case_id,query,expected_intent,memo',
+  'tc-001,password reset help,it_password_reset,known happy path',
+  'tc-002,out of scope topic,off_topic_other_subject,service-specific off-topic intent',
 ].join('\n');
 
 const testRunModeTabs = [
@@ -208,13 +209,13 @@ export default function TestRunsPage() {
       setResults(nextResults);
       setResultsLoadState('loaded');
       message.success('테스트 실행을 생성했습니다.');
-    } catch {
+    } catch (error) {
       if (!isCurrentRunRequest(requestGeneration, serviceId)) return;
       if (testRunCreated) {
         setResultsLoadState('error');
         message.error('테스트 실행은 생성되었지만 결과를 불러오지 못했습니다.');
       } else {
-        message.error('테스트 실행 생성에 실패했습니다.');
+        message.error(testRunCreateErrorMessage(error));
       }
     } finally {
       if (isCurrentRunRequest(requestGeneration, serviceId)) setLoading(false);

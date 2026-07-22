@@ -108,6 +108,8 @@ def _seed_workflow_records(
     *,
     gate_passed: bool = True,
     risk_pass_rate: Decimal = Decimal("1.0"),
+    include_risk_result: bool = True,
+    risk_result: str = "PASS",
 ) -> tuple[str, str, str]:
     now = datetime.now(UTC)
     repository = IntentRoutingRepository(db_session)
@@ -171,7 +173,23 @@ def _seed_workflow_records(
             "created_by": "integration-test",
             "created_at": now,
         },
-        [],
+        [
+            {
+                "case_id": "R001",
+                "query_masked": "masked risk query",
+                "case_type": "risk",
+                "expected_decision": "risk",
+                "expected_intent": None,
+                "actual_decision": "risk",
+                "actual_intent": None,
+                "actual_route_key": None,
+                "confidence": None,
+                "result": risk_result,
+                "reason": "matched expected risk decision",
+            }
+        ]
+        if include_risk_result
+        else [],
     )
     db_session.commit()
     return policy_version, catalog_version, test_run_id
@@ -409,7 +427,7 @@ def test_release_candidates_include_eligibility_and_release_state(
             _restore_system_admin_roles(db_session, system_admin_role_rows)
 
 
-def test_release_candidates_require_exact_full_risk_pass_rate(
+def test_release_candidates_reject_failed_risk_rows_when_aggregate_fields_pass(
     db_session: Session,
 ) -> None:
     client, user_id, system_admin_role_rows = _system_admin_client(db_session)
@@ -419,7 +437,7 @@ def test_release_candidates_require_exact_full_risk_pass_rate(
         _, _, test_run_id = _seed_workflow_records(
             db_session,
             service_id,
-            risk_pass_rate=Decimal("0.99999999999999999"),
+            risk_result="FAIL",
         )
 
         response = client.get(
@@ -430,7 +448,37 @@ def test_release_candidates_require_exact_full_risk_pass_rate(
         row = response.json()[0]
         assert row["test_run_id"] == test_run_id
         assert row["eligible"] is False
-        assert "risk pass rate must be 100%" in row["block_reasons"]
+        assert row["block_reasons"].count("risk case failed") == 1
+    finally:
+        try:
+            _purge_rows(db_session, user_id=user_id, service_id=service_id)
+        finally:
+            db_session.rollback()
+            _restore_system_admin_roles(db_session, system_admin_role_rows)
+
+
+def test_release_candidates_reject_zero_risk_cases_even_when_risk_pass_rate_is_one(
+    db_session: Session,
+) -> None:
+    client, user_id, system_admin_role_rows = _system_admin_client(db_session)
+    service_id = f"svc-release-zero-risk-{uuid4().hex}"
+    try:
+        _create_service(client, service_id)
+        _, _, test_run_id = _seed_workflow_records(
+            db_session,
+            service_id,
+            include_risk_result=False,
+        )
+
+        response = client.get(
+            f"/admin/v1/services/{service_id}/release-candidates"
+        )
+
+        assert response.status_code == 200
+        row = response.json()[0]
+        assert row["test_run_id"] == test_run_id
+        assert row["eligible"] is False
+        assert "risk cases required" in row["block_reasons"]
     finally:
         try:
             _purge_rows(db_session, user_id=user_id, service_id=service_id)

@@ -63,6 +63,7 @@ describe('TestRunDiagnosticsPanel contract after actionable diagnostics redesign
     const source = read('TestRunDiagnosticsPanel.tsx');
 
     expect(source).toContain("intent_mismatch: 'warning'");
+    expect(source).toContain("route_key_mismatch: 'warning'");
     expect(source).toContain("decision_mismatch: 'fail'");
     expect(source).toContain("fallback: 'fallback'");
     expect(source).toContain('status={patternStatus[pattern.kind]}');

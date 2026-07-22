@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from intent_routing.domain.enums import ThresholdPreset
 from intent_routing.domain.schemas import validate_route_key
 from intent_routing.testing.csv_runner import (
+    CLASSIFICATION_CSV_COLUMNS,
     CSV_COLUMNS,
     CsvValidationError,
     ParsedTestCase,
@@ -64,6 +65,10 @@ def assert_csv_header(path: Path) -> None:
         try:
             header = next(reader)
         except StopIteration as exc:
-            raise CsvValidationError(f"CSV header must be {CSV_COLUMNS}") from exc
-    if header != CSV_COLUMNS:
-        raise CsvValidationError(f"CSV header must be {CSV_COLUMNS}")
+            raise CsvValidationError(_csv_header_error_message()) from exc
+    if header not in (CLASSIFICATION_CSV_COLUMNS, CSV_COLUMNS):
+        raise CsvValidationError(_csv_header_error_message())
+
+
+def _csv_header_error_message() -> str:
+    return f"CSV header must be {CLASSIFICATION_CSV_COLUMNS} or {CSV_COLUMNS}"
