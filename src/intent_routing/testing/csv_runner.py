@@ -246,7 +246,8 @@ def run_csv_tests(
     include_common = include_common_risk_pack
     if include_common is None:
         include_common = is_classification_csv
-    has_custom_risk_cases = risk_csv_text is not None and risk_csv_text.strip()
+    custom_risk_csv_text = risk_csv_text.strip() if risk_csv_text is not None else ""
+    has_custom_risk_cases = bool(custom_risk_csv_text)
     if (include_common or has_custom_risk_cases) and not _risk_enabled(
         policy_version.risk_policy
     ):
@@ -257,7 +258,7 @@ def run_csv_tests(
         risk_cases = [
             *risk_cases,
             *parse_risk_cases_csv(
-                risk_csv_text,
+                custom_risk_csv_text,
                 source=risk_source_filename or "risk-cases.csv",
             ),
         ]

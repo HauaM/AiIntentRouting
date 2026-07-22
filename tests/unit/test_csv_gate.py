@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
+from intent_routing.db import models
+from intent_routing.db.repositories import IntentRoutingRepository
 from intent_routing.domain.enums import Decision
 from intent_routing.routing.scoring import RoutingDecisionResult
 from intent_routing.testing.csv_runner import (
@@ -139,10 +141,10 @@ def test_run_csv_tests_rejects_requested_risk_cases_when_risk_policy_disabled() 
         match="Risk policy must be enabled to run risk guardrail cases.",
     ):
         run_csv_tests(
-            object(),
-            service=SimpleNamespace(service_id="svc-test"),
-            policy_version=SimpleNamespace(risk_policy={"enabled": False}),
-            catalog_version=SimpleNamespace(
+            cast(IntentRoutingRepository, object()),
+            service=models.Service(service_id="svc-test"),
+            policy_version=models.PolicyVersion(risk_policy={"enabled": False}),
+            catalog_version=models.IntentCatalogVersion(
                 snapshot={
                     "intents": [
                         {
