@@ -87,6 +87,60 @@ def parse_test_cases_csv(csv_text: str) -> list[ParsedTestCase]:
     )
 
 
+def _is_classification_csv(csv_text: str) -> bool:
+    return csv.DictReader(StringIO(csv_text)).fieldnames == CLASSIFICATION_CSV_COLUMNS
+
+
+def _expected_route_keys_by_intent(
+    catalog_version: models.IntentCatalogVersion,
+) -> dict[str, str]:
+    snapshot = catalog_version.snapshot
+    if not isinstance(snapshot, Mapping):
+        return {}
+    intents = snapshot.get("intents")
+    if not isinstance(intents, list):
+        return {}
+    route_keys: dict[str, str] = {}
+    for intent in intents:
+        if not isinstance(intent, Mapping):
+            continue
+        intent_id = intent.get("intent_id")
+        route_key = intent.get("route_key")
+        if isinstance(intent_id, str) and isinstance(route_key, str):
+            route_keys[intent_id] = route_key
+    return route_keys
+
+
+def _hydrate_expected_route_keys(
+    cases: list[ParsedTestCase],
+    catalog_version: models.IntentCatalogVersion,
+) -> list[ParsedTestCase]:
+    route_keys = _expected_route_keys_by_intent(catalog_version)
+    hydrated: list[ParsedTestCase] = []
+    for test_case in cases:
+        if test_case.expected_intent is None:
+            hydrated.append(test_case)
+            continue
+        expected_route_key = route_keys.get(test_case.expected_intent)
+        if expected_route_key is None:
+            raise CsvValidationError(
+                f"case {test_case.case_id}: expected_intent "
+                f"{test_case.expected_intent} does not exist in selected catalog"
+            )
+        hydrated.append(
+            ParsedTestCase(
+                case_id=test_case.case_id,
+                query=test_case.query,
+                expected_intent=test_case.expected_intent,
+                case_type=test_case.case_type,
+                memo=test_case.memo,
+                expected_decision=test_case.expected_decision,
+                expected_route_key=expected_route_key,
+            )
+        )
+    return hydrated
+
+
 def _parse_classification_cases(reader: csv.DictReader[str]) -> list[ParsedTestCase]:
     cases: list[ParsedTestCase] = []
     seen_case_ids: set[str] = set()
@@ -173,6 +227,8 @@ def run_csv_tests(
     created_by: str,
 ) -> CsvTestRunSummary:
     cases = parse_test_cases_csv(csv_text)
+    if _is_classification_csv(csv_text):
+        cases = _hydrate_expected_route_keys(cases, catalog_version)
     now = datetime.now(UTC)
     threshold_preset = policy_version.threshold_preset
     threshold_value = float(policy_version.threshold_value)
@@ -461,14 +517,22 @@ def _compare_result(
         test_case.expected_intent is None
         or decision.intent_id == test_case.expected_intent
     )
-    if decision_matches and intent_matches:
+    route_key_matches = (
+        test_case.expected_route_key is None
+        or decision.route_key == test_case.expected_route_key
+    )
+    if decision_matches and intent_matches and route_key_matches:
         if test_case.expected_intent is None:
             return "PASS", "matched expected decision"
-        return "PASS", "matched expected decision and intent"
+        if test_case.expected_route_key is None:
+            return "PASS", "matched expected decision and intent"
+        return "PASS", "matched expected decision, intent, and route key"
 
     if not decision_matches:
         return "FAIL", "actual decision did not match expected decision"
-    return "FAIL", "actual intent did not match expected intent"
+    if not intent_matches:
+        return "FAIL", "actual intent did not match expected intent"
+    return "FAIL", "actual route key did not match expected route key"
 
 
 def _gate_from_results(results: Iterable[Mapping[str, object]]) -> GateResult:

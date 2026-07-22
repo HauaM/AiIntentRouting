@@ -209,6 +209,77 @@ def test_expected_clarify_passes_when_actual_decision_is_clarify() -> None:
     assert reason == "matched expected decision"
 
 
+def test_expected_intent_rows_compare_actual_route_key_too() -> None:
+    test_case = ParsedTestCase(
+        case_id="P001",
+        query="인터넷뱅킹 오류",
+        expected_intent="program_supported_question",
+        case_type="positive",
+        memo="정상 문의",
+        expected_decision="confident",
+        expected_route_key="support.program.question",
+    )
+
+    result, reason = _compare_result(
+        test_case,
+        RoutingDecisionResult(
+            decision=Decision.confident,
+            intent_id="program_supported_question",
+            route_key="support.owner.lookup",
+        ),
+    )
+
+    assert result == "FAIL"
+    assert reason == "actual route key did not match expected route key"
+
+
+def test_expected_route_key_match_passes_with_expected_intent() -> None:
+    test_case = ParsedTestCase(
+        case_id="P001",
+        query="인터넷뱅킹 오류",
+        expected_intent="program_supported_question",
+        case_type="positive",
+        memo="정상 문의",
+        expected_decision="confident",
+        expected_route_key="support.program.question",
+    )
+
+    result, reason = _compare_result(
+        test_case,
+        RoutingDecisionResult(
+            decision=Decision.confident,
+            intent_id="program_supported_question",
+            route_key="support.program.question",
+        ),
+    )
+
+    assert result == "PASS"
+    assert reason == "matched expected decision, intent, and route key"
+
+
+def test_legacy_csv_rows_do_not_gain_route_key_requirement() -> None:
+    test_case = ParsedTestCase(
+        case_id="L001",
+        query="legacy row",
+        expected_intent="it_api_timeout",
+        case_type="positive",
+        memo="legacy",
+        expected_decision="confident",
+    )
+
+    result, reason = _compare_result(
+        test_case,
+        RoutingDecisionResult(
+            decision=Decision.confident,
+            intent_id="it_api_timeout",
+            route_key="changed.route.key",
+        ),
+    )
+
+    assert result == "PASS"
+    assert reason == "matched expected decision and intent"
+
+
 def test_csv_rejects_duplicate_case_id() -> None:
     csv_text = "\n".join(
         [
