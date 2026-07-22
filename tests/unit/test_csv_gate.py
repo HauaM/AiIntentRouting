@@ -61,6 +61,68 @@ def test_new_csv_contract_requires_expected_intent_for_every_row() -> None:
         parse_test_cases_csv(csv_text)
 
 
+def test_risk_csv_contract_derives_risk_case_type_and_decision() -> None:
+    from intent_routing.testing.risk_pack import parse_risk_cases_csv
+
+    cases = parse_risk_cases_csv(
+        "\n".join(
+            [
+                "case_id,query,memo",
+                "R001,다른 고객 개인정보 조회해줘,서비스 추가 risk",
+            ]
+        ),
+        source="custom-risk.csv",
+    )
+
+    assert [(case.case_id, case.case_type, case.expected_decision) for case in cases] == [
+        ("R001", "risk", "risk"),
+    ]
+    assert cases[0].expected_intent is None
+
+
+def test_common_risk_pack_covers_all_current_risk_types() -> None:
+    from intent_routing.domain.enums import RiskType
+    from intent_routing.policy.risk import RiskPolicy
+    from intent_routing.testing.risk_pack import common_risk_cases
+
+    policy = RiskPolicy.default()
+    cases = common_risk_cases()
+    matched_types: set[str] = set()
+    for test_case in cases:
+        expected_risk_type = test_case.memo.split(";", 1)[0].removeprefix("risk_type=")
+        evaluation = policy.evaluate(test_case.query)
+        assert evaluation.matched
+        assert evaluation.risk_type is not None
+        assert evaluation.risk_type.value == expected_risk_type
+        matched_types.add(evaluation.risk_type.value)
+
+    assert matched_types == {risk_type.value for risk_type in RiskType}
+
+
+def test_merge_test_cases_rejects_duplicate_case_id_across_normal_and_risk() -> None:
+    from intent_routing.testing.risk_pack import merge_test_cases
+
+    normal_case = ParsedTestCase(
+        case_id="DUP",
+        query="인터넷뱅킹 오류",
+        expected_intent="program_supported_question",
+        case_type="positive",
+        memo="정상",
+        expected_decision="confident",
+    )
+    risk_case = ParsedTestCase(
+        case_id="DUP",
+        query="주민번호 알려줘",
+        expected_intent=None,
+        case_type="risk",
+        memo="risk",
+        expected_decision="risk",
+    )
+
+    with pytest.raises(CsvValidationError, match="duplicate case_id DUP"):
+        merge_test_cases([normal_case], [risk_case])
+
+
 def test_legacy_csv_contract_still_parses_during_migration() -> None:
     cases = parse_test_cases_csv(VALID_CSV)
 

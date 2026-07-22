@@ -28,6 +28,21 @@ RISK_TYPES = {
 }
 
 
+def test_common_risk_pack_csv_matches_exported_module_contract() -> None:
+    from intent_routing.testing.risk_pack import (
+        COMMON_RISK_PACK_VERSION,
+        common_risk_cases,
+        parse_risk_cases_csv,
+    )
+
+    risk_pack_path = ROOT / "docs/pilot/common-risk-pack-v1.csv"
+
+    assert parse_risk_cases_csv(
+        risk_pack_path.read_text(encoding="utf-8"),
+        source=COMMON_RISK_PACK_VERSION,
+    ) == common_risk_cases()
+
+
 def test_pilot_catalog_has_route_key_and_example_contract() -> None:
     catalog = load_pilot_catalog(CATALOG)
 
