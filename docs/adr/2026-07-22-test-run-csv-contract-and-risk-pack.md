@@ -10,7 +10,7 @@ The current Test Run CSV asks users to provide `case_type`, but users are primar
 
 ## Decision
 
-The Admin Console user-facing Test Run CSV will use `case_id,query,expected_intent,memo`. Each row is internally stored as `case_type=positive` and `expected_decision=confident`. The backend derives expected `route_key` from the selected Catalog version and compares both actual Intent and actual route key for the new four-column contract. Risk cases are added from a versioned common risk pack plus optional service-specific risk CSV and are internally stored as `case_type=risk`, `expected_decision=risk`.
+The Admin Console user-facing Test Run CSV will use `case_id,query,expected_intent,memo`, with a mandatory `expected_intent` value on every row; query-only rows are out of scope. Each row is internally stored as `case_type=positive` and `expected_decision=confident`. The backend derives expected `route_key` from the selected Catalog version and compares both actual Intent and actual route key for the new four-column contract. Risk cases are added from a versioned common risk pack plus optional service-specific risk CSV and are internally stored as `case_type=risk`, `expected_decision=risk`.
 
 Common or custom risk rows require `risk_policy.enabled=True`; a risk-disabled policy fails fast with a clear validation error.
 
@@ -39,7 +39,7 @@ Normal CSVs become easier to create. Test quality is preserved by deriving inter
 
 ## Implementation Notes
 
-Normal Admin Console CSV import/export uses four columns. Backend parsing accepts four-column v2 CSVs and legacy five-column v1 CSVs. New v2 Test Runs include `common-risk-pack-v1` by default. Release validation checks actual Test Results for at least one `case_type=risk` row and requires all risk rows to pass. `content_sha256` remains the hash of the uploaded user CSV text; the common risk-pack version is tracked through risk case IDs and documentation, not by changing DB hash semantics.
+Normal Admin Console CSV import/export uses four columns. Backend parsing accepts four-column v2 CSVs and legacy five-column v1 CSVs. All newly created Admin Console Test Runs include `common-risk-pack-v1` by default; existing committed legacy fixtures and baselines remain unchanged. Release validation checks actual Test Results for at least one `case_type=risk` row and requires all risk rows to pass. `content_sha256` remains the hash of the uploaded user CSV text; the common risk-pack version is tracked through risk case IDs and documentation, not by changing DB hash semantics.
 
 Existing committed pilot CSVs and baseline files remain legacy-format artifacts unless baseline regeneration is explicitly performed. A `review_rate > 0.15` remains advisory and is not a blocking release criterion in this change.
 
