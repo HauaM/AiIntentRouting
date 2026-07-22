@@ -41,6 +41,8 @@ Normal CSVs become easier to create. Test quality is preserved by deriving inter
 
 Normal Admin Console CSV import/export uses four columns. Backend parsing accepts four-column v2 CSVs and legacy five-column v1 CSVs. New v2 Test Runs include `common-risk-pack-v1` by default. Release validation checks actual Test Results for at least one `case_type=risk` row and requires all risk rows to pass. `content_sha256` remains the hash of the uploaded user CSV text; the common risk-pack version is tracked through risk case IDs and documentation, not by changing DB hash semantics.
 
+Existing committed pilot CSVs and baseline files remain legacy-format artifacts unless baseline regeneration is explicitly performed. A `review_rate > 0.15` remains advisory and is not a blocking release criterion in this change.
+
 ## Verification
 
 Run backend unit tests for CSV parsing/gate, routing precedence, frontend Test Runs contract tests, release-flow tests, and pilot fixture tests. Verify that `expected_intent=off_topic_other_subject` is accepted in the UI CSV and can produce `Decision.confident` even when service `off_topic_policy` would otherwise match the query.
