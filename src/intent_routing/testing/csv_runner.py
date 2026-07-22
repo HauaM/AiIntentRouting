@@ -225,10 +225,43 @@ def run_csv_tests(
     source_filename: str,
     csv_text: str,
     created_by: str,
+    risk_source_filename: str | None = None,
+    risk_csv_text: str | None = None,
+    include_common_risk_pack: bool | None = None,
 ) -> CsvTestRunSummary:
-    cases = parse_test_cases_csv(csv_text)
-    if _is_classification_csv(csv_text):
-        cases = _hydrate_expected_route_keys(cases, catalog_version)
+    from intent_routing.testing.risk_pack import (
+        common_risk_cases,
+        merge_test_cases,
+        parse_risk_cases_csv,
+    )
+
+    classification_cases = parse_test_cases_csv(csv_text)
+    is_classification_csv = _is_classification_csv(csv_text)
+    if is_classification_csv:
+        classification_cases = _hydrate_expected_route_keys(
+            classification_cases,
+            catalog_version,
+        )
+
+    include_common = include_common_risk_pack
+    if include_common is None:
+        include_common = is_classification_csv
+    has_custom_risk_cases = risk_csv_text is not None and risk_csv_text.strip()
+    if (include_common or has_custom_risk_cases) and not _risk_enabled(
+        policy_version.risk_policy
+    ):
+        raise CsvValidationError("Risk policy must be enabled to run risk guardrail cases.")
+
+    risk_cases = common_risk_cases() if include_common else []
+    if has_custom_risk_cases:
+        risk_cases = [
+            *risk_cases,
+            *parse_risk_cases_csv(
+                risk_csv_text,
+                source=risk_source_filename or "risk-cases.csv",
+            ),
+        ]
+    cases = merge_test_cases(classification_cases, risk_cases)
     now = datetime.now(UTC)
     threshold_preset = policy_version.threshold_preset
     threshold_value = float(policy_version.threshold_value)

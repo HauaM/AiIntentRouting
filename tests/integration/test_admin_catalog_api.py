@@ -1666,6 +1666,94 @@ def test_post_test_run_persists_dataset_run_and_results(
     assert {result.result for result in persisted_results} == {"PASS"}
 
 
+def test_create_test_run_with_new_csv_includes_common_risk_pack_by_default(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    client = _client(db_session)
+    service_id = f"svc-test-run-{uuid4().hex}"
+    policy_version, catalog_version = _seed_csv_runner_state(
+        db_session,
+        client,
+        service_id,
+    )
+    csv_text = "\n".join(
+        [
+            "case_id,query,expected_intent,memo",
+            "P001,인터넷뱅킹 오류가 발생해요,it_api_timeout,정상 분류",
+        ]
+    )
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/test-runs",
+        headers=_admin_headers(),
+        json={
+            "policy_version": policy_version,
+            "intent_catalog_version": catalog_version,
+            "source_filename": "normal.csv",
+            "csv_text": csv_text,
+        },
+    )
+
+    assert response.status_code == 201
+    results = client.get(
+        f"/admin/v1/services/{service_id}/test-runs/{response.json()['test_run_id']}/results",
+        headers=_admin_headers(),
+    ).json()
+    assert any(row["case_type"] == "risk" for row in results)
+
+
+def test_create_test_run_rejects_common_risk_pack_when_risk_policy_disabled(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_BOOTSTRAP_TOKEN", "local-admin-token")
+    monkeypatch.setenv("RAW_TEXT_KEK_BASE64", _raw_text_kek())
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "fake")
+    client = _client(db_session, raise_server_exceptions=False)
+    service_id = f"svc-test-run-{uuid4().hex}"
+    _, catalog_version = _seed_csv_runner_state(db_session, client, service_id)
+    risk_disabled_policy_version = f"pol-{service_id}-risk-disabled"
+    now = datetime.now(UTC)
+    IntentRoutingRepository(db_session).create_policy_version(
+        policy_version=risk_disabled_policy_version,
+        service_id=service_id,
+        threshold_preset="balanced",
+        threshold_value=Decimal("0.80"),
+        clarify_margin=Decimal("0.08"),
+        min_candidate_score=Decimal("0.55"),
+        fallback_score=Decimal("0.45"),
+        risk_policy={"enabled": False},
+        off_topic_policy=_policy_version_payload()["off_topic_policy"],
+        created_by="integration-test",
+        created_at=now,
+    )
+    db_session.commit()
+    csv_text = "\n".join(
+        [
+            "case_id,query,expected_intent,memo",
+            "P001,인터넷뱅킹 오류가 발생해요,it_api_timeout,정상 분류",
+        ]
+    )
+
+    response = client.post(
+        f"/admin/v1/services/{service_id}/test-runs",
+        headers=_admin_headers(),
+        json={
+            "policy_version": risk_disabled_policy_version,
+            "intent_catalog_version": catalog_version,
+            "source_filename": "normal.csv",
+            "csv_text": csv_text,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Risk policy must be enabled" in response.json()["error"]["message"]
+
+
 def test_post_test_run_rejects_when_current_provider_model_has_no_ready_catalog_index(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,

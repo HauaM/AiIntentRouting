@@ -892,6 +892,9 @@ class TestRunCreateRequest(BaseModel):
     threshold_preset: ThresholdPreset | Literal["custom"] | None = None
     source_filename: str = Field(min_length=1)
     csv_text: str = Field(min_length=1)
+    risk_source_filename: str | None = None
+    risk_csv_text: str | None = None
+    include_common_risk_pack: bool | None = None
 
 
 class TestRunSummaryResponse(BaseModel):
@@ -5856,6 +5859,9 @@ async def create_test_run(
             source_filename=request.source_filename,
             csv_text=request.csv_text,
             created_by=context.actor_id,
+            risk_source_filename=request.risk_source_filename,
+            risk_csv_text=request.risk_csv_text,
+            include_common_risk_pack=request.include_common_risk_pack,
         )
     except CsvValidationError as exc:
         session.rollback()

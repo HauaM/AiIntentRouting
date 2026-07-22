@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from intent_routing.domain.enums import Decision
@@ -9,6 +11,7 @@ from intent_routing.testing.csv_runner import (
     ParsedTestCase,
     _compare_result,
     parse_test_cases_csv,
+    run_csv_tests,
 )
 from intent_routing.testing.gate import GateInput, evaluate_gate
 
@@ -121,6 +124,39 @@ def test_merge_test_cases_rejects_duplicate_case_id_across_normal_and_risk() -> 
 
     with pytest.raises(CsvValidationError, match="duplicate case_id DUP"):
         merge_test_cases([normal_case], [risk_case])
+
+
+def test_run_csv_tests_rejects_requested_risk_cases_when_risk_policy_disabled() -> None:
+    csv_text = "\n".join(
+        [
+            "case_id,query,expected_intent,memo",
+            "P001,인터넷뱅킹 오류가 발생해요,it_api_timeout,정상 분류",
+        ]
+    )
+
+    with pytest.raises(
+        CsvValidationError,
+        match="Risk policy must be enabled to run risk guardrail cases.",
+    ):
+        run_csv_tests(
+            object(),
+            service=SimpleNamespace(service_id="svc-test"),
+            policy_version=SimpleNamespace(risk_policy={"enabled": False}),
+            catalog_version=SimpleNamespace(
+                snapshot={
+                    "intents": [
+                        {
+                            "intent_id": "it_api_timeout",
+                            "route_key": "it.api_timeout.manual_lookup",
+                        }
+                    ]
+                }
+            ),
+            source_filename="normal.csv",
+            csv_text=csv_text,
+            created_by="unit-test",
+            include_common_risk_pack=True,
+        )
 
 
 def test_legacy_csv_contract_still_parses_during_migration() -> None:
