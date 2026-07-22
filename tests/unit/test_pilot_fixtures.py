@@ -161,10 +161,14 @@ def test_pilot_cases_reject_unknown_header_column(tmp_path: Path) -> None:
 def test_pilot_cases_reject_empty_file(tmp_path: Path) -> None:
     cases_path = tmp_path / "cases.csv"
     cases_path.write_text("", encoding="utf-8")
+    expected_header = (
+        r"CSV header must be \['case_id', 'query', 'expected_intent', 'memo'\] "
+        r"or \['case_id', 'query', 'expected_intent', 'case_type', 'memo'\]"
+    )
 
     with pytest.raises(
         CsvValidationError,
-        match=r"CSV header must be \['case_id', 'query', 'expected_intent', 'memo'\] or \['case_id', 'query', 'expected_intent', 'case_type', 'memo'\]",
+        match=expected_header,
     ):
         load_pilot_cases(cases_path)
 
