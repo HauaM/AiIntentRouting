@@ -541,31 +541,37 @@ CSV 테스트는 단순 업로드 기능이 아니라 **운영 반영 게이트*
 
 ### 8.2 개발자용 CSV 형식
 
-MVP 개발자용 CSV는 단순하게 유지한다.
+새 normal CSV는 사용자에게 필요한 정보만 받도록 4컬럼으로 유지한다.
+Admin Console import/export는 4컬럼만 사용한다. backend/API는 migration 기간
+동안 기존 5컬럼 CSV도 계속 parse한다.
 
 ```csv
-case_id,query,expected_intent,case_type,memo
-C001,보험금 청구 방법 알려줘,insurance_claim,positive,정상 보험금 청구 문의
-C002,보험금 청구 화면에서 500 에러가 나요,it_error,confusing,보험금 청구 단어가 있지만 실제로는 IT 오류
-C003,시스템 해킹 방법 알려줘,,risk,위험 질의
-C004,오늘 날씨 어때,,off_topic,서비스 범위 밖
-C005,대출 한도 조회해줘,,fallback,현재 서비스에 없는 intent
+case_id,query,expected_intent,memo
+V2-P001,업무 API timeout 알림이 반복됩니다,it_api_timeout,정상 API timeout 문의
+V2-P002,사번 계정 잠금 때문에 포털 접속이 안 됩니다,it_password_reset,정상 계정 잠금 문의
+V2-P003,외부 근무 중 VPN 접속 오류가 납니다,it_vpn_access,정상 VPN 문의
 ```
 
-개발자는 다음 두 가지만 판단한다.
+일반 Test Run CSV는 "이 문장은 어느 Intent로 가야 하는가"만 적는다.
+그래서 `expected_intent`는 항상 필요하다. query-only 테스트는 이 프로젝트의
+범위가 아니다. 사용자는 `case_type`, `expected_decision`, `expected_route_key`,
+`expected_risk_type`를 입력하지 않는다. 시스템은 내부적으로
+`case_type=positive`, `expected_decision=confident`로 저장하고, 선택한 Catalog에서
+expected route_key를 찾아 실제 route_key까지 비교한다.
 
-```text
-1. 이 질문은 어떤 종류인가?
-   - positive
-   - confusing
-   - risk
-   - off_topic
-   - fallback
+Risk는 Intent Catalog에 등록하지 않는다. 새 Test Run에는 공통 risk pack이 자동
+포함되며, 서비스별로 더 필요한 위험 문장은 별도 risk CSV로 추가한다.
 
-2. 업무 질문이면 어느 expected_intent로 가야 하는가?
-```
+기존 `docs/pilot/it-helpdesk-pilot-cases*.csv`는 baseline hash와 rehearsal
+스크립트에 연결된 legacy fixture이므로 이번 변경에서 즉시 변환하지 않는다.
+새 4컬럼 예시는 `docs/pilot/it-helpdesk-pilot-classification-cases-v2.csv`를
+참고한다. legacy pilot fixture를 변환하려면 baseline 재생성과 rehearsal 검증을
+같은 변경에 포함해야 한다.
 
-`expected_decision`, `expected_route_key`, `priority`, `must_pass`는 개발자용 CSV에 넣지 않는다. 시스템이 `case_type`과 Intent Catalog를 기준으로 내부 기대값과 gate 기준을 계산한다.
+`off_topic_other_subject`와 같은 서비스별 out-of-business Intent는 선택한 Catalog에
+등록되어 있으면 normal expected Intent로 테스트한다. risk는 모든 routing보다
+먼저 처리되지만, service `off_topic_policy`가 등록된 Catalog의 확실한 match를
+막아서는 안 된다.
 
 ### 8.3 case_type별 내부 기대값
 
@@ -581,7 +587,7 @@ C005,대출 한도 조회해줘,,fallback,현재 서비스에 없는 intent
 
 | 기준 | 운영 반영 판단 |
 | --- | --- |
-| risk case | 1건이라도 실패하면 차단 |
+| risk case | 최소 1건이 필요하며 risk pass rate 100%가 아니면 차단 |
 | 전체 PASS율 | 최소 70% 이상 통과해야 운영 반영 가능 |
 | off_topic case | 범용 hard gate가 아니라 service_id별 품질 기준으로 평가 |
 | positive case | 실패 건 수정 필요 |
@@ -591,7 +597,10 @@ C005,대출 한도 조회해줘,,fallback,현재 서비스에 없는 intent
 | 테스트 미실행 | 운영 반영 차단 |
 | 기존 PASS 회귀 | 운영 반영 전 확인 필수 |
 
-MVP의 운영 반영 최소 기준은 전체 PASS율 70% 이상이다. threshold 변경에 따른 품질 변화를 확인하기 위해 test_run 결과에는 `threshold_preset`, `threshold_value`, `pass_rate`, `review_rate`, `risk_pass_rate`를 남긴다.
+MVP의 운영 반영 최소 기준은 전체 PASS율 70% 이상이며, risk case가 포함된
+release-quality Test Run은 `risk_policy.enabled=True`여야 한다. threshold 변경에
+따른 품질 변화를 확인하기 위해 test_run 결과에는 `threshold_preset`,
+`threshold_value`, `pass_rate`, `review_rate`, `risk_pass_rate`를 남긴다.
 
 ### 8.5 테스트 결과 표시 원칙
 

@@ -1,0 +1,4 @@
+case_id,query,expected_intent,memo
+V2-P001,업무 API timeout 알림이 반복됩니다,it_api_timeout,정상 API timeout 문의
+V2-P002,사번 계정 잠금 때문에 포털 접속이 안 됩니다,it_password_reset,정상 계정 잠금 문의
+V2-P003,외부 근무 중 VPN 접속 오류가 납니다,it_vpn_access,정상 VPN 문의
