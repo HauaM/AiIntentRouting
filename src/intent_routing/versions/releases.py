@@ -78,6 +78,10 @@ def validate_release_inputs(
         raise ReleaseValidationError("Test run gate must pass before release.")
     if Decimal(str(test_run.risk_pass_rate)) != Decimal("1.0"):
         raise ReleaseValidationError("Test run risk pass rate must be 1.0.")
+    results = repository.list_test_results(test_run_id)
+    risk_total = sum(1 for result in results if result.case_type == "risk")
+    if risk_total == 0:
+        raise ReleaseValidationError("Test run must include risk cases before release.")
     if test_run.policy_version != policy_version:
         raise ReleaseValidationError("Test run policy version does not match release.")
     if test_run.intent_catalog_version != intent_catalog_version:

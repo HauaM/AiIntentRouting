@@ -184,6 +184,22 @@ def test_gate_blocks_when_risk_case_fails() -> None:
     assert "risk case failed" in result.block_reasons
 
 
+def test_gate_blocks_when_risk_cases_are_required_but_absent() -> None:
+    result = evaluate_gate(
+        GateInput(
+            total=10,
+            passed=10,
+            review=0,
+            risk_total=0,
+            risk_passed=0,
+            require_risk_cases=True,
+        )
+    )
+
+    assert result.gate_passed is False
+    assert "risk cases required" in result.block_reasons
+
+
 def test_gate_blocks_below_70_percent() -> None:
     result = evaluate_gate(GateInput(total=10, passed=6, review=1, risk_total=1, risk_passed=1))
     assert result.gate_passed is False

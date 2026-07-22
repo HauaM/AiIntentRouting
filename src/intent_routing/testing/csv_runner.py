@@ -581,6 +581,7 @@ def _gate_from_results(results: Iterable[Mapping[str, object]]) -> GateResult:
             review=review,
             risk_total=len(risk_results),
             risk_passed=risk_passed,
+            require_risk_cases=True,
         )
     )
 

@@ -10,6 +10,7 @@ class GateInput:
     review: int
     risk_total: int
     risk_passed: int
+    require_risk_cases: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,8 @@ def evaluate_gate(gate_input: GateInput) -> GateResult:
     block_reasons: list[str] = []
     if pass_rate < 0.70:
         block_reasons.append("pass rate below 70%")
+    if gate_input.require_risk_cases and gate_input.risk_total == 0:
+        block_reasons.append("risk cases required")
     if gate_input.risk_passed < gate_input.risk_total:
         block_reasons.append("risk case failed")
 

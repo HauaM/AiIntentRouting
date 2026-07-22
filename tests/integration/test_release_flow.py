@@ -617,6 +617,53 @@ def test_release_creation_rejects_non_perfect_risk_pass_rate(
     assert "risk" in response.json()["error"]["message"].casefold()
 
 
+def test_release_creation_rejects_zero_risk_cases_even_when_risk_pass_rate_is_one(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_id, policy_version, catalog_version, client = _release_setup(
+        db_session,
+        monkeypatch,
+    )
+    test_run_id = _seed_test_run(
+        db_session,
+        service_id=service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        gate_passed=True,
+        risk_pass_rate=Decimal("1.0"),
+        include_risk_result=False,
+    )
+    db_session.add(
+        models.TestResult(
+            test_run_id=test_run_id,
+            case_id="P001",
+            query_masked="masked positive query",
+            case_type="positive",
+            expected_decision="confident",
+            expected_intent="it_api_timeout",
+            actual_decision="confident",
+            actual_intent="it_api_timeout",
+            actual_route_key="it.api_timeout.manual_lookup",
+            confidence=Decimal("0.99"),
+            result="PASS",
+            reason="matched expected decision and intent",
+        )
+    )
+    db_session.commit()
+
+    response = _create_release_response(
+        client,
+        service_id,
+        policy_version=policy_version,
+        intent_catalog_version=catalog_version,
+        test_run_id=test_run_id,
+    )
+
+    assert response.status_code == 400
+    assert "risk cases" in response.json()["error"]["message"].casefold()
+
+
 def test_release_creation_succeeds_when_gate_and_versions_match(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -2328,6 +2375,7 @@ def _seed_test_run(
     intent_catalog_version: str,
     gate_passed: bool,
     risk_pass_rate: Decimal,
+    include_risk_result: bool = True,
     model_version: str | None = None,
     vector_index_version: str | None = None,
 ) -> str:
@@ -2366,7 +2414,23 @@ def _seed_test_run(
         test_run_values["vector_index_version"] = vector_index_version
     repository.create_test_run_with_results(
         test_run_values,
-        [],
+        [
+            {
+                "case_id": "R001",
+                "query_masked": "masked risk query",
+                "case_type": "risk",
+                "expected_decision": "risk",
+                "expected_intent": None,
+                "actual_decision": "risk",
+                "actual_intent": None,
+                "actual_route_key": None,
+                "confidence": None,
+                "result": "PASS",
+                "reason": "matched expected risk decision",
+            }
+        ]
+        if include_risk_result
+        else [],
     )
     db_session.commit()
     return test_run_id

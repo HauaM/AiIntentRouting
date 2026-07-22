@@ -6300,7 +6300,10 @@ def list_release_candidates(
         summary = summarize_test_run(test_run, results)
         existing_release = existing_releases.get(test_run.test_run_id)
         risk_passed = Decimal(str(test_run.risk_pass_rate)) == Decimal("1.0")
+        risk_total = sum(1 for result in results if result.case_type == "risk")
         block_reasons = list(summary.block_reasons)
+        if risk_total == 0:
+            block_reasons.append("risk cases required")
         if not risk_passed:
             block_reasons.append("risk pass rate must be 100%")
         if existing_release is not None:
@@ -6308,6 +6311,7 @@ def list_release_candidates(
         eligible = (
             test_run.gate_passed
             and risk_passed
+            and risk_total > 0
             and existing_release is None
         )
         candidates.append(
