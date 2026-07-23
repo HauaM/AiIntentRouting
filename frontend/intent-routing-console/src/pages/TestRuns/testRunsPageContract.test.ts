@@ -109,12 +109,14 @@ it('localizes result and lookup labels while preserving technical identifiers', 
 
   expect(page).toContain("title: '케이스'");
   expect(page).toContain("title: '마스킹된 질의'");
-  expect(page).toContain("title: '기대 결과'");
-  expect(page).toContain("title: '실제 결과'");
+  expect(page).toContain("title: '기대한 분류'");
+  expect(page).toContain("title: '실제 연결 결과'");
+  expect(page).toContain("title: '테스트 판정'");
+  expect(page).toContain("title: '판정 이유'");
   expect(page).toContain("pass: { text: '통과' }");
   expect(page).toContain("fail: { text: '실패' }");
   expect(page).toContain("review: { text: '검토' }");
-  expect(page).toContain('resultLabel[normalizedResult] ?? row.result');
+  expect(page).toContain('formatTestJudgmentLabel(row.result)');
   expect(page).toContain("message.success('테스트 실행 결과를 불러왔습니다.')");
   expect(page).toContain('<TestRunHistorySelect');
   expect(page).toContain('기존 테스트 실행 결과');
@@ -122,20 +124,31 @@ it('localizes result and lookup labels while preserving technical identifiers', 
   expect(page).not.toContain('Test Run 결과를 불러왔습니다.');
 });
 
+it('uses user-facing table headings for expected classification and test judgment', () => {
+  const source = read('index.tsx');
+
+  expect(source).toContain("title: '기대한 분류'");
+  expect(source).toContain("title: '실제 연결 결과'");
+  expect(source).toContain("title: '테스트 판정'");
+  expect(source).not.toContain("title: '기대 결과'");
+  expect(source).not.toContain("title: '실제 결과'");
+});
+
 it('normalizes uppercase backend result values before rendering semantic StatusTag labels', () => {
   const page = read('index.tsx');
 
   expect(page).toContain('const normalizedResult = row.result.toLowerCase();');
   expect(page).toContain('status={normalizedResult}');
-  expect(page).toContain('resultLabel[normalizedResult] ?? row.result');
+  expect(page).toContain('formatTestJudgmentLabel(row.result)');
 });
 
-it('localizes detailed result reasons while retaining raw reasons only as tooltip detail', () => {
+it('keeps raw result reasons out of rendered and hover-visible copy', () => {
   const page = read('index.tsx');
 
   expect(page).toContain('formatResultReason');
-  expect(page).toContain('title={row.reason}');
-  expect(page).toContain('{formatResultReason(row.reason)}');
+  expect(page).not.toContain('title={row.reason}');
+  expect(page).toContain('title={formattedReason}');
+  expect(page).toContain('{formattedReason}');
 });
 
 it('renders detailed result decisions and reasons with Korean copy helpers', () => {
@@ -144,27 +157,40 @@ it('renders detailed result decisions and reasons with Korean copy helpers', () 
   expect(source).toContain('formatDecisionLabel');
   expect(source).toContain('formatIntentLabel');
   expect(source).toContain('formatResultReason');
-  expect(source).toContain('title={row.reason}');
+  expect(source).not.toContain('title={row.reason}');
+  expect(source).toContain('const formattedReason = formatResultReason(row.reason);');
   expect(source).toContain('render: (_, row) => (');
-  expect(source).toContain('{formatResultReason(row.reason)}');
+  expect(source).toContain('{formattedReason}');
 });
 
 it('localizes test run summary state and gate labels', () => {
   const page = read('index.tsx');
 
   expect(page).toContain("'Release 생성 전에 차단 사유를 해결해야 합니다.'");
-  expect(page).toContain('label="검증 게이트"');
+  expect(page).toContain('label="Release 가능 여부"');
+  expect(page).toContain('formatReleaseGateLabel(summary.gate_passed)');
   expect(page).not.toContain('blocked 사유');
   expect(page).not.toContain('label="Gate"');
 });
 
-it('renders summary block reasons and recommendations in Korean', () => {
+it('separates dataset composition and quality metrics in the result summary', () => {
   const source = read('index.tsx');
 
-  expect(source).toContain('formatBlockReason');
-  expect(source).toContain('formatRecommendation');
-  expect(source).not.toContain('summary.block_reasons.join');
-  expect(source).not.toContain('summary.recommendations.join');
+  expect(source).toContain('buildDatasetComposition');
+  expect(source).toContain('label="데이터 구성"');
+  expect(source).toContain('label="품질 지표"');
+  expect(source).toContain("const datasetCompositionSummary = resultsLoadState === 'loaded'");
+  expect(source).toContain('datasetComposition.summary');
+  expect(source).toContain('상세 결과를 불러온 뒤 데이터 구성을 확인할 수 있습니다.');
+  expect(source).toContain('상세 결과를 불러오지 못해 데이터 구성을 확인할 수 없습니다.');
+  expect(source).not.toContain('label="데이터 구성" value={datasetComposition.summary}');
+});
+
+it('renders the unavailable provenance note for loaded dataset composition', () => {
+  const source = read('index.tsx');
+
+  expect(source).toContain('datasetComposition.sourceIsUnavailable');
+  expect(source).toContain('행 출처 구분은 현재 결과 API에서 제공되지 않습니다.');
 });
 
 it('handles create and history request failures with clear messages', () => {
@@ -227,6 +253,7 @@ it('wires diagnostics to the selected test run in the results step', () => {
   expect(page).toContain('diagnosticsLoading={diagnosticsLoading}');
   expect(page).toContain('diagnosticsError={diagnosticsError}');
   expect(page).toContain('results={results}');
+  expect(page).toContain('summary={summary}');
 });
 
 it('loads and resets diagnostics in page state for the selected test run', () => {
@@ -254,7 +281,7 @@ it('renders the required six result sections in literal scan order', () => {
   const source = read('index.tsx');
   const summaryIndex = source.indexOf('테스트 요약');
   const diagnosticsIndex = source.indexOf('<TestRunDiagnosticsPanel');
-  const detailsHeadingIndex = source.indexOf('상세 결과');
+  const detailsHeadingIndex = source.indexOf('\n                          상세 결과\n');
   const tableIndex = source.indexOf('<ProTable<API.TestRunResult>');
   const catalogStatusIndex = source.indexOf('<TestRunCatalogStatusPanel');
 

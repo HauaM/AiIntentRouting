@@ -4,39 +4,56 @@ import {
   formatDecisionLabel,
   formatIntentLabel,
   formatIssueTitle,
+  formatReleaseGateLabel,
   formatRecommendation,
   formatResultReason,
+  formatRouterDecisionLabel,
+  formatTestJudgmentLabel,
 } from './testRunResultCopy';
 
 describe('testRunResultCopy', () => {
   it('renders detailed result reasons in Korean', () => {
     expect(formatResultReason('actual intent did not match expected intent')).toBe(
-      '기대 Intent와 실제 Intent가 다릅니다.',
+      '기대한 분류와 실제 연결 결과가 다릅니다.',
     );
     expect(formatResultReason('actual decision did not match expected decision')).toBe(
-      '기대 결정과 실제 결정이 다릅니다.',
+      '기대한 처리와 실제 처리 결과가 다릅니다.',
     );
     expect(formatResultReason('requires human inspection')).toBe(
       '사람의 검토가 필요한 케이스입니다.',
     );
     expect(formatResultReason('matched expected decision')).toBe(
-      '기대 결정과 일치합니다.',
+      '기대한 처리 결과와 일치합니다.',
     );
     expect(formatResultReason('matched expected decision and intent')).toBe(
-      '기대 결과와 일치합니다.',
+      '기대한 분류와 실제 연결 결과가 일치합니다.',
     );
     expect(formatResultReason('matched expected decision, intent, and route key')).toBe(
-      '기대 결정, Intent, 라우팅 경로가 모두 일치합니다.',
+      '기대한 분류와 실제 연결 결과가 일치합니다.',
     );
     expect(formatResultReason('actual route key did not match expected route key')).toBe(
-      '기대 라우팅 경로와 실제 라우팅 경로가 다릅니다.',
+      '기대한 연결 경로와 실제 연결 결과가 다릅니다.',
     );
   });
 
   it('keeps unknown result reasons Korean-only in visible copy', () => {
-    expect(formatResultReason('custom backend reason')).toBe('해석되지 않은 사유입니다.');
+    expect(formatResultReason('custom backend reason')).toBe('판정 이유를 해석할 수 없습니다.');
     expect(formatResultReason('custom backend reason')).not.toContain('custom backend reason');
     expect(formatResultReason(null)).toBe('사유 없음');
+  });
+
+  it('uses separate labels for release gate, test judgment, and router handling', () => {
+    expect(formatReleaseGateLabel(true)).toBe('Release 가능');
+    expect(formatReleaseGateLabel(false)).toBe('Release 차단');
+    expect(formatTestJudgmentLabel('PASS')).toBe('통과');
+    expect(formatTestJudgmentLabel('FAIL')).toBe('실패');
+    expect(formatTestJudgmentLabel('REVIEW')).toBe('검토 필요');
+    expect(formatRouterDecisionLabel('confident')).toBe('정상 연결');
+    expect(formatRouterDecisionLabel('risk')).toBe('위험 차단');
+  });
+
+  it('does not expose unknown backend reason strings as primary copy', () => {
+    expect(formatResultReason('some new backend reason')).toBe('판정 이유를 해석할 수 없습니다.');
   });
 
   it('renders decision labels in Korean', () => {
@@ -81,12 +98,13 @@ describe('testRunResultCopy', () => {
 
   it('renders diagnostic issue, block reason, and recommendation copy in Korean', () => {
     expect(formatIssueTitle('intent_mismatch_exists')).toBe(
-      'Decision은 맞았지만 Intent가 다른 실패가 있습니다.',
+      '기대한 분류와 실제 연결 결과가 다른 케이스가 있습니다.',
     );
+    expect(formatIssueTitle('intent_mismatch_exists')).not.toContain('Decision');
     expect(formatIssueTitle('fallback_failures_dominant')).toContain('분류 실패');
     expect(formatIssueTitle('fallback_failures_dominant')).not.toContain('fallback');
     expect(formatIssueTitle('pass_rate_below_gate')).toBe(
-      '통과율이 Release 기준보다 낮습니다.',
+      'Release 기준 통과율을 넘지 못했습니다.',
     );
     expect(formatBlockReason('pass rate below 70%')).toBe('통과율이 70% 기준보다 낮습니다.');
     expect(formatBlockReason('risk cases required')).toBe(
@@ -94,6 +112,41 @@ describe('testRunResultCopy', () => {
     );
     expect(formatRecommendation('review rate above 15%')).toBe(
       '검토 대상 비율이 15% 권장 기준보다 높습니다.',
+    );
+  });
+
+  it('keeps result and diagnostic copy free of internal backend terms', () => {
+    const reasons = [
+      'matched expected decision',
+      'requires human inspection',
+      'matched expected decision and intent',
+      'actual decision did not match expected decision',
+      'actual intent did not match expected intent',
+      'matched expected decision, intent, and route key',
+      'actual route key did not match expected route key',
+    ];
+    const issueCodes = [
+      'catalog_version_has_no_intents',
+      'catalog_version_has_no_examples',
+      'catalog_version_has_no_ready_vector_index',
+      'catalog_version_has_no_embeddings',
+      'test_run_vector_index_not_ready',
+      'intent_mismatch_exists',
+    ];
+    const visibleCopy = [
+      ...reasons.map((reason) => formatResultReason(reason)),
+      ...issueCodes.map((code) => formatIssueTitle(code)),
+    ].join(' ');
+
+    expect(visibleCopy).not.toMatch(/Decision|vector index|embedding|expected_intent|route_key/i);
+    expect(formatIssueTitle('catalog_version_has_no_intents')).toBe(
+      '선택한 Catalog 버전에 분류 항목이 없습니다.',
+    );
+    expect(formatIssueTitle('catalog_version_has_no_ready_vector_index')).toBe(
+      '선택한 Catalog 버전의 예시 검색 준비가 완료되지 않았습니다.',
+    );
+    expect(formatIssueTitle('catalog_version_has_no_embeddings')).toBe(
+      '선택한 Catalog 버전의 예시 검색 데이터가 준비되지 않았습니다.',
     );
   });
 
