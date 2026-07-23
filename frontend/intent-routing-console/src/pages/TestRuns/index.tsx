@@ -32,14 +32,16 @@ import { TestRunCatalogStatusPanel } from './TestRunCatalogStatusPanel';
 import { TestRunDiagnosticsPanel } from './TestRunDiagnosticsPanel';
 import { TestRunHistorySelect } from './TestRunHistorySelect';
 import { TestPolicyPanel } from './TestPolicyPanel';
+import { buildDatasetComposition } from './testRunResultInsights';
 import { type TestRunResultsLoadState } from './testRunResultInsights';
 import { testRunCreateErrorMessage } from './testRunCreateError';
 import {
-  formatBlockReason,
   formatDecisionLabel,
   formatIntentLabel,
-  formatRecommendation,
+  formatReleaseGateLabel,
   formatResultReason,
+  formatRouterDecisionLabel,
+  formatTestJudgmentLabel,
 } from './testRunResultCopy';
 import {
   buildCsvText,
@@ -51,12 +53,6 @@ const formatRate = (value: number | null | undefined) => {
   if (value === null || value === undefined) return 'none';
   const normalized = value <= 1 ? value * 100 : value;
   return `${normalized.toFixed(1)}%`;
-};
-
-const resultLabel: Record<string, string> = {
-  pass: '통과',
-  fail: '실패',
-  review: '검토',
 };
 
 const csvTemplate = [
@@ -94,6 +90,12 @@ export default function TestRunsPage() {
   const runRequestGenerationRef = useRef(0);
   const ready = isAdminSessionReady(session);
   const canRun = canEditCatalog(session);
+  const datasetComposition = buildDatasetComposition(results);
+  const datasetCompositionSummary = resultsLoadState === 'loaded'
+    ? datasetComposition.summary
+    : resultsLoadState === 'error'
+      ? '상세 결과를 불러오지 못해 데이터 구성을 확인할 수 없습니다.'
+      : '상세 결과를 불러온 뒤 데이터 구성을 확인할 수 있습니다.';
 
   useEffect(() => {
     serviceIdRef.current = session.serviceId;
@@ -266,7 +268,7 @@ export default function TestRunsPage() {
       render: (text) => <span className="masked-query">{text}</span>,
     },
     {
-      title: '기대 결과',
+      title: '기대한 분류',
       search: false,
       render: (_, row) => (
         <Space direction="vertical" size={0}>
@@ -276,11 +278,11 @@ export default function TestRunsPage() {
       ),
     },
     {
-      title: '실제 결과',
+      title: '실제 연결 결과',
       search: false,
       render: (_, row) => (
         <Space direction="vertical" size={0}>
-          <span>{formatDecisionLabel(row.actual_decision)}</span>
+          <span>{formatRouterDecisionLabel(row.actual_decision)}</span>
           <span className="muted-small">
             {formatIntentLabel(row.actual_intent ?? row.actual_route_key)}
           </span>
@@ -296,7 +298,7 @@ export default function TestRunsPage() {
         value === null || value === undefined ? '없음' : Number(value).toFixed(3),
     },
     {
-      title: '결과',
+      title: '테스트 판정',
       dataIndex: 'result',
       valueType: 'select',
       valueEnum: {
@@ -310,17 +312,20 @@ export default function TestRunsPage() {
         return (
           <StatusTag
             status={normalizedResult}
-            label={resultLabel[normalizedResult] ?? row.result}
+            label={formatTestJudgmentLabel(row.result)}
           />
         );
       },
     },
     {
-      title: '사유',
+      title: '판정 이유',
       dataIndex: 'reason',
       search: false,
       ellipsis: true,
-      render: (_, row) => <span title={row.reason}>{formatResultReason(row.reason)}</span>,
+      render: (_, row) => {
+        const formattedReason = formatResultReason(row.reason);
+        return <span title={formattedReason}>{formattedReason}</span>;
+      },
     },
   ];
 
@@ -460,30 +465,28 @@ export default function TestRunsPage() {
                             <Descriptions.Item label="정책 기준">
                               {summary.threshold_preset} / {summary.threshold_value}
                             </Descriptions.Item>
-                            <Descriptions.Item label="통과율">
-                              {formatRate(summary.pass_rate)}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="검토율">
-                              {formatRate(summary.review_rate)}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="위험 통과율">
-                              {formatRate(summary.risk_pass_rate)}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="검증 게이트">
+                            <Descriptions.Item label="Release 가능 여부">
                               <StatusTag
                                 status={summary.gate_passed ? 'pass' : 'blocked'}
-                                label={summary.gate_passed ? '통과' : '차단'}
+                                label={formatReleaseGateLabel(summary.gate_passed)}
                               />
                             </Descriptions.Item>
-                            <Descriptions.Item label="차단 사유">
-                              {summary.block_reasons.length
-                                ? summary.block_reasons.map(formatBlockReason).join(', ')
-                                : '없음'}
+                            <Descriptions.Item label="데이터 구성" span={2}>
+                              <Space direction="vertical" size={0}>
+                                <Typography.Text>{datasetCompositionSummary}</Typography.Text>
+                                {resultsLoadState === 'loaded' && datasetComposition.sourceIsUnavailable ? (
+                                  <Typography.Text type="secondary">
+                                    행 출처 구분은 현재 결과 API에서 제공되지 않습니다.
+                                  </Typography.Text>
+                                ) : null}
+                              </Space>
                             </Descriptions.Item>
-                            <Descriptions.Item label="권장 조치">
-                              {summary.recommendations.length
-                                ? summary.recommendations.map(formatRecommendation).join(', ')
-                                : '없음'}
+                            <Descriptions.Item label="품질 지표" span={3}>
+                              <Space wrap size={[16, 8]}>
+                                <Typography.Text>통과율 {formatRate(summary.pass_rate)}</Typography.Text>
+                                <Typography.Text>검토율 {formatRate(summary.review_rate)}</Typography.Text>
+                                <Typography.Text>위험 통과율 {formatRate(summary.risk_pass_rate)}</Typography.Text>
+                              </Space>
                             </Descriptions.Item>
                           </Descriptions>
                           {summary.gate_passed && summary.risk_pass_rate === 1 ? (
@@ -503,6 +506,7 @@ export default function TestRunsPage() {
                       )}
                       <TestRunDiagnosticsPanel
                         testRunId={summary?.test_run_id}
+                        summary={summary}
                         diagnostics={diagnostics}
                         diagnosticsLoading={diagnosticsLoading}
                         diagnosticsError={diagnosticsError}
